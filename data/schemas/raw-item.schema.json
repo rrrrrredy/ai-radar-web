@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/ai-radar-web/raw-item.schema.json",
+  "title": "Raw Item",
+  "type": "object",
+  "required": ["id", "source_id", "url", "title", "retrieved_at"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "source_id": {
+      "type": "string"
+    },
+    "external_id": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "canonical_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "title": {
+      "type": "string"
+    },
+    "author": {
+      "type": "string"
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "retrieved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "raw_text": {
+      "type": "string"
+    },
+    "raw_metadata": {
+      "type": "object"
+    },
+    "hash": {
+      "type": "string"
+    },
+    "language": {
+      "type": "string"
+    }
+  }
+}
+

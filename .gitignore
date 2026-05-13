@@ -1,0 +1,42 @@
+# System
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Dependencies and builds
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+cookies*
+tokens*
+secrets*
+browser-profile/
+profiles/
+
+# Local data exports
+data/local/
+exports/
+cache/
+

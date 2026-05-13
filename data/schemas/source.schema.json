@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/ai-radar-web/source.schema.json",
+  "title": "Source",
+  "type": "object",
+  "required": ["id", "name", "url", "type", "status", "weight"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "name": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "type": {
+      "type": "string"
+    },
+    "language": {
+      "type": "string"
+    },
+    "region": {
+      "type": "string"
+    },
+    "topics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "paused", "rejected", "monitor"]
+    },
+    "weight": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "risk_notes": {
+      "type": "string"
+    }
+  }
+}
+

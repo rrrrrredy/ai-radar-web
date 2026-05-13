@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/ai-radar-web/event-cluster.schema.json",
+  "title": "Event Cluster",
+  "type": "object",
+  "required": ["id", "title_en", "title_zh", "radar_item_ids", "confidence"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "title_en": {
+      "type": "string"
+    },
+    "title_zh": {
+      "type": "string"
+    },
+    "summary_en": {
+      "type": "string"
+    },
+    "summary_zh": {
+      "type": "string"
+    },
+    "radar_item_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "entity_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["high", "medium", "low"]
+    },
+    "importance_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "first_seen_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
+

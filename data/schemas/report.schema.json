@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/ai-radar-web/report.schema.json",
+  "title": "Report",
+  "type": "object",
+  "required": ["id", "type", "title", "language", "time_window", "body"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["daily", "weekly", "topic", "source_evaluation"]
+    },
+    "title": {
+      "type": "string"
+    },
+    "language": {
+      "type": "string",
+      "enum": ["en", "zh", "bilingual"]
+    },
+    "time_window": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "body": {
+      "type": "string"
+    },
+    "cluster_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "source_urls": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "reviewed", "published", "archived"]
+    }
+  }
+}
+

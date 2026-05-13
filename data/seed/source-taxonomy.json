@@ -1,0 +1,114 @@
+{
+  "version": "0.1.0",
+  "categories": [
+    {
+      "id": "official_company",
+      "label": "Official company",
+      "default_weight": 0.95,
+      "description": "Primary company or product website used for official announcements."
+    },
+    {
+      "id": "official_blog",
+      "label": "Official blog",
+      "default_weight": 0.92,
+      "description": "Official engineering, product, research, or news blog."
+    },
+    {
+      "id": "research_lab",
+      "label": "Research lab",
+      "default_weight": 0.9,
+      "description": "Academic, nonprofit, or corporate AI research lab publication channel."
+    },
+    {
+      "id": "arxiv",
+      "label": "arXiv",
+      "default_weight": 0.78,
+      "description": "Public preprint source. Requires paper review and independent interpretation."
+    },
+    {
+      "id": "github",
+      "label": "GitHub",
+      "default_weight": 0.82,
+      "description": "Public code repository, release, or issue source."
+    },
+    {
+      "id": "huggingface",
+      "label": "Hugging Face",
+      "default_weight": 0.84,
+      "description": "Public model, dataset, space, paper, or organization source."
+    },
+    {
+      "id": "ai_media",
+      "label": "AI media",
+      "default_weight": 0.72,
+      "description": "AI-focused media outlet with named authors and source links."
+    },
+    {
+      "id": "tech_media",
+      "label": "Tech media",
+      "default_weight": 0.7,
+      "description": "General technology media outlet."
+    },
+    {
+      "id": "newsletter",
+      "label": "Newsletter",
+      "default_weight": 0.68,
+      "description": "Curated public email or web newsletter."
+    },
+    {
+      "id": "podcast",
+      "label": "Podcast",
+      "default_weight": 0.58,
+      "description": "Audio discussion or interview source."
+    },
+    {
+      "id": "youtube",
+      "label": "YouTube",
+      "default_weight": 0.56,
+      "description": "Public video source."
+    },
+    {
+      "id": "x_account",
+      "label": "X account",
+      "default_weight": 0.5,
+      "description": "Public X account. Weight depends heavily on identity and evidence."
+    },
+    {
+      "id": "investor",
+      "label": "Investor",
+      "default_weight": 0.55,
+      "description": "Investor commentary or market analysis."
+    },
+    {
+      "id": "researcher",
+      "label": "Researcher",
+      "default_weight": 0.66,
+      "description": "Public expert account or page from a known researcher."
+    },
+    {
+      "id": "product_builder",
+      "label": "Product builder",
+      "default_weight": 0.6,
+      "description": "Public account or blog from a builder with hands-on product signal."
+    },
+    {
+      "id": "journalist",
+      "label": "Journalist",
+      "default_weight": 0.64,
+      "description": "Named journalist with relevant beat coverage."
+    },
+    {
+      "id": "rumor_or_leak",
+      "label": "Rumor or leak",
+      "default_weight": 0.18,
+      "description": "Unverified or leak-oriented source. Keep low weight and clearly labeled."
+    },
+    {
+      "id": "manual_import",
+      "label": "Manual import",
+      "default_weight": 0.5,
+      "description": "User-imported public item requiring explicit attribution."
+    }
+  ]
+}
+

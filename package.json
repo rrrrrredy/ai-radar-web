@@ -1,0 +1,12 @@
+{
+  "name": "ai-radar-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bilingual AI industry radar website skeleton.",
+  "scripts": {
+    "lint": "node -e \"require('module')._extensions['.ts']=require('module')._extensions['.js']; require('./scripts/validate-schemas.ts')\"",
+    "typecheck": "node -e \"require('module')._extensions['.ts']=require('module')._extensions['.js']; require('./scripts/validate-schemas.ts')\"",
+    "validate:data": "node -e \"require('module')._extensions['.ts']=require('module')._extensions['.js']; require('./scripts/validate-schemas.ts')\""
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/ai-radar-web/radar-item.schema.json",
+  "title": "Radar Item",
+  "type": "object",
+  "required": ["id", "raw_item_id", "title", "status"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "raw_item_id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "summary_zh": {
+      "type": "string"
+    },
+    "summary_en": {
+      "type": "string"
+    },
+    "topics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "reviewed", "published", "archived"]
+    },
+    "credibility_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "novelty_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "importance_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  }
+}
+

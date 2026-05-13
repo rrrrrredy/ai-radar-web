@@ -1,0 +1,63 @@
+[
+  {
+    "id": "openai-blog",
+    "name": "OpenAI Blog",
+    "url": "https://openai.com/news/",
+    "type": "official_blog",
+    "language": "en",
+    "region": "global",
+    "topics": ["models", "products", "research"],
+    "status": "active",
+    "weight": 0.95,
+    "risk_notes": "Primary source for OpenAI announcements; pair with independent analysis for impact."
+  },
+  {
+    "id": "anthropic-news",
+    "name": "Anthropic News",
+    "url": "https://www.anthropic.com/news",
+    "type": "official_blog",
+    "language": "en",
+    "region": "global",
+    "topics": ["models", "safety", "products"],
+    "status": "active",
+    "weight": 0.94,
+    "risk_notes": "Official source with product framing."
+  },
+  {
+    "id": "google-deepmind-blog",
+    "name": "Google DeepMind Blog",
+    "url": "https://deepmind.google/discover/blog/",
+    "type": "research_lab",
+    "language": "en",
+    "region": "global",
+    "topics": ["research", "models", "science"],
+    "status": "active",
+    "weight": 0.93,
+    "risk_notes": "Primary research and product announcements from Google DeepMind."
+  },
+  {
+    "id": "arxiv-cs-ai",
+    "name": "arXiv cs.AI",
+    "url": "https://arxiv.org/list/cs.AI/recent",
+    "type": "arxiv",
+    "language": "en",
+    "region": "global",
+    "topics": ["papers", "research"],
+    "status": "active",
+    "weight": 0.78,
+    "risk_notes": "Preprints require interpretation and should not be treated as peer-reviewed by default."
+  },
+  {
+    "id": "huggingface-blog",
+    "name": "Hugging Face Blog",
+    "url": "https://huggingface.co/blog",
+    "type": "huggingface",
+    "language": "en",
+    "region": "global",
+    "topics": ["open-source", "models", "datasets"],
+    "status": "active",
+    "weight": 0.84,
+    "risk_notes": "Good signal for open-source AI, model releases, and ecosystem tooling."
+  }
+]
+
