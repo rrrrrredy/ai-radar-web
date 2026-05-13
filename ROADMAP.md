@@ -1,40 +1,41 @@
 # Roadmap
 
-## Phase 0: Repository Skeleton
+## Phase 0: Repository Skeleton - Done
 
-- Create documentation, schemas, seed taxonomy, and validation script.
-- Define product, architecture, data model, and safety boundaries.
-- Link to the standalone AI Radar Skill as the canonical agent skill.
+- Created documentation, schemas, seed taxonomy, and validation script.
+- Defined product, architecture, data model, and safety boundaries.
+- Linked to the standalone AI Radar Skill as the canonical agent skill.
 
-## Phase 1: Minimal App and Auth
+## Phase 2: Next.js Supabase App Skeleton - Done
 
-- Initialize Next.js, TypeScript, Tailwind CSS, and Supabase client.
-- Implement Email and GitHub auth.
-- Add WeChat auth placeholder behind `ENABLE_WECHAT_AUTH`.
-- Create public homepage, admin shell, and database migrations.
+- Initialized Next.js App Router, TypeScript, Tailwind CSS, ESLint, and build scripts.
+- Added public homepage, radar, clusters, entities, reports, ask, admin, and auth callback routes.
+- Added Supabase Postgres schema, safe synthetic seed rows, and auth helper skeletons.
+- Added Email and GitHub auth support in code/config.
+- Added WeChat auth placeholder behind `ENABLE_WECHAT_AUTH`.
+- Added DeepSeek V4 Flash/Pro provider abstraction without real API calls.
+- Added sensitive scan and full validation commands.
 
-## Phase 2: Ingestion and Ranking
+## Phase 3: Source Registry Import and Cleaning
 
-- Implement public source ingestion.
-- Normalize raw items and deduplicate by canonical URL and hash.
-- Add source health checks and ingestion logs.
-- Add initial scoring rules and manual review.
+- Import the curated public source registry into Supabase.
+- Normalize source types, languages, regions, topics, tiers, and risk notes.
+- Add admin workflows for add, pause, reject, and review source changes.
 
-## Phase 3: Clustering and Entities
+## Phase 4: Ingestion Pipeline
 
-- Cluster related items into events.
-- Extract companies, people, models, products, papers, and projects.
-- Add entity pages and cluster detail pages.
+- Implement public source ingestion jobs.
+- Normalize raw items and deduplicate by canonical URL, source item ID, and hash.
+- Add source health checks, retry-safe ingestion logs, and scheduled job configuration.
 
-## Phase 4: DeepSeek Workflows
+## Phase 5: DeepSeek Understanding Layer
 
-- Add DeepSeek V4 Flash for filtering, summarization, tagging, and classification.
-- Add DeepSeek V4 Pro for scoring, Q&A, and report generation.
-- Log API usage and prompt versions.
+- Add DeepSeek V4 Flash for filtering, summarization, tagging, language detection, and classification.
+- Add DeepSeek V4 Pro for scoring explanations, cluster synthesis, and report drafting.
+- Log API usage, prompt versions, and model output metadata.
 
-## Phase 5: Reports and Writing Assistant
+## Phase 6: Q&A and Writing Assistant
 
-- Generate daily and weekly reports.
-- Add writing assistant mode with evidence, counterpoints, and outlines.
-- Add email or notification adapters if needed.
-
+- Add retrieval-backed web Q&A over Radar database evidence.
+- Generate source-cited answers that state time windows and uncertainty.
+- Add writing assistant mode with evidence, counterpoints, outlines, and bilingual support.

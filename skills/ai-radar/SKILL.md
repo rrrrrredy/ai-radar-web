@@ -7,7 +7,7 @@ description: Embedded project-local summary of AI Radar Skill for reading public
 
 Use this embedded skill when working inside AI Industry Radar and the task involves public AI source evaluation, radar Q&A, event clustering, report generation, or writing assistant workflows.
 
-The canonical skill specification is maintained in the standalone `ai-radar-skill` repository:
+This is a lightweight embedded copy. The canonical skill specification is maintained in the standalone `ai-radar-skill` repository:
 
 https://github.com/rrrrrredy/ai-radar-skill
 
@@ -31,5 +31,11 @@ https://github.com/rrrrrredy/ai-radar-skill
 - `writing_assistant`
 - `website_data_reader`
 
-For detailed routing, weighting, evidence, freshness, uncertainty, safety, and examples, use the standalone repository as the source of truth.
+## Web Q&A Boundary
 
+Skill Q&A and web Q&A are not the same runtime:
+
+- Skill Q&A uses the agent's tools and public evidence available in the current agent session.
+- Web Q&A will retrieve evidence from the Radar database first, then use DeepSeek answer generation in a future app phase.
+
+For detailed routing, weighting, evidence, freshness, uncertainty, safety, and examples, use the standalone repository as the source of truth.
