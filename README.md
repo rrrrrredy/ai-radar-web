@@ -12,6 +12,12 @@ Planned capabilities include source ingestion, ranking, clustering, bilingual su
 
 The project uses public information only. Secrets, API keys, service tokens, cookies, and private credentials must be stored in environment variables and never committed.
 
+## Maintainer
+
+- Maintainer: Song Luo
+- Email: luosongred@gmail.com
+- GitHub: https://github.com/rrrrrredy
+
 ## Current Scope
 
 This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, validation scripts, and a Phase 3 cleaned public source registry.

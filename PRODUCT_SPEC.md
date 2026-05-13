@@ -4,6 +4,10 @@
 
 The homepage shows the current AI radar: top hotspots, latest event clusters, notable entities, and links to daily or weekly reports. It should support Chinese, English, and bilingual viewing.
 
+## Product Shell and Branding
+
+The app shell includes consistent AI Industry Radar branding, the public maintainer name Song Luo, public contact links, and a reminder that source attribution, freshness, and uncertainty are part of the public-information product contract.
+
 ## Hotspot Ranking
 
 Rank items and clusters by credibility, novelty, source strength, entity importance, velocity, cross-source confirmation, and audience relevance. Repeated summaries should strengthen confidence only when they add evidence, not when they merely duplicate the same source.
@@ -69,4 +73,3 @@ Each ingestion run should record start time, end time, status, source count, ite
 - `admin`: manage users, sources, scoring rules, system settings, and all content.
 - `editor`: manage sources, imports, annotations, reports, and review queues.
 - `viewer`: read public and permitted private dashboard content.
-
