@@ -1,20 +1,23 @@
 export type LanguageCode = "en" | "zh" | "bilingual";
-export type SourceStatus = "active" | "paused" | "rejected" | "monitor";
+export type SourceStatus = "active" | "paused" | "rejected" | "monitor" | "trial" | "needs_public_url" | "deferred";
 export type RadarItemStatus = "draft" | "reviewed" | "published" | "archived";
 export type ConfidenceLevel = "high" | "medium" | "low";
+export type SourceTier = 1 | 2 | 3 | 4 | "T1" | "T1.5" | "T2" | "T3" | "unreviewed";
 
 export type Source = {
   id: string;
   name: string;
-  url: string;
+  url: string | null;
   type: string;
-  tier: 1 | 2 | 3 | 4;
+  tier: SourceTier;
   language: string;
   region: string;
   topics: string[];
   status: SourceStatus;
   weight: number;
   riskNotes: string;
+  crawlMethod?: string;
+  riskFlags?: string[];
   lastCheckedAt?: string;
 };
 

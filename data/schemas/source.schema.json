@@ -14,17 +14,78 @@
       "type": "string"
     },
     "url": {
-      "type": "string",
+      "type": ["string", "null"],
+      "format": "uri"
+    },
+    "rss_url": {
+      "type": ["string", "null"],
+      "format": "uri"
+    },
+    "x_handle": {
+      "type": ["string", "null"]
+    },
+    "github_url": {
+      "type": ["string", "null"],
+      "format": "uri"
+    },
+    "youtube_url": {
+      "type": ["string", "null"],
+      "format": "uri"
+    },
+    "podcast_url": {
+      "type": ["string", "null"],
       "format": "uri"
     },
     "type": {
-      "type": "string"
+      "type": "string",
+      "enum": [
+        "x_account",
+        "official_blog",
+        "ai_media",
+        "tech_media",
+        "newsletter",
+        "podcast",
+        "youtube",
+        "researcher",
+        "investor",
+        "github",
+        "arxiv",
+        "course",
+        "book",
+        "community",
+        "manual_import",
+        "other",
+        "research_lab",
+        "huggingface",
+        "product_builder",
+        "journalist",
+        "rumor_or_leak"
+      ]
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "domestic_media",
+        "overseas_media",
+        "x_account",
+        "book",
+        "podcast",
+        "video_course",
+        "ai_specific",
+        "vc_blog",
+        "vc_partner",
+        "company_blog",
+        "research_blog",
+        "other"
+      ]
     },
     "language": {
-      "type": "string"
+      "type": "string",
+      "enum": ["zh", "en", "mixed", "unknown", "bilingual"]
     },
     "region": {
-      "type": "string"
+      "type": "string",
+      "enum": ["china", "overseas", "global", "unknown"]
     },
     "topics": {
       "type": "array",
@@ -34,16 +95,32 @@
     },
     "status": {
       "type": "string",
-      "enum": ["active", "paused", "rejected", "monitor"]
+      "enum": ["active", "paused", "rejected", "monitor", "trial", "needs_public_url", "deferred"]
+    },
+    "tier": {
+      "type": "string",
+      "enum": ["T1", "T1.5", "T2", "T3", "unreviewed"]
     },
     "weight": {
       "type": "number",
       "minimum": 0,
       "maximum": 1
     },
+    "crawl_method": {
+      "type": "string",
+      "enum": ["rss", "html", "api", "manual", "x_api_future", "podcast_feed", "youtube_feed", "no_crawl", "unknown"]
+    },
+    "risk_flags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "source_origin": {
+      "type": "string"
+    },
     "risk_notes": {
       "type": "string"
     }
   }
 }
-

@@ -1,0 +1,58 @@
+{
+  "input_file": "local-input/AI学习资源.md",
+  "generated_at": "2026-05-13",
+  "total_sources": 270,
+  "by_category": {
+    "domestic_media": 55,
+    "podcast": 26,
+    "research_blog": 4,
+    "overseas_media": 10,
+    "x_account": 107,
+    "book": 20,
+    "video_course": 16,
+    "ai_specific": 9,
+    "vc_blog": 6,
+    "other": 10,
+    "vc_partner": 7
+  },
+  "by_type": {
+    "ai_media": 29,
+    "tech_media": 29,
+    "investor": 15,
+    "podcast": 26,
+    "researcher": 6,
+    "x_account": 107,
+    "book": 20,
+    "course": 14,
+    "newsletter": 15,
+    "other": 7,
+    "youtube": 2
+  },
+  "by_tier": {
+    "unreviewed": 49,
+    "T2": 128,
+    "T1.5": 92,
+    "T3": 1
+  },
+  "by_status": {
+    "needs_public_url": 40,
+    "active": 48,
+    "trial": 149,
+    "deferred": 33
+  },
+  "by_crawl_method": {
+    "unknown": 40,
+    "html": 47,
+    "manual": 56,
+    "x_api_future": 107,
+    "no_crawl": 19,
+    "podcast_feed": 1
+  },
+  "private_links_removed": 76,
+  "needs_public_url_count": 40,
+  "skipped_count": 0,
+  "warnings": [
+    "2 duplicate candidates were merged.",
+    "Some valuable sources still need manually supplied public homepages before ingestion."
+  ]
+}

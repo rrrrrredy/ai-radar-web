@@ -12,9 +12,9 @@ Planned capabilities include source ingestion, ranking, clustering, bilingual su
 
 The project uses public information only. Secrets, API keys, service tokens, cookies, and private credentials must be stored in environment variables and never committed.
 
-## Phase 2 Scope
+## Current Scope
 
-This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, and validation scripts.
+This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, validation scripts, and a Phase 3 cleaned public source registry.
 
 The implementation is intentionally an application foundation, not the full product. It does not ingest live sources, call DeepSeek, enforce hard admin blocking, or generate reports yet.
 
@@ -43,12 +43,28 @@ Open `http://localhost:3000`.
 Validation commands:
 
 ```bash
+npm run import:sources
 npm run lint
 npm run typecheck
 npm run validate:data
 npm run sensitive:scan
 npm run build
 ```
+
+## Source Registry
+
+Phase 3 imports the user's AI learning/resource list from a local-only markdown file into `data/seed/sources/ai-learning-resources.cleaned.json`.
+
+The raw input stays under `local-input/` and is excluded from git. The import script strips private, internal, local, credentialed, attachment-only, and image-only links before writing seed data. Sources with no public homepage remain in the registry with `url: null`, `status: "needs_public_url"`, and manual-review risk flags.
+
+Generated registry artifacts:
+
+- `data/seed/sources/ai-learning-resources.cleaned.json` - cleaned public seed registry.
+- `data/seed/sources/ai-learning-resources.audit.md` - counts, dedupe notes, URL-completion follow-up, and first ingestion candidates.
+- `data/seed/sources/source-import-summary.json` - machine-readable import counts.
+- `data/seed/sources/README.md` - registry policy and regeneration notes.
+
+RSS feeds are recorded only when the input explicitly contains a public feed. X accounts are kept for future API/manual workflows. WeChat public-account style entries are preserved by name, but image-only contact methods are not committed and are not auto-crawled.
 
 ## Environment Variables
 
@@ -137,11 +153,11 @@ npm run build
 - No hard admin route blocking yet.
 - No working WeChat login.
 - No generated daily/weekly reports.
-- Demo UI data is synthetic and does not describe current real-world events.
+- Radar item demo data is synthetic and does not describe current real-world events.
+- Many useful source names still need manual public URL completion before ingestion.
 
 ## Next Phases
 
-- Phase 3: source registry import and cleaning
 - Phase 4: ingestion pipeline
 - Phase 5: DeepSeek understanding layer
 - Phase 6: Q&A and writing assistant

@@ -53,6 +53,69 @@ export const mockSources: Source[] = [
   }
 ];
 
+export const mockSourceRegistrySample: Source[] = [
+  {
+    id: "source-841f9d0e",
+    name: "机器之心",
+    url: null,
+    type: "ai_media",
+    tier: "unreviewed",
+    language: "zh",
+    region: "china",
+    topics: ["domestic-media", "technical"],
+    status: "needs_public_url",
+    weight: 0.3,
+    crawlMethod: "unknown",
+    riskFlags: ["needs_public_url", "image_only_contact_removed", "manual_review_required"],
+    riskNotes: "Phase 3 cleaned registry sample. Image-only contact was removed; public homepage is required before ingestion."
+  },
+  {
+    id: "semianalysis",
+    name: "SemiAnalysis",
+    url: "https://semianalysis.com/",
+    type: "tech_media",
+    tier: "T2",
+    language: "en",
+    region: "overseas",
+    topics: ["infrastructure", "technical"],
+    status: "active",
+    weight: 0.58,
+    crawlMethod: "html",
+    riskFlags: ["paywall_possible", "rss_missing", "duplicate_possible"],
+    riskNotes: "Cleaned public source with duplicate entries merged; paywall and missing RSS need review."
+  },
+  {
+    id: "lex-fridman",
+    name: "Lex Fridman",
+    url: "https://podcasts.apple.com/us/podcast/lex-fridman-podcast/id1434243584",
+    type: "podcast",
+    tier: "T2",
+    language: "mixed",
+    region: "global",
+    topics: ["podcast", "interview"],
+    status: "active",
+    weight: 0.58,
+    crawlMethod: "podcast_feed",
+    riskFlags: [],
+    riskNotes: "Cleaned podcast source with an explicit public RSS feed recorded in the registry."
+  },
+  {
+    id: "x-lilianweng",
+    name: "Lilian Weng",
+    url: "https://x.com/lilianweng",
+    type: "x_account",
+    tier: "T1.5",
+    language: "mixed",
+    region: "global",
+    topics: ["x-account", "technical"],
+    status: "trial",
+    weight: 0.78,
+    crawlMethod: "x_api_future",
+    riskFlags: ["x_api_required_or_manual"],
+    riskNotes: "High-signal public X account retained for a future API or manual workflow."
+  }
+];
+
 export const mockRadarItems: RadarItem[] = [
   {
     id: "demo-radar-model-release",

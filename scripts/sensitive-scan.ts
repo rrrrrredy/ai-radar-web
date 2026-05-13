@@ -12,7 +12,8 @@ const ignoredDirectories = new Set([
   "build",
   "coverage",
   "cache",
-  "exports"
+  "exports",
+  "local-input"
 ]);
 
 const textExtensions = new Set([

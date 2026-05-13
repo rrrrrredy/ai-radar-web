@@ -26,6 +26,7 @@ yarn-debug.log*
 .env
 .env.*
 !.env.example
+*.local.md
 *.pem
 *.key
 *.p12
@@ -37,6 +38,7 @@ browser-profile/
 profiles/
 
 # Local data exports
+local-input/
 data/local/
 exports/
 cache/
