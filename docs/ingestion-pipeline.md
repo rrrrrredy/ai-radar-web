@@ -1,27 +1,59 @@
 # Ingestion Pipeline
 
-Phase 4 will build on the Phase 3 cleaned source registry. Phase 3 does not fetch live content; it prepares the seed data, cleaning policy, tiering, crawl-method hints, and manual review queues needed for ingestion.
+Phase 4 builds on the Phase 3 cleaned source registry. It provides the first local public-source ingestion foundation without Supabase insertion or DeepSeek calls.
 
 ## Pipeline Stages
 
-1. Select active public sources from `data/seed/sources/ai-learning-resources.cleaned.json`.
+1. Select active or trial public sources from `data/seed/sources/ai-learning-resources.cleaned.json`.
 2. Fetch source data through public pages, public feeds, or public APIs.
 3. Normalize raw items.
 4. Deduplicate by canonical URL, external ID, and content hash.
-5. Classify language and topic.
-6. Summarize and tag.
-7. Extract entities.
-8. Score items.
-9. Cluster related events.
-10. Log the ingestion run.
+5. Log the ingestion run and write local artifacts.
+
+Later phases will classify topics, summarize, tag, extract entities, score items, cluster events, and insert into Supabase.
+
+## Phase 4 Commands
+
+```bash
+npm run ingest:sources:dry-run
+npm run ingest:sources -- --limit 5 --max-items-per-source 5
+npm run ingest:sources -- --method rss --limit 10
+```
+
+CLI options:
+
+- `--limit <number>` defaults to `10`.
+- `--method <rss|html|api|podcast_feed|youtube_feed|all>` defaults to `all`.
+- `--source <source-id>` selects a single eligible source.
+- `--dry-run` lists selected sources without fetching.
+- `--max-items-per-source <number>` defaults to `10`.
+
+## Phase 4 Fetchers
+
+- `rss`: fetches public RSS/Atom feeds and extracts basic item metadata.
+- `html`: fetches one public page, extracts title, canonical URL, meta description, and a small link sample.
+- `api`: uses unauthenticated public GitHub repository APIs for repository metadata or releases.
+- `podcast_feed`: parses a recorded public podcast feed.
+- `youtube_feed`: records a metadata placeholder and does not scrape videos.
+
+## Local Outputs
+
+The runner overwrites:
+
+- `data/ingestion/latest/raw-items.json`
+- `data/ingestion/latest/ingestion-run.json`
+
+It also writes timestamped JSON under `data/ingestion/runs/`. Generated ingestion JSON files are ignored by git.
 
 ## Scheduling
 
-Use GitHub Actions or Vercel Cron for scheduled ingestion. Jobs should be idempotent, safe to retry, and observable through `ingestion_runs`.
+Use GitHub Actions or Vercel Cron for scheduled ingestion in a later phase. Phase 4 is local-only. Jobs should remain idempotent, safe to retry, and observable through run summaries before database persistence is added.
 
 ## Failure Handling
 
 Record source-level errors without failing the full run when possible. Pause sources only after repeated failures or policy violations.
+
+The Phase 4 runner records failed and skipped sources in the run summary, then continues with the remaining selected sources. If every selected source fails, the run is marked failed; mixed success is marked partial.
 
 ## Phase 3 Source Selection
 
@@ -43,3 +75,7 @@ Keep these out of automated Phase 4 ingestion until later:
 ## Public-only Boundary
 
 Ingestion must fetch public information only. Do not use private intranet links, local files, credentialed URLs, cookies, API keys, non-public attachments, or image-only contact references. If a source cannot be fetched through a public URL or compliant public API, keep it manual and record the reason in source health or review metadata.
+
+## DeepSeek Boundary
+
+Phase 4 does not call DeepSeek. Phase 5 will add the understanding layer for filtering, summarization, tagging, classification, scoring, and report preparation.

@@ -20,6 +20,8 @@ Use GitHub Actions for scheduled ingestion during early phases because it is tra
 
 Every scheduled job should be idempotent, retry-safe, and logged in `ingestion_runs`.
 
+Phase 4 ingestion is local-only. It writes JSON under `data/ingestion/latest/` and `data/ingestion/runs/`; those generated files are ignored by git. Production scheduling should wait until Supabase insertion, source-health persistence, and operational limits are reviewed.
+
 ## Pre-Deployment Checks
 
 - Validate JSON seed data and schemas.
@@ -32,6 +34,7 @@ Every scheduled job should be idempotent, retry-safe, and logged in `ingestion_r
 ```bash
 npm run lint
 npm run typecheck
+npm run ingest:sources:dry-run
 npm run validate:data
 npm run sensitive:scan
 npm run build

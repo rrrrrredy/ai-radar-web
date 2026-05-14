@@ -20,9 +20,9 @@ The project uses public information only. Secrets, API keys, service tokens, coo
 
 ## Current Scope
 
-This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, validation scripts, and a Phase 3 cleaned public source registry.
+This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, validation scripts, a Phase 3 cleaned public source registry, and a Phase 4 local public-source ingestion foundation.
 
-The implementation is intentionally an application foundation, not the full product. It does not ingest live sources, call DeepSeek, enforce hard admin blocking, or generate reports yet.
+The implementation is intentionally an application foundation, not the full product. It can run a limited local ingestion smoke test, but it does not insert into Supabase, call DeepSeek, enforce hard admin blocking, or generate reports yet.
 
 ## Stack
 
@@ -50,6 +50,8 @@ Validation commands:
 
 ```bash
 npm run import:sources
+npm run ingest:sources:dry-run
+npm run ingest:sources -- --limit 3 --max-items-per-source 3
 npm run lint
 npm run typecheck
 npm run validate:data
@@ -71,6 +73,34 @@ Generated registry artifacts:
 - `data/seed/sources/README.md` - registry policy and regeneration notes.
 
 RSS feeds are recorded only when the input explicitly contains a public feed. X accounts are kept for future API/manual workflows. WeChat public-account style entries are preserved by name, but image-only contact methods are not committed and are not auto-crawled.
+
+## Phase 4 Ingestion
+
+Phase 4 adds a local, retry-safe ingestion runner that reads the cleaned registry, selects eligible public sources, fetches limited public metadata, normalizes raw items, deduplicates within the run, and writes ignored local artifacts.
+
+Supported source-selection methods:
+
+- `rss`
+- `html`
+- `api`
+- `podcast_feed`
+- `youtube_feed`
+
+Current commands:
+
+```bash
+npm run ingest:sources:dry-run
+npm run ingest:sources -- --limit 5 --max-items-per-source 5
+npm run ingest:sources -- --method rss --limit 10
+```
+
+Generated outputs:
+
+- `data/ingestion/latest/raw-items.json`
+- `data/ingestion/latest/ingestion-run.json`
+- `data/ingestion/runs/*.json`
+
+Generated ingestion JSON is local and ignored by git. The Phase 4 runner does not use Supabase credentials, does not call DeepSeek, does not auto-crawl X accounts, and does not auto-crawl WeChat public-account sources. Sources that lack a reviewed public URL, require sign-in, use manual/future crawl methods, or point to private infrastructure are skipped.
 
 ## Environment Variables
 
@@ -104,7 +134,7 @@ The app builds when Supabase and DeepSeek variables are missing. UI pages show s
 - `/ask` - Q&A placeholder with retrieval/model boundary copy
 - `/admin` - admin dashboard skeleton
 - `/admin/sources` - mock source registry
-- `/admin/ingestion` - mock ingestion runs
+- `/admin/ingestion` - Phase 4 local ingestion status and output paths
 - `/admin/scoring` - scoring dimensions and negative rules
 - `/admin/settings` - environment and feature flag status
 - `/auth/login` - Supabase auth setup UI
@@ -154,7 +184,10 @@ npm run build
 
 ## Current Limitations
 
-- No live ingestion or scraping.
+- Ingestion is local-only and writes ignored JSON artifacts.
+- HTML ingestion records metadata-level summaries; it is not a full crawler.
+- YouTube ingestion records a placeholder only; video ingestion is not implemented.
+- No Supabase insertion from ingestion outputs.
 - No real DeepSeek API calls.
 - No hard admin route blocking yet.
 - No working WeChat login.
@@ -164,6 +197,5 @@ npm run build
 
 ## Next Phases
 
-- Phase 4: ingestion pipeline
 - Phase 5: DeepSeek understanding layer
 - Phase 6: Q&A and writing assistant

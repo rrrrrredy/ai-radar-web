@@ -31,13 +31,20 @@ Deferred to later phases:
 - Live source ingestion and source health checks.
 - Admin workflows for add, pause, reject, and review source changes.
 
-## Phase 4: Ingestion Pipeline
+## Phase 4: Ingestion Pipeline - Done
 
-- Implement public-source ingestion jobs for the crawlable Phase 3 candidates.
-- Normalize raw items and deduplicate by canonical URL, source item ID, and hash.
-- Add source health checks, retry-safe ingestion logs, and scheduled job configuration.
-- Keep X accounts behind future API/manual workflows.
-- Keep WeChat public-account style sources manual until a compliant public ingestion path exists.
+- Added a local public-source ingestion runner for crawlable Phase 3 candidates.
+- Implemented source selection for `rss`, `html`, `api`, `podcast_feed`, and `youtube_feed`.
+- Added lightweight RSS/Atom, HTML metadata, GitHub public API, podcast-feed, and YouTube-placeholder fetchers.
+- Normalized raw items and deduplicated by canonical URL, external ID, content hash, and source-title key.
+- Wrote ignored local run artifacts under `data/ingestion/latest/` and `data/ingestion/runs/`.
+- Kept X accounts, WeChat public-account style sources, manual sources, and records without public URLs outside automated ingestion.
+
+Deferred to later phases:
+
+- Supabase insertion from local ingestion artifacts.
+- Scheduled production jobs and source-health persistence.
+- DeepSeek filtering, summarization, classification, scoring, and entity extraction.
 
 ## Phase 5: DeepSeek Understanding Layer
 

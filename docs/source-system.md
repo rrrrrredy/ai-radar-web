@@ -47,7 +47,7 @@ Sources without a public URL stay in the registry with `url: null` and `status: 
 ## Crawl Methods
 
 - `rss`: public feed explicitly provided.
-- `html`: public page suitable for a Phase 4 crawler.
+- `html`: public page suitable for Phase 4 metadata extraction.
 - `api`: public API-oriented source such as GitHub.
 - `x_api_future`: public X account retained for a future API or manual workflow.
 - `podcast_feed`: public podcast feed explicitly provided.
@@ -59,6 +59,18 @@ Sources without a public URL stay in the registry with `url: null` and `status: 
 ## Platform Limitations
 
 X accounts require a future API/manual path and should not be treated as HTML-crawlable. WeChat public-account style sources are preserved as names and notes, but the first version does not auto-crawl them. Image-only contact methods are stripped, so these entries require manual public URL completion before ingestion.
+
+## Phase 4 Eligibility
+
+The local ingestion runner selects only sources with:
+
+- `status` of `active` or `trial`
+- a non-empty public HTTP(S) URL
+- `crawl_method` of `rss`, `html`, `api`, `podcast_feed`, or `youtube_feed`
+- no `needs_public_url` risk flag
+- no private, credentialed, attachment-only, or local-only URL fragments
+
+Manual, future API, non-crawl, unknown, missing-public-URL, X automatic, and WeChat automatic workflows remain outside Phase 4 automation.
 
 ## Source Rules
 

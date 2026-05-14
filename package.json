@@ -8,6 +8,8 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "import:sources": "tsx scripts/import-ai-learning-resources.ts",
+    "ingest:sources": "tsx scripts/ingest-sources.ts",
+    "ingest:sources:dry-run": "tsx scripts/ingest-sources.ts --dry-run",
     "validate:data": "tsx scripts/validate-schemas.ts",
     "sensitive:scan": "tsx scripts/sensitive-scan.ts",
     "build": "next build"
