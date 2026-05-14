@@ -10,7 +10,7 @@ Phase 4 builds on the Phase 3 cleaned source registry. It provides the first loc
 4. Deduplicate by canonical URL, external ID, and content hash.
 5. Log the ingestion run and write local artifacts.
 
-Phase 5 now classifies topics, summarizes, tags, extracts entities, and scores items into local radar-item artifacts. Supabase insertion, clustering, Q&A, and report generation remain later work.
+Phase 5 now classifies topics, summarizes, tags, extracts entities, and scores items into local radar-item artifacts. Phase 6 reads those artifacts for retrieval-backed Q&A and writing assistance. Supabase insertion, clustering, scheduled jobs, and full report generation remain later work.
 
 ## Phase 4 Commands
 
@@ -90,3 +90,9 @@ npm run understand:items -- --limit 3 --mode mock
 The understanding layer reads `data/ingestion/latest/raw-items.json`, writes `data/understanding/latest/radar-items.json` and `data/understanding/latest/understanding-run.json`, and keeps generated JSON ignored by git. Mock mode is deterministic and safe for builds. Live mode requires `--mode live` plus a local DeepSeek key.
 
 Model output is validated before radar items are written. Final inclusion uses deterministic thresholds and a source-weighted score formula rather than model preference alone.
+
+## Phase 6 Retrieval Consumers
+
+`/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` read `data/understanding/latest/radar-items.json` when available. If that local generated file is missing or invalid, they use synthetic mock radar items and disclose `mock_data` in the response.
+
+Generated ingestion and understanding JSON remains local and ignored by git. Phase 6 does not insert into Supabase, does not add production scheduled jobs, and does not run live DeepSeek calls unless an API request explicitly asks for live mode and the server has a local key.

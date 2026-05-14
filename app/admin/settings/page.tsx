@@ -47,7 +47,7 @@ export default function AdminSettingsPage() {
             value={config.supabase.hasServiceRoleKey ? "Configured" : "Missing"}
           />
           <StatusRow
-            detail="Server-side only. Provider is mocked in Phase 2."
+            detail="Server-side only. Phase 6 mock/local Q&A and writing do not require this key; live mode is explicit opt-in."
             label="DeepSeek API key"
             value={deepSeek.hasApiKey ? "Configured" : "Missing"}
           />
@@ -91,6 +91,16 @@ export default function AdminSettingsPage() {
             </div>
           </dl>
         </div>
+      </section>
+
+      <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
+        <h2 className="text-lg font-semibold text-radar-ink">Phase 6 generation boundary</h2>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
+          Q&A and writing assistant routes default to mock/local generation over
+          retrieved radar-item evidence. Live DeepSeek generation is available only
+          when explicitly requested by API input and when the server environment has
+          a local key. Supabase-backed retrieval remains future work.
+        </p>
       </section>
     </div>
   );

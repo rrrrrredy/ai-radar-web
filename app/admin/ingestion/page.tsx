@@ -44,7 +44,9 @@ export default function AdminIngestionPage() {
           Phase 4 adds a local public-source ingestion foundation. It selects safe
           sources from the cleaned registry, fetches public metadata or feed items,
           normalizes raw items, deduplicates within the run, and writes local JSON
-          artifacts before any Supabase insertion work.
+          artifacts before any Supabase insertion work. Phase 6 retrieves from the
+          local understanding output first and falls back to synthetic mock data
+          when local artifacts are absent.
         </p>
       </section>
 
@@ -128,10 +130,9 @@ export default function AdminIngestionPage() {
       <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
         <h2 className="text-lg font-semibold text-radar-ink">Next step</h2>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-          Phase 5 reads the collected raw items, validates model outputs, extracts
-          entities, applies formula-based scoring, and prepares local radar items
-          for a future Supabase-backed review flow. Phase 6 will use those radar
-          items for retrieval-backed Q&A and writing assistance.
+          Phase 6 now uses local radar items for retrieval-backed Q&A and writing
+          assistance. Supabase-backed retrieval, source health persistence, and
+          scheduled production jobs remain future work.
         </p>
       </section>
 
@@ -157,6 +158,13 @@ export default function AdminIngestionPage() {
             <p className="mt-2 text-sm leading-6 text-radar-muted">
               Generated understanding JSON stays local and ignored by git, matching
               the Phase 4 ingestion artifact policy.
+            </p>
+          </div>
+          <div className="rounded-md border border-radar-line p-4">
+            <p className="text-sm font-semibold text-radar-ink">Retrieval consumers</p>
+            <p className="mt-2 text-sm leading-6 text-radar-muted">
+              Ask and Write read retrieved radar-item evidence first, cite sources,
+              and mark needs_review evidence before generating local mock output.
             </p>
           </div>
         </div>

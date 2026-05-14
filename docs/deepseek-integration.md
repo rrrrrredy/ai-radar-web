@@ -93,3 +93,23 @@ Inclusion thresholds:
 - Store source links and timestamps alongside generated text.
 - Keep DeepSeek calls out of ingestion fetching.
 - Do not insert Phase 5 outputs into Supabase yet.
+
+## Phase 6 Q&A and Writing
+
+Phase 6 adds retrieval-backed Q&A and writing assistant APIs over local radar items:
+
+- `POST /api/ask`
+- `POST /api/writing-assistant`
+
+Both routes default to `generationMode: "mock"`, use deterministic local generation, and do not require a DeepSeek key. Live generation is only attempted when the request explicitly sets `generationMode: "live"` and `DEEPSEEK_API_KEY` exists in the server environment.
+
+The API key contract remains environment-only and blank in committed examples:
+
+```bash
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_FAST_MODEL=deepseek-v4-flash
+DEEPSEEK_SMART_MODEL=deepseek-v4-pro
+```
+
+Q&A and writing prompts must use retrieved radar-item evidence, citations, time windows, and uncertainty. They must not invent facts from model priors.

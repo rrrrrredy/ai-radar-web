@@ -36,6 +36,8 @@ Users can choose Chinese, English, or bilingual mode. Bilingual summaries should
 
 The Q&A box answers questions against public radar data and public sources. It must cite sources, state time windows, and separate facts from inference and speculation.
 
+Phase 6 implements the first usable Q&A foundation over local generated radar-item JSON with synthetic mock fallback. It does not claim comprehensive current coverage unless a future persisted retrieval source supports that claim.
+
 ## Daily Report
 
 Daily reports summarize the most important AI events for a selected date or last-24-hour window. Reports should include ranked events, why they matter, source citations, and watch items.
@@ -47,6 +49,8 @@ Weekly reports synthesize trends across seven days, including model releases, ag
 ## Writing Assistant Mode
 
 Writing assistant mode helps select article angles, outline arguments, collect evidence, and identify counterpoints. It must not invent facts or hide weak evidence.
+
+Phase 6 writing assistance returns evidence-bound topic candidates, caveats, counterpoints, missing evidence, and citations. It may use sections such as overseas, domestic, industry focus, and supplemental only when retrieved evidence supports them.
 
 ## Admin Dashboard
 

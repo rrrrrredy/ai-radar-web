@@ -57,8 +57,28 @@ Deferred to later phases:
 - Log prompt versions, model names, hashes, API-call counts, token usage when available, and error state.
 - Write ignored local outputs under `data/understanding/latest/` and `data/understanding/runs/`.
 
-## Phase 6: Q&A and Writing Assistant
+## Phase 6: Q&A and Writing Assistant - Done
 
 - Add retrieval-backed web Q&A over validated radar-item evidence.
 - Generate source-cited answers that state time windows and uncertainty.
 - Add writing assistant mode with evidence, counterpoints, outlines, and bilingual support.
+- Add `/api/ask`, `/api/writing-assistant`, `/ask`, and `/write` in mock/local mode by default.
+- Keep live DeepSeek generation explicit and environment-gated.
+
+## Phase 7: Supabase Persistence and Source Health Checks
+
+- Persist ingestion and understanding outputs into Supabase.
+- Add source health checks and operational status history.
+- Replace local-file retrieval with Supabase-backed retrieval while preserving local fallback behavior.
+
+## Phase 8: Scheduled Jobs and Deployment
+
+- Add scheduled ingestion and understanding jobs after persistence is reviewed.
+- Configure production deployment, environment variables, and job observability.
+- Keep jobs idempotent, retry-safe, and bounded.
+
+## Phase 9: Admin Review Workflows
+
+- Add review queues for `needs_review` items, source changes, and writing/report candidates.
+- Add admin/editor actions for approve, reject, annotate, and publish.
+- Add audit trails for scoring and generation decisions.

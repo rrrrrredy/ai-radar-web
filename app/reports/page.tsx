@@ -7,8 +7,9 @@ export default function ReportsPage() {
       <section>
         <h1 className="text-3xl font-semibold text-radar-ink">Reports</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-          Daily and weekly reports will use ranked radar evidence, source citations,
-          and DeepSeek V4 Pro synthesis in a later phase. No model calls are made here.
+          Reports will build on the same retrieval and writing assistant foundation
+          now used by Ask and Write. Phase 6 provides evidence-backed Q&A and writing
+          seeds; full daily and weekly report generation remains future work.
         </p>
       </section>
 
@@ -33,8 +34,8 @@ export default function ReportsPage() {
       </section>
 
       <EmptyState
-        description="Report generation scope: retrieve evidence, rank event clusters, generate bilingual synthesis, cite sources, and preserve uncertainty notes."
-        title="Report generation is intentionally disabled in Phase 2"
+        description="Current report scope: use retrieved radar-item evidence to seed topics and outlines. Later phases will add daily and weekly synthesis, report persistence, review workflow, and publication controls."
+        title="Full report generation is intentionally deferred"
       />
     </div>
   );

@@ -20,9 +20,9 @@ The project uses public information only. Secrets, API keys, service tokens, coo
 
 ## Current Scope
 
-This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, and a Phase 5 local understanding layer.
+This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, and a Phase 6 retrieval-backed Q&A and writing assistant foundation.
 
-The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, but it does not insert into Supabase, enforce hard admin blocking, answer questions, or generate reports yet. DeepSeek live calls are opt-in only.
+The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, answer questions against local/mock radar evidence, and generate writing seeds with caveats, but it does not insert into Supabase, enforce hard admin blocking, run scheduled jobs, or generate full daily/weekly reports yet. DeepSeek live calls are opt-in only.
 
 ## Stack
 
@@ -141,6 +141,26 @@ overall = relevance*0.30 + importance*0.20 + credibility*0.20 + novelty*0.15 + f
 
 Items below `0.35` relevance are excluded, items from `0.35` to `0.60` need review, and higher-relevance low-credibility items still need review. Each radar item logs prompt version, model names, input/output hashes, API-call count, estimated/token usage when available, and error state.
 
+## Phase 6 Q&A and Writing Assistant
+
+Phase 6 adds retrieval over validated local radar items and deterministic mock/local generation for `/ask`, `/write`, `/api/ask`, and `/api/writing-assistant`.
+
+Retrieval reads `data/understanding/latest/radar-items.json` when it exists and falls back to existing synthetic mock radar data when local outputs are absent or invalid. Responses report the data source as `local_understanding_output`, `mock_data`, or `empty`, include a resolved time window, cite retrieved radar items, and state uncertainty. Items marked `needs_review` are surfaced with caveats instead of treated as fully confirmed.
+
+Default API behavior uses `generationMode: "mock"` and does not require Supabase credentials, login, or a DeepSeek key:
+
+```bash
+curl -X POST http://localhost:3000/api/ask \
+  -H "content-type: application/json" \
+  -d "{\"question\":\"过去24小时内谁发布了新模型？\",\"language\":\"zh\",\"generationMode\":\"mock\"}"
+
+curl -X POST http://localhost:3000/api/writing-assistant \
+  -H "content-type: application/json" \
+  -d "{\"query\":\"帮我从今天热点里挑5条适合写行业观察的内容。\",\"language\":\"zh\",\"audience\":\"AI practitioners\",\"outputType\":\"topic_candidates\",\"generationMode\":\"mock\"}"
+```
+
+Live DeepSeek generation is available only when the request explicitly sets `generationMode: "live"` and the server environment has `DEEPSEEK_API_KEY`. Validation and builds must continue to use mock/local mode.
+
 ## Environment Variables
 
 Copy `.env.example` to `.env.local` or another untracked local environment file and fill values only on your machine. Store deployed values only in the deployment platform environment variable manager. Do not commit `.env`, `.env.local`, or filled environment files.
@@ -184,8 +204,11 @@ Mock mode requires no DeepSeek key and is the default for validation and builds.
 - `/radar` - radar list with static filter UI
 - `/clusters` - synthetic event clusters
 - `/entities` - synthetic entity cards
-- `/reports` - report placeholders
-- `/ask` - Q&A placeholder with retrieval/model boundary copy
+- `/reports` - report placeholders that explain the Phase 6 retrieval and writing foundation
+- `/ask` - retrieval-backed Q&A over local/mock radar-item evidence
+- `/write` - evidence-bound writing assistant seeds and caveats
+- `/api/ask` - structured Q&A JSON API, mock/local by default
+- `/api/writing-assistant` - structured writing-assistant JSON API, mock/local by default
 - `/admin` - admin dashboard skeleton
 - `/admin/sources` - mock source registry
 - `/admin/ingestion` - Phase 4/5 local ingestion and understanding status and output paths
@@ -240,17 +263,21 @@ npm run build
 
 - Ingestion is local-only and writes ignored JSON artifacts.
 - Understanding is local-only and writes ignored JSON artifacts.
+- Q&A and writing retrieval read local generated radar-item JSON or synthetic mock data only.
 - HTML ingestion records metadata-level summaries; it is not a full crawler.
 - YouTube ingestion records a placeholder only; video ingestion is not implemented.
 - No Supabase insertion from ingestion outputs.
+- No Supabase-backed retrieval yet.
 - No automatic live DeepSeek calls.
 - No hard admin route blocking yet.
 - No working WeChat login.
-- No web Q&A or writing assistant yet.
+- No scheduled production jobs yet.
 - No generated daily/weekly reports.
 - Radar item demo data is synthetic and does not describe current real-world events.
 - Many useful source names still need manual public URL completion before ingestion.
 
 ## Next Phases
 
-- Phase 6: Q&A and writing assistant over validated radar items
+- Phase 7: Supabase persistence and source health checks
+- Phase 8: scheduled jobs and deployment
+- Phase 9: admin review workflows

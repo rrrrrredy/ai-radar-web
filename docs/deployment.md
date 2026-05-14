@@ -22,7 +22,7 @@ Use GitHub Actions for scheduled ingestion during early phases because it is tra
 
 Every scheduled job should be idempotent, retry-safe, and logged in `ingestion_runs`.
 
-Phase 4 ingestion is local-only. It writes JSON under `data/ingestion/latest/` and `data/ingestion/runs/`; those generated files are ignored by git. Production scheduling should wait until Supabase insertion, source-health persistence, and operational limits are reviewed.
+Phase 4 ingestion and Phase 5 understanding are local-only. They write JSON under `data/ingestion/latest/`, `data/ingestion/runs/`, `data/understanding/latest/`, and `data/understanding/runs/`; those generated files are ignored by git. Phase 6 Q&A and writing APIs can read local understanding output or mock data, but production scheduling should wait until Supabase insertion, source-health persistence, and operational limits are reviewed.
 
 ## Pre-Deployment Checks
 
@@ -40,6 +40,13 @@ npm run ingest:sources:dry-run
 npm run validate:data
 npm run sensitive:scan
 npm run build
+```
+
+Before deployment, smoke test mock/local JSON APIs without live model calls:
+
+```bash
+curl -X POST http://localhost:3000/api/ask -H "content-type: application/json" -d "{\"question\":\"过去24小时内谁发布了新模型？\",\"generationMode\":\"mock\"}"
+curl -X POST http://localhost:3000/api/writing-assistant -H "content-type: application/json" -d "{\"query\":\"帮我从今天热点里挑5条适合写行业观察的内容。\",\"generationMode\":\"mock\"}"
 ```
 
 ## Supabase

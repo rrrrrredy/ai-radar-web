@@ -25,6 +25,12 @@ Inclusion thresholds:
 
 DeepSeek can provide scoring rationale in live mode, but code applies final scoring and inclusion.
 
+## Retrieval Use
+
+Phase 6 retrieval uses scored radar items to support Q&A and writing assistance. Ranking combines query relevance with `overall_score`, `source_weight`, `credibility_score`, `freshness_score`, status, and category/entity matches.
+
+Items with `included` status are preferred. Items with `needs_review` can be retrieved, but generated answers and writing seeds must label them as not fully confirmed. `excluded` and `failed` items are not used for answer generation.
+
 ## Cluster Scores
 
 Cluster scores should combine representative item credibility, entity importance, source diversity, time velocity, and analyst overrides.

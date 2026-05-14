@@ -38,7 +38,9 @@ const negativeRules = [
   "Downgrade unsourced reposts and title-only summaries.",
   "Do not reward duplicate summaries unless they add independent evidence.",
   "Keep rumor or leak sources low weight and clearly labeled.",
-  "Validate model JSON before writing radar items."
+  "Validate model JSON before writing radar items.",
+  "Q&A and writing assistant output must cite retrieved radar-item evidence.",
+  "Do not let writing suggestions overstate needs_review or weak evidence."
 ];
 
 const formula =
@@ -52,7 +54,8 @@ export default function AdminScoringPage() {
         <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
           Phase 5 turns raw ingestion items into scored radar items. DeepSeek can
           provide classification, summaries, entities, and scoring rationale, but
-          deterministic thresholds and the formula below control inclusion.
+          deterministic thresholds and the formula below control inclusion. Phase 6
+          retrieval uses these scored items before generating Q&A or writing seeds.
         </p>
       </section>
 
@@ -89,7 +92,9 @@ export default function AdminScoringPage() {
           Mock mode uses deterministic heuristics for validation and builds. Live
           mode requires an explicit CLI flag and a local DeepSeek key. Invalid
           model output falls back or records a failed understanding item instead
-          of silently publishing.
+          of silently publishing. Phase 6 answer generation remains mock/local by
+          default, with live DeepSeek gated behind explicit request mode and local
+          environment variables.
         </p>
       </section>
     </div>
