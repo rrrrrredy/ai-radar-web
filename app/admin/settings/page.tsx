@@ -1,5 +1,6 @@
 import { getAppConfig } from "@/lib/config";
 import { getDeepSeekConfig } from "@/lib/deepseek/provider";
+import { getSupabaseServiceStatus } from "@/lib/supabase/service";
 
 function StatusRow({
   label,
@@ -22,6 +23,7 @@ function StatusRow({
 export default function AdminSettingsPage() {
   const config = getAppConfig();
   const deepSeek = getDeepSeekConfig();
+  const supabaseService = getSupabaseServiceStatus();
 
   return (
     <div className="space-y-8">
@@ -44,7 +46,7 @@ export default function AdminSettingsPage() {
           <StatusRow
             detail="Server-side only. Never expose this to browser code."
             label="Supabase service role"
-            value={config.supabase.hasServiceRoleKey ? "Configured" : "Missing"}
+            value={supabaseService.serviceRoleConfigured ? "Configured" : "Missing"}
           />
           <StatusRow
             detail="Server-side only. Phase 6 mock/local Q&A and writing do not require this key; live mode is explicit opt-in."
@@ -89,17 +91,30 @@ export default function AdminSettingsPage() {
                 {String(config.featureFlags.enableWechatAuth)}
               </dd>
             </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-radar-muted">ENABLE_SUPABASE_RETRIEVAL</dt>
+              <dd className="font-medium text-radar-ink">
+                {String(config.featureFlags.enableSupabaseRetrieval)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-radar-muted">ENABLE_SUPABASE_WRITES</dt>
+              <dd className="font-medium text-radar-ink">
+                {String(config.featureFlags.enableSupabaseWrites)}
+              </dd>
+            </div>
           </dl>
         </div>
       </section>
 
       <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
-        <h2 className="text-lg font-semibold text-radar-ink">Phase 6 generation boundary</h2>
+        <h2 className="text-lg font-semibold text-radar-ink">Phase 7 persistence boundary</h2>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
           Q&A and writing assistant routes default to mock/local generation over
-          retrieved radar-item evidence. Live DeepSeek generation is available only
-          when explicitly requested by API input and when the server environment has
-          a local key. Supabase-backed retrieval remains future work.
+          retrieved radar-item evidence. Supabase retrieval is only attempted when
+          the retrieval flag and public Supabase config are present. Supabase writes
+          require explicit CLI <span className="font-mono">--write</span> plus the
+          write flag, and live DeepSeek generation remains explicit opt-in.
         </p>
       </section>
     </div>

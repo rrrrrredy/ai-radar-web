@@ -28,19 +28,19 @@ Fields: `id`, `user_id`, `role`, `created_at`, `created_by`.
 
 Tracked public information sources.
 
-Fields: `id`, `name`, `url`, `type`, `language`, `region`, `topics`, `status`, `weight`, `risk_notes`, `created_at`, `updated_at`, `last_checked_at`.
+Fields: `id`, `slug`, `name`, `name_en`, `url`, `type`, `category`, `description`, `rss_url`, `x_handle`, `github_url`, `youtube_url`, `podcast_url`, `language`, `region`, `topics`, `tags`, `status`, `source_tier`, `tier_label`, `weight`, `crawl_method`, `update_frequency`, `risk_flags`, `risk_notes`, `notes`, `source_origin`, `created_at`, `updated_at`, `last_checked_at`.
 
 ### source_health_checks
 
 Source availability and quality checks.
 
-Fields: `id`, `source_id`, `checked_at`, `status`, `latency_ms`, `http_status`, `item_count`, `error_message`.
+Fields: `id`, `source_id`, `checked_at`, `checked_url`, `crawl_method`, `check_kind`, `status`, `latency_ms`, `duration_ms`, `http_status`, `item_count`, `error_message`, `metadata`.
 
 ### raw_items
 
 Raw ingested public items before enrichment.
 
-Fields: `id`, `source_id`, `external_id`, `url`, `canonical_url`, `title`, `author`, `published_at`, `retrieved_at`, `raw_text`, `raw_metadata`, `hash`, `language`.
+Fields: `id`, `local_id`, `source_id`, `ingestion_run_id`, `external_id`, `url`, `canonical_url`, `title`, `author`, `published_at`, `collected_at`, `retrieved_at`, `raw_text`, `summary`, `raw_metadata`, `hash`, `language`, `source_snapshot`, `source_tier`, `crawl_method`, `status`, `error_message`.
 
 ### radar_items
 
@@ -48,7 +48,7 @@ Normalized and enriched items for ranking and display.
 
 Phase 5 local JSON fields: `id`, `raw_item_id`, `source_id`, `source_name`, `title`, `url`, `published_at`, `collected_at`, `processed_at`, `language`, `summary_zh`, `summary_en`, `ai_relevance_score`, `importance_score`, `credibility_score`, `novelty_score`, `freshness_score`, `overall_score`, `categories`, `tags`, `entities`, `source_tier`, `source_weight`, `confidence`, `status`, `exclusion_reason`, `why_it_matters`, `evidence_notes`, `model_metadata`.
 
-Database fields currently remain the earlier minimal table shape: `id`, `raw_item_id`, `title`, `summary_zh`, `summary_en`, `topics`, `status`, `credibility_score`, `novelty_score`, `importance_score`, `created_at`, `updated_at`. Supabase insertion is deferred.
+Phase 7 database fields add: `local_id`, `source_id`, `source_name`, `url`, `published_at`, `collected_at`, `processed_at`, `language`, `ai_relevance_score`, `freshness_score`, `overall_score`, `categories`, `tags`, `source_tier`, `source_weight`, `confidence`, `understanding_status`, `exclusion_reason`, `why_it_matters`, `evidence_notes`, `model_metadata`, and `understanding_run_id`.
 
 ### event_clusters
 
@@ -68,13 +68,13 @@ Canonical entities for companies, people, models, products, papers, and projects
 
 Fields: `id`, `type`, `name`, `aliases`, `description`, `homepage_url`, `metadata`, `created_at`, `updated_at`.
 
-Phase 5 local entity types include `company`, `model`, `product`, `person`, `paper`, `project`, `repository`, `investor`, `regulator`, and `other`.
+Phase 5 local entity types include `company`, `model`, `product`, `person`, `paper`, `project`, `repository`, `investor`, `regulator`, and `other`. Phase 7 adds `entity_key` for idempotent upserts.
 
 ### item_entities
 
 Many-to-many relation between radar items and entities.
 
-Fields: `id`, `radar_item_id`, `entity_id`, `relationship`, `confidence`, `created_at`.
+Fields: `id`, `radar_item_id`, `entity_id`, `relationship`, `confidence`, `evidence_text`, `created_at`.
 
 ### scores
 
@@ -104,7 +104,13 @@ Fields: `id`, `user_id`, `target_type`, `target_id`, `body`, `visibility`, `crea
 
 Operational ingestion logs.
 
-Fields: `id`, `started_at`, `finished_at`, `status`, `trigger`, `source_count`, `raw_item_count`, `radar_item_count`, `error_count`, `metadata`.
+Fields: `id`, `local_run_id`, `started_at`, `finished_at`, `status`, `trigger`, `source_count`, `selected_source_count`, `raw_item_count`, `radar_item_count`, `error_count`, `duplicate_count`, `skipped_count`, `duration_ms`, `warnings`, `output_files`, `options`, `metadata`.
+
+### understanding_runs
+
+Operational understanding logs.
+
+Fields: `id`, `local_run_id`, `started_at`, `ended_at`, `duration_ms`, `status`, `mode`, `input_path`, `output_path`, `raw_item_count`, `processed_count`, `included_count`, `excluded_count`, `needs_review_count`, `failed_count`, `categories_count`, `entities_count`, `api_call_count`, `estimated_token_count`, `warnings`, `errors`, `output_files`, `created_at`.
 
 ### api_usage_logs
 
@@ -112,7 +118,7 @@ Model and API usage tracking.
 
 Fields: `id`, `provider`, `model`, `purpose`, `prompt_tokens`, `completion_tokens`, `cost_estimate`, `status`, `created_at`, `metadata`.
 
-Phase 5 local understanding records also store prompt version, model names, input/output hashes, API-call count, token usage when available, and error state inside each radar item's `model_metadata`.
+Phase 5 local understanding records store prompt version, model names, input/output hashes, API-call count, token usage when available, and error state inside each radar item's `model_metadata`. Phase 7 can persist this metadata and writes `api_usage_logs` only when a run reports actual API calls.
 
 ### system_settings
 

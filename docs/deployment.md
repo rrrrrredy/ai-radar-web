@@ -22,7 +22,7 @@ Use GitHub Actions for scheduled ingestion during early phases because it is tra
 
 Every scheduled job should be idempotent, retry-safe, and logged in `ingestion_runs`.
 
-Phase 4 ingestion and Phase 5 understanding are local-only. They write JSON under `data/ingestion/latest/`, `data/ingestion/runs/`, `data/understanding/latest/`, and `data/understanding/runs/`; those generated files are ignored by git. Phase 6 Q&A and writing APIs can read local understanding output or mock data, but production scheduling should wait until Supabase insertion, source-health persistence, and operational limits are reviewed.
+Phase 4 ingestion and Phase 5 understanding still write JSON under `data/ingestion/latest/`, `data/ingestion/runs/`, `data/understanding/latest/`, and `data/understanding/runs/`; those generated files are ignored by git. Phase 7 can dry-run persistence into Supabase and feature-flag Supabase retrieval, but production scheduling should wait until write runs, source-health persistence, and operational limits are explicitly approved.
 
 ## Pre-Deployment Checks
 
@@ -32,11 +32,16 @@ Phase 4 ingestion and Phase 5 understanding are local-only. They write JSON unde
 - Run the Next.js production build.
 - Confirm no `.env` files or secrets are staged.
 - Confirm private source lists are not published unless intentionally protected.
+- Keep `ENABLE_SUPABASE_WRITES=false` unless a reviewed write run is explicitly approved.
 
 ```bash
 npm run lint
 npm run typecheck
 npm run ingest:sources:dry-run
+npm run supabase:import:sources
+npm run supabase:persist:ingestion
+npm run supabase:persist:understanding
+npm run source-health:dry-run
 npm run validate:data
 npm run sensitive:scan
 npm run build
@@ -51,7 +56,9 @@ curl -X POST http://localhost:3000/api/writing-assistant -H "content-type: appli
 
 ## Supabase
 
-Run `supabase/schema.sql` in the Supabase SQL editor. Use `supabase/seed.sql` only for safe demo rows.
+Run `supabase/schema.sql` in the Supabase SQL editor for a new project. Use `supabase/seed.sql` only for safe demo rows.
+
+For an existing Phase 2 project, apply `supabase/migrations/202605140001_phase7_persistence.sql` before enabling Phase 7 persistence writes.
 
 Required deployment variables:
 
@@ -59,5 +66,7 @@ Required deployment variables:
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `ADMIN_EMAIL`
+- `ENABLE_SUPABASE_RETRIEVAL`
+- `ENABLE_SUPABASE_WRITES`
 
 Email auth should be enabled first. GitHub OAuth can be enabled after creating a GitHub OAuth app. WeChat remains a placeholder until a future supported provider flow exists.

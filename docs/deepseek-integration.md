@@ -92,7 +92,7 @@ Inclusion thresholds:
 - Log provider, model, purpose, token usage, status, and prompt version.
 - Store source links and timestamps alongside generated text.
 - Keep DeepSeek calls out of ingestion fetching.
-- Do not insert Phase 5 outputs into Supabase yet.
+- Do not run live DeepSeek for persistence validation.
 
 ## Phase 6 Q&A and Writing
 
@@ -113,3 +113,10 @@ DEEPSEEK_SMART_MODEL=deepseek-v4-pro
 ```
 
 Q&A and writing prompts must use retrieved radar-item evidence, citations, time windows, and uncertainty. They must not invent facts from model priors.
+
+## Phase 7 Persistence Boundary
+
+Phase 7 can persist understanding outputs and model metadata into Supabase, but
+validation remains mock/local by default. `api_usage_logs` should only represent
+actual API calls reported by a local understanding run; mock runs have
+`api_call_count: 0`.

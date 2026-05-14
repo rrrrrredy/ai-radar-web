@@ -4,7 +4,7 @@ import type {
   UnderstandingStatus
 } from "@/lib/understanding/types";
 
-export type RetrievalDataSource = "local_understanding_output" | "mock_data" | "empty";
+export type RetrievalDataSource = "supabase_radar_items" | "local_understanding_output" | "mock_data" | "empty";
 export type RetrievalIntent = "qa" | "writing_assistant" | "report_seed" | "unknown";
 export type RetrievalLanguage = "zh" | "en" | "mixed" | "unknown";
 export type RetrievalOutputStyle = "concise" | "detailed" | "outline" | "topic_list" | "unknown";

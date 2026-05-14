@@ -90,6 +90,27 @@ Local outputs:
 - `data/understanding/latest/understanding-run.json`
 - `data/understanding/runs/*.json`
 
+## Phase 7 Supabase Persistence
+
+The cleaned registry can be imported into Supabase with:
+
+```bash
+npm run supabase:import:sources
+```
+
+The command is dry-run by default and upserts by `sources.slug` only when `--write`
+and `ENABLE_SUPABASE_WRITES=true` are both present. All registry rows are preserved,
+including `needs_public_url` rows, but source health checks only select public,
+active/trial sources with supported crawl methods.
+
+Source health selection is available with:
+
+```bash
+npm run source-health:dry-run
+```
+
+The dry run does not check public endpoints or write to Supabase.
+
 ## Source Rules
 
 - Prefer official and primary sources.

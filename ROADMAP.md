@@ -65,11 +65,19 @@ Deferred to later phases:
 - Add `/api/ask`, `/api/writing-assistant`, `/ask`, and `/write` in mock/local mode by default.
 - Keep live DeepSeek generation explicit and environment-gated.
 
-## Phase 7: Supabase Persistence and Source Health Checks
+## Phase 7: Supabase Persistence and Source Health Checks - Done
 
-- Persist ingestion and understanding outputs into Supabase.
-- Add source health checks and operational status history.
-- Replace local-file retrieval with Supabase-backed retrieval while preserving local fallback behavior.
+- Added a reviewable Supabase migration for Phase 3/4/5 artifact persistence and source health history.
+- Added dry-run-first scripts for source import, ingestion persistence, understanding persistence, and source health selection.
+- Added write gates requiring both `--write` and `ENABLE_SUPABASE_WRITES=true`.
+- Added optional Supabase-backed retrieval before local JSON and mock fallbacks.
+- Updated admin status pages and docs for persistence state without exposing secrets.
+
+Deferred to later phases:
+
+- Production Supabase writes and scheduled jobs.
+- Live DeepSeek runs in automated workflows.
+- Admin review queues for approving persisted items.
 
 ## Phase 8: Scheduled Jobs and Deployment
 

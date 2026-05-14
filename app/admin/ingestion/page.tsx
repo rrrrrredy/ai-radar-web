@@ -44,9 +44,8 @@ export default function AdminIngestionPage() {
           Phase 4 adds a local public-source ingestion foundation. It selects safe
           sources from the cleaned registry, fetches public metadata or feed items,
           normalizes raw items, deduplicates within the run, and writes local JSON
-          artifacts before any Supabase insertion work. Phase 6 retrieves from the
-          local understanding output first and falls back to synthetic mock data
-          when local artifacts are absent.
+          artifacts. Phase 7 adds dry-run-first Supabase persistence scripts and
+          optional Supabase retrieval while preserving local and mock fallbacks.
         </p>
       </section>
 
@@ -71,6 +70,27 @@ export default function AdminIngestionPage() {
           <h2 className="mt-3 text-xl font-semibold text-radar-ink">Mock by default</h2>
           <p className="mt-2 text-sm text-radar-muted">Live DeepSeek runs require an explicit CLI mode and local key.</p>
         </div>
+      </section>
+
+      <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
+        <h2 className="text-lg font-semibold text-radar-ink">Persistence commands</h2>
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          {[
+            "npm run supabase:import:sources",
+            "npm run supabase:persist:ingestion",
+            "npm run supabase:persist:understanding",
+            "npm run source-health:dry-run"
+          ].map((command) => (
+            <div className="rounded-md border border-radar-line bg-radar-bg px-3 py-3" key={command}>
+              <p className="font-mono text-xs text-radar-ink">{command}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 text-sm leading-6 text-radar-muted">
+          Each command is dry-run by default. Supabase writes require both a CLI
+          <span className="font-mono"> --write</span> flag and
+          <span className="font-mono"> ENABLE_SUPABASE_WRITES=true</span>.
+        </p>
       </section>
 
       <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
@@ -131,8 +151,8 @@ export default function AdminIngestionPage() {
         <h2 className="text-lg font-semibold text-radar-ink">Next step</h2>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
           Phase 6 now uses local radar items for retrieval-backed Q&A and writing
-          assistance. Supabase-backed retrieval, source health persistence, and
-          scheduled production jobs remain future work.
+          assistance. Phase 7 can read persisted Supabase radar items when enabled,
+          then falls back to local understanding output and mock data.
         </p>
       </section>
 

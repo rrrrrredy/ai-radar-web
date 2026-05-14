@@ -1,6 +1,6 @@
 # Supabase Setup
 
-This folder contains the Phase 2 database skeleton for AI Industry Radar.
+This folder contains the Phase 2 database skeleton and later reviewable migrations for AI Industry Radar.
 
 ## Create a Project
 
@@ -12,6 +12,19 @@ This folder contains the Phase 2 database skeleton for AI Industry Radar.
 The seed data uses only `https://example.com` demo URLs. It contains no private
 sources, credentials, or internal links.
 
+## Phase 7 Migration
+
+For an existing project that already has the Phase 2 schema, apply:
+
+```bash
+supabase/migrations/202605140001_phase7_persistence.sql
+```
+
+This migration adds nullable source URLs, cleaned-registry fields, source health
+history metadata, local artifact IDs, understanding runs, expanded radar-item
+fields, entity upsert keys, and idempotent score keys. Review and apply it as an
+ALTER migration; do not use a full schema rerun as the migration path.
+
 ## Environment Variables
 
 Add these values locally and in deployment environments:
@@ -21,9 +34,12 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 ADMIN_EMAIL=luosongred@gmail.com
+ENABLE_SUPABASE_RETRIEVAL=false
+ENABLE_SUPABASE_WRITES=false
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` is server-side only. Never expose it in browser code.
+Write scripts also require `--write` before they use the service-role client.
 
 ## Auth Providers
 

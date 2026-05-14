@@ -21,7 +21,7 @@ type AskResponse = {
     end: string;
     explanation: string;
   };
-  data_source: "local_understanding_output" | "mock_data" | "empty";
+  data_source: "supabase_radar_items" | "local_understanding_output" | "mock_data" | "empty";
   short_answer: string;
   facts: string[];
   evidence_backed_inference: string[];
@@ -144,6 +144,8 @@ function AnswerView({ answer }: { answer: AskResponse }) {
   const fallbackMessage =
     answer.data_source === "mock_data"
       ? "No local understanding output was available, so this response uses synthetic demo radar items."
+      : answer.data_source === "supabase_radar_items"
+        ? "This response uses Supabase-backed radar items."
       : answer.data_source === "empty"
         ? "No local or mock radar items were available."
         : "";

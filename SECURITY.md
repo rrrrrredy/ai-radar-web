@@ -15,6 +15,12 @@ Required secret handling:
 - `GITHUB_TOKEN` must not be exposed to browser code.
 - WeChat credentials must remain disabled unless real platform configuration exists.
 
+## Supabase Write Boundary
+
+Phase 7 Supabase write scripts are dry-run by default. A real write is allowed only when the command includes `--write` and `ENABLE_SUPABASE_WRITES=true` is set in the server environment.
+
+Do not paste Supabase keys into prompts, logs, docs, commits, or command output. `SUPABASE_SERVICE_ROLE_KEY` is read only by the server-side CLI/helper path and must never be imported into client components or browser bundles.
+
 ## Secrets and Model API Keys
 
 Never commit secrets and never paste API keys into agent tasks, Codex prompts, ChatGPT messages, GitHub issues, commits, docs, or logs. Use environment variables only: local keys belong in `.env.local` or equivalent untracked files, and deployed keys belong in the deployment platform environment variable manager.

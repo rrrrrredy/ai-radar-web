@@ -10,7 +10,7 @@ Phase 4 builds on the Phase 3 cleaned source registry. It provides the first loc
 4. Deduplicate by canonical URL, external ID, and content hash.
 5. Log the ingestion run and write local artifacts.
 
-Phase 5 now classifies topics, summarizes, tags, extracts entities, and scores items into local radar-item artifacts. Phase 6 reads those artifacts for retrieval-backed Q&A and writing assistance. Supabase insertion, clustering, scheduled jobs, and full report generation remain later work.
+Phase 5 now classifies topics, summarizes, tags, extracts entities, and scores items into local radar-item artifacts. Phase 6 reads those artifacts for retrieval-backed Q&A and writing assistance. Phase 7 adds dry-run-first Supabase persistence for these local artifacts while keeping scheduling and production writes deferred.
 
 ## Phase 4 Commands
 
@@ -44,6 +44,18 @@ The runner overwrites:
 - `data/ingestion/latest/ingestion-run.json`
 
 It also writes timestamped JSON under `data/ingestion/runs/`. Generated ingestion JSON files are ignored by git.
+
+## Phase 7 Persistence Commands
+
+```bash
+npm run supabase:persist:ingestion
+npm run supabase:persist:understanding
+```
+
+Both commands read the latest local JSON artifacts and print the rows that would
+be upserted. They do not require Supabase environment variables in dry-run mode.
+Actual writes require `--write` and `ENABLE_SUPABASE_WRITES=true`, and should only
+be run after applying the Phase 7 Supabase migration.
 
 ## Scheduling
 
@@ -93,6 +105,6 @@ Model output is validated before radar items are written. Final inclusion uses d
 
 ## Phase 6 Retrieval Consumers
 
-`/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` read `data/understanding/latest/radar-items.json` when available. If that local generated file is missing or invalid, they use synthetic mock radar items and disclose `mock_data` in the response.
+`/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` read Supabase radar items first only when `ENABLE_SUPABASE_RETRIEVAL=true` and Supabase public config is present. If Supabase is disabled, unavailable, or returns no usable rows, they read `data/understanding/latest/radar-items.json`. If that local generated file is missing or invalid, they use synthetic mock radar items and disclose `mock_data` in the response.
 
 Generated ingestion and understanding JSON remains local and ignored by git. Phase 6 does not insert into Supabase, does not add production scheduled jobs, and does not run live DeepSeek calls unless an API request explicitly asks for live mode and the server has a local key.

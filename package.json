@@ -13,6 +13,11 @@
     "understand:items": "tsx scripts/understand-items.ts",
     "understand:items:mock": "tsx scripts/understand-items.ts --mode mock",
     "understand:items:live": "tsx scripts/understand-items.ts --mode live",
+    "supabase:import:sources": "tsx scripts/supabase-import-sources.ts",
+    "supabase:persist:ingestion": "tsx scripts/supabase-persist-ingestion.ts",
+    "supabase:persist:understanding": "tsx scripts/supabase-persist-understanding.ts",
+    "source-health:check": "tsx scripts/check-source-health.ts",
+    "source-health:dry-run": "tsx scripts/check-source-health.ts --dry-run",
     "validate:data": "tsx scripts/validate-schemas.ts",
     "sensitive:scan": "tsx scripts/sensitive-scan.ts",
     "build": "next build"

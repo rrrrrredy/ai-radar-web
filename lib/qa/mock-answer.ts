@@ -103,6 +103,10 @@ function buildUncertainty(retrieval: RetrievalResult, isZh: boolean) {
     uncertainty.push(isZh ? "当前答案基于合成演示数据，不能代表真实最新动态。" : "This answer is based on synthetic demo data and cannot represent real current events.");
   }
 
+  if (retrieval.dataSource === "supabase_radar_items") {
+    uncertainty.push(isZh ? "当前答案基于 Supabase 雷达条目，覆盖范围取决于已持久化的数据。" : "This answer is based on Supabase radar items; coverage depends on persisted data.");
+  }
+
   if (retrieval.dataSource === "local_understanding_output") {
     uncertainty.push(isZh ? "当前答案仅覆盖本地理解输出，不代表全网完整覆盖。" : "This answer only covers local understanding output, not comprehensive web coverage.");
   }
@@ -129,6 +133,10 @@ function freshnessNote(retrieval: RetrievalResult, isZh: boolean) {
 }
 
 function dataSourceLabel(dataSource: RetrievalResult["dataSource"], isZh: boolean) {
+  if (dataSource === "supabase_radar_items") {
+    return isZh ? "答案基于 Supabase 雷达数据。" : "The answer is based on Supabase radar data.";
+  }
+
   if (dataSource === "mock_data") {
     return isZh ? "答案基于演示数据。" : "The answer is based on demo data.";
   }

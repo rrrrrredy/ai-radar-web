@@ -140,6 +140,10 @@ function buildMissingEvidence(retrieval: RetrievalResult, isZh: boolean) {
     missing.push(isZh ? "需要真实本地理解输出或 Supabase 检索数据。" : "Real local understanding output or Supabase retrieval data is needed.");
   }
 
+  if (retrieval.dataSource === "supabase_radar_items" && retrieval.rankedItems.length < 3) {
+    missing.push(isZh ? "Supabase 当前可检索条目较少，需要更多持久化数据。" : "Supabase currently has few retrievable items; more persisted data is needed.");
+  }
+
   if (retrieval.rankedItems.some((ranked) => ranked.item.status === "needs_review")) {
     missing.push(isZh ? "needs_review 条目需要人工确认。" : "needs_review items need human confirmation.");
   }

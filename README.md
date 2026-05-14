@@ -20,9 +20,9 @@ The project uses public information only. Secrets, API keys, service tokens, coo
 
 ## Current Scope
 
-This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, and a Phase 6 retrieval-backed Q&A and writing assistant foundation.
+This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, and a Phase 7 dry-run-first Supabase persistence layer.
 
-The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, answer questions against local/mock radar evidence, and generate writing seeds with caveats, but it does not insert into Supabase, enforce hard admin blocking, run scheduled jobs, or generate full daily/weekly reports yet. DeepSeek live calls are opt-in only.
+The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, answer questions against Supabase/local/mock radar evidence, and generate writing seeds with caveats, but it does not run production Supabase writes, enforce hard admin blocking, run scheduled jobs, or generate full daily/weekly reports yet. DeepSeek live calls are opt-in only.
 
 ## Stack
 
@@ -54,6 +54,10 @@ npm run ingest:sources:dry-run
 npm run ingest:sources -- --limit 3 --max-items-per-source 3
 npm run understand:items:mock
 npm run understand:items -- --limit 3 --mode mock
+npm run supabase:import:sources
+npm run supabase:persist:ingestion
+npm run supabase:persist:understanding
+npm run source-health:dry-run
 npm run lint
 npm run typecheck
 npm run validate:data
@@ -145,7 +149,7 @@ Items below `0.35` relevance are excluded, items from `0.35` to `0.60` need revi
 
 Phase 6 adds retrieval over validated local radar items and deterministic mock/local generation for `/ask`, `/write`, `/api/ask`, and `/api/writing-assistant`.
 
-Retrieval reads `data/understanding/latest/radar-items.json` when it exists and falls back to existing synthetic mock radar data when local outputs are absent or invalid. Responses report the data source as `local_understanding_output`, `mock_data`, or `empty`, include a resolved time window, cite retrieved radar items, and state uncertainty. Items marked `needs_review` are surfaced with caveats instead of treated as fully confirmed.
+Retrieval can read Supabase radar items when enabled, otherwise it reads `data/understanding/latest/radar-items.json` when it exists and falls back to existing synthetic mock radar data when local outputs are absent or invalid. Responses report the data source as `supabase_radar_items`, `local_understanding_output`, `mock_data`, or `empty`, include a resolved time window, cite retrieved radar items, and state uncertainty. Items marked `needs_review` are surfaced with caveats instead of treated as fully confirmed.
 
 Default API behavior uses `generationMode: "mock"` and does not require Supabase credentials, login, or a DeepSeek key:
 
@@ -160,6 +164,30 @@ curl -X POST http://localhost:3000/api/writing-assistant \
 ```
 
 Live DeepSeek generation is available only when the request explicitly sets `generationMode: "live"` and the server environment has `DEEPSEEK_API_KEY`. Validation and builds must continue to use mock/local mode.
+
+## Phase 7 Supabase Persistence
+
+Phase 7 adds dry-run-first scripts that map local Phase 3/4/5 artifacts to Supabase-backed tables. The scripts do not require Supabase environment variables in dry-run mode and do not write unless both conditions are true:
+
+- the command is passed `--write`
+- `ENABLE_SUPABASE_WRITES=true`
+
+Commands:
+
+```bash
+npm run supabase:import:sources
+npm run supabase:persist:ingestion
+npm run supabase:persist:understanding
+npm run source-health:dry-run
+```
+
+Apply `supabase/migrations/202605140001_phase7_persistence.sql` to an existing Supabase project before enabling write mode. Do not re-run the full skeleton schema against an existing project as a migration substitute.
+
+Retrieval order for `/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` is:
+
+1. Supabase radar items when `ENABLE_SUPABASE_RETRIEVAL=true` and public Supabase config exists.
+2. Local generated radar items under `data/understanding/latest/`.
+3. Synthetic mock data.
 
 ## Environment Variables
 
@@ -179,6 +207,8 @@ APP_BASE_URL=
 ADMIN_EMAIL=luosongred@gmail.com
 ENABLE_X_API=false
 ENABLE_WECHAT_AUTH=false
+ENABLE_SUPABASE_RETRIEVAL=false
+ENABLE_SUPABASE_WRITES=false
 ```
 
 The app builds when Supabase and DeepSeek variables are missing. UI pages show setup placeholders instead of crashing.
@@ -205,13 +235,13 @@ Mock mode requires no DeepSeek key and is the default for validation and builds.
 - `/clusters` - synthetic event clusters
 - `/entities` - synthetic entity cards
 - `/reports` - report placeholders that explain the Phase 6 retrieval and writing foundation
-- `/ask` - retrieval-backed Q&A over local/mock radar-item evidence
-- `/write` - evidence-bound writing assistant seeds and caveats
+- `/ask` - retrieval-backed Q&A over Supabase/local/mock radar-item evidence
+- `/write` - evidence-bound writing assistant seeds and caveats over Supabase/local/mock evidence
 - `/api/ask` - structured Q&A JSON API, mock/local by default
 - `/api/writing-assistant` - structured writing-assistant JSON API, mock/local by default
 - `/admin` - admin dashboard skeleton
-- `/admin/sources` - mock source registry
-- `/admin/ingestion` - Phase 4/5 local ingestion and understanding status and output paths
+- `/admin/sources` - cleaned registry summary, health-check eligibility, and Supabase persistence status
+- `/admin/ingestion` - Phase 4/5 local ingestion, Phase 7 persistence commands, and output paths
 - `/admin/scoring` - understanding scoring formula, dimensions, and negative rules
 - `/admin/settings` - environment and feature flag status
 - `/auth/login` - Supabase auth setup UI
@@ -221,7 +251,7 @@ Mock mode requires no DeepSeek key and is the default for validation and builds.
 
 Use `supabase/schema.sql` to create the initial tables and `supabase/seed.sql` for safe synthetic demo rows. See `supabase/README.md`.
 
-The schema covers `users_profile`, `user_roles`, `sources`, source health checks, raw/radar items, event clusters, entities, scores, reports, saved items, annotations, ingestion runs, API usage logs, and system settings.
+The schema covers `users_profile`, `user_roles`, `sources`, source health checks, raw/radar items, event clusters, entities, scores, reports, saved items, annotations, ingestion runs, API usage logs, and system settings. Phase 7 schema changes live in `supabase/migrations/202605140001_phase7_persistence.sql`.
 
 ## Auth Setup
 
@@ -261,9 +291,10 @@ npm run build
 
 ## Current Limitations
 
-- Ingestion is local-only and writes ignored JSON artifacts.
-- Understanding is local-only and writes ignored JSON artifacts.
-- Q&A and writing retrieval read local generated radar-item JSON or synthetic mock data only.
+- Ingestion still writes ignored JSON artifacts before optional persistence.
+- Understanding still writes ignored JSON artifacts before optional persistence.
+- Supabase write scripts are dry-run by default and are not production scheduled jobs.
+- Supabase-backed retrieval is feature-flagged and falls back to local/mock data.
 - HTML ingestion records metadata-level summaries; it is not a full crawler.
 - YouTube ingestion records a placeholder only; video ingestion is not implemented.
 - No Supabase insertion from ingestion outputs.

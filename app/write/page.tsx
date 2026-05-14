@@ -32,7 +32,7 @@ type WritingResponse = {
     end: string;
     explanation: string;
   };
-  data_source: "local_understanding_output" | "mock_data" | "empty";
+  data_source: "supabase_radar_items" | "local_understanding_output" | "mock_data" | "empty";
   candidate_topics: CandidateTopic[];
   counterpoints: string[];
   missing_evidence: string[];

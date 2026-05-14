@@ -6,11 +6,12 @@ export type AppConfig = {
   featureFlags: {
     enableXApi: boolean;
     enableWechatAuth: boolean;
+    enableSupabaseRetrieval: boolean;
+    enableSupabaseWrites: boolean;
   };
   supabase: {
     url?: string;
     anonKey?: string;
-    hasServiceRoleKey: boolean;
     isConfigured: boolean;
   };
   deepSeek: {
@@ -31,12 +32,13 @@ export function getAppConfig(): AppConfig {
     adminEmail: process.env.ADMIN_EMAIL || "luosongred@gmail.com",
     featureFlags: {
       enableXApi: isEnabled(process.env.ENABLE_X_API),
-      enableWechatAuth: isEnabled(process.env.ENABLE_WECHAT_AUTH)
+      enableWechatAuth: isEnabled(process.env.ENABLE_WECHAT_AUTH),
+      enableSupabaseRetrieval: isEnabled(process.env.ENABLE_SUPABASE_RETRIEVAL),
+      enableSupabaseWrites: isEnabled(process.env.ENABLE_SUPABASE_WRITES)
     },
     supabase: {
       url: supabaseUrl,
       anonKey: supabaseAnonKey,
-      hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
       isConfigured: Boolean(supabaseUrl && supabaseAnonKey)
     },
     deepSeek: {

@@ -3,14 +3,21 @@ import path from "node:path";
 
 import { mockRadarItems } from "@/lib/radar/mock-data";
 import type { RadarItem } from "@/lib/radar/types";
+import { loadSupabaseRadarItems } from "@/lib/retrieval/load-supabase-radar-items";
 import type { LoadedRadarItems, RetrievalRadarItem } from "@/lib/retrieval/types";
 import { RADAR_CATEGORIES, type RadarCategory } from "@/lib/understanding/types";
 
 const LATEST_RADAR_ITEMS_PATH = path.join(process.cwd(), "data", "understanding", "latest", "radar-items.json");
 
 export async function loadRadarItems(): Promise<LoadedRadarItems> {
+  const supabase = await loadSupabaseRadarItems();
+  if (supabase.loaded) {
+    return supabase.loaded;
+  }
+
   const local = await loadLocalRadarItems();
   if (local) {
+    local.warnings = [...supabase.warnings, ...local.warnings];
     return local;
   }
 
@@ -22,7 +29,7 @@ export async function loadRadarItems(): Promise<LoadedRadarItems> {
       freshness: {
         itemCount: 0
       },
-      warnings: ["No local understanding output or mock radar items are available."]
+      warnings: [...supabase.warnings, "No local understanding output or mock radar items are available."]
     };
   }
 
@@ -30,7 +37,7 @@ export async function loadRadarItems(): Promise<LoadedRadarItems> {
     items: mockItems,
     dataSource: "mock_data",
     freshness: freshnessFromItems(mockItems),
-    warnings: ["Using synthetic mock radar items because local understanding output is missing or invalid."]
+    warnings: [...supabase.warnings, "Using synthetic mock radar items because local understanding output is missing or invalid."]
   };
 }
 
