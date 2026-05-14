@@ -181,7 +181,14 @@ npm run supabase:persist:understanding
 npm run source-health:dry-run
 ```
 
-Apply `supabase/migrations/202605140001_phase7_persistence.sql` to an existing Supabase project before enabling write mode. Do not re-run the full skeleton schema against an existing project as a migration substitute.
+Apply the Phase 7 Supabase migrations to an existing Supabase project before enabling write mode:
+
+```bash
+supabase/migrations/202605140001_phase7_persistence.sql
+supabase/migrations/202605140002_phase7_upsert_constraints.sql
+```
+
+The second migration fixes the plain unique constraints required by the dry-run-first persistence upserts. Do not re-run the full skeleton schema against an existing project as a migration substitute.
 
 Retrieval order for `/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` is:
 
@@ -251,7 +258,7 @@ Mock mode requires no DeepSeek key and is the default for validation and builds.
 
 Use `supabase/schema.sql` to create the initial tables and `supabase/seed.sql` for safe synthetic demo rows. See `supabase/README.md`.
 
-The schema covers `users_profile`, `user_roles`, `sources`, source health checks, raw/radar items, event clusters, entities, scores, reports, saved items, annotations, ingestion runs, API usage logs, and system settings. Phase 7 schema changes live in `supabase/migrations/202605140001_phase7_persistence.sql`.
+The schema covers `users_profile`, `user_roles`, `sources`, source health checks, raw/radar items, event clusters, entities, scores, reports, saved items, annotations, ingestion runs, API usage logs, and system settings. Phase 7 schema changes live in `supabase/migrations/202605140001_phase7_persistence.sql` and `supabase/migrations/202605140002_phase7_upsert_constraints.sql`.
 
 ## Auth Setup
 

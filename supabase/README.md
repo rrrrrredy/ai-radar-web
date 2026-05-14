@@ -14,16 +14,20 @@ sources, credentials, or internal links.
 
 ## Phase 7 Migration
 
-For an existing project that already has the Phase 2 schema, apply:
+For an existing project that already has the Phase 2 schema, apply these
+migrations in order:
 
 ```bash
 supabase/migrations/202605140001_phase7_persistence.sql
+supabase/migrations/202605140002_phase7_upsert_constraints.sql
 ```
 
-This migration adds nullable source URLs, cleaned-registry fields, source health
-history metadata, local artifact IDs, understanding runs, expanded radar-item
-fields, entity upsert keys, and idempotent score keys. Review and apply it as an
-ALTER migration; do not use a full schema rerun as the migration path.
+The first migration adds nullable source URLs, cleaned-registry fields, source
+health history metadata, local artifact IDs, understanding runs, expanded
+radar-item fields, entity upsert keys, and idempotent score keys. The second
+migration adds the plain unique constraints required by the dry-run-first
+persistence upserts. Review and apply them as ALTER migrations; do not use a full
+schema rerun as the migration path.
 
 ## Environment Variables
 

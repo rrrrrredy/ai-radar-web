@@ -58,7 +58,16 @@ curl -X POST http://localhost:3000/api/writing-assistant -H "content-type: appli
 
 Run `supabase/schema.sql` in the Supabase SQL editor for a new project. Use `supabase/seed.sql` only for safe demo rows.
 
-For an existing Phase 2 project, apply `supabase/migrations/202605140001_phase7_persistence.sql` before enabling Phase 7 persistence writes.
+For an existing Phase 2 project, apply the Phase 7 migrations in order before
+enabling Phase 7 persistence writes:
+
+```bash
+supabase/migrations/202605140001_phase7_persistence.sql
+supabase/migrations/202605140002_phase7_upsert_constraints.sql
+```
+
+The second migration fixes the plain unique constraints required by the
+dry-run-first persistence upserts.
 
 Required deployment variables:
 
