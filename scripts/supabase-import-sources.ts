@@ -1,3 +1,5 @@
+import "@/lib/config/load-cli-env";
+
 import { readCleanedSources } from "@/lib/ingestion/select-sources";
 import { getSupabaseServiceClientForWrite } from "@/lib/supabase/service";
 import { countBy, sourceUpsertRows, upsertRows } from "@/lib/supabase/persistence";

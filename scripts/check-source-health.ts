@@ -1,3 +1,5 @@
+import "@/lib/config/load-cli-env";
+
 import { fetchPublicText } from "@/lib/ingestion/config";
 import { readCleanedSources } from "@/lib/ingestion/select-sources";
 import type { CleanedSource, CrawlMethodFilter } from "@/lib/ingestion/types";

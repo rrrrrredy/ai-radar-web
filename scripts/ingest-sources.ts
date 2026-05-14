@@ -1,3 +1,5 @@
+import "@/lib/config/load-cli-env";
+
 import { DEFAULT_SELECTION_OPTIONS, CRAWL_METHOD_FILTERS } from "@/lib/ingestion/config";
 import { runIngestion } from "@/lib/ingestion/run";
 import { selectSources } from "@/lib/ingestion/select-sources";

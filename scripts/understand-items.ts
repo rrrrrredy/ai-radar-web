@@ -1,3 +1,5 @@
+import "@/lib/config/load-cli-env";
+
 import {
   buildUnderstandingConfig,
   DEFAULT_UNDERSTANDING_INPUT,

@@ -1,3 +1,5 @@
+import "@/lib/config/load-cli-env";
+
 import fs from "node:fs";
 import path from "node:path";
 
