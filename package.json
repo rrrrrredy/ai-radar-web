@@ -27,13 +27,15 @@
     "@supabase/supabase-js": "^2.86.0",
     "next": "^15.5.18",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "ws": "^8.20.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
     "@types/node": "^20.19.25",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.18.1",
     "autoprefixer": "^10.4.23",
     "eslint": "^9.39.1",
     "eslint-config-next": "^15.5.18",

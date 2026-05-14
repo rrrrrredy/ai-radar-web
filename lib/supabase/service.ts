@@ -1,7 +1,10 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient, type WebSocketLikeConstructor } from "@supabase/supabase-js";
+import WebSocket from "ws";
 
 import { getSupabasePublicConfig } from "@/lib/config";
 import { isEnabled } from "@/lib/utils";
+
+const nodeRealtimeTransport = WebSocket as unknown as WebSocketLikeConstructor;
 
 export type SupabaseServiceStatus = {
   publicConfigConfigured: boolean;
@@ -39,6 +42,10 @@ export function getSupabaseServiceClientForWrite(): SupabaseClient {
     auth: {
       autoRefreshToken: false,
       persistSession: false
+    },
+    // Supabase JS constructs Realtime during createClient; Node 20 CLI writes need an explicit transport.
+    realtime: {
+      transport: nodeRealtimeTransport
     }
   });
 }
