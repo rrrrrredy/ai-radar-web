@@ -46,7 +46,9 @@ Fields: `id`, `source_id`, `external_id`, `url`, `canonical_url`, `title`, `auth
 
 Normalized and enriched items for ranking and display.
 
-Fields: `id`, `raw_item_id`, `title`, `summary_zh`, `summary_en`, `topics`, `status`, `credibility_score`, `novelty_score`, `importance_score`, `created_at`, `updated_at`.
+Phase 5 local JSON fields: `id`, `raw_item_id`, `source_id`, `source_name`, `title`, `url`, `published_at`, `collected_at`, `processed_at`, `language`, `summary_zh`, `summary_en`, `ai_relevance_score`, `importance_score`, `credibility_score`, `novelty_score`, `freshness_score`, `overall_score`, `categories`, `tags`, `entities`, `source_tier`, `source_weight`, `confidence`, `status`, `exclusion_reason`, `why_it_matters`, `evidence_notes`, `model_metadata`.
+
+Database fields currently remain the earlier minimal table shape: `id`, `raw_item_id`, `title`, `summary_zh`, `summary_en`, `topics`, `status`, `credibility_score`, `novelty_score`, `importance_score`, `created_at`, `updated_at`. Supabase insertion is deferred.
 
 ### event_clusters
 
@@ -65,6 +67,8 @@ Fields: `id`, `event_cluster_id`, `radar_item_id`, `role`, `created_at`.
 Canonical entities for companies, people, models, products, papers, and projects.
 
 Fields: `id`, `type`, `name`, `aliases`, `description`, `homepage_url`, `metadata`, `created_at`, `updated_at`.
+
+Phase 5 local entity types include `company`, `model`, `product`, `person`, `paper`, `project`, `repository`, `investor`, `regulator`, and `other`.
 
 ### item_entities
 
@@ -108,9 +112,10 @@ Model and API usage tracking.
 
 Fields: `id`, `provider`, `model`, `purpose`, `prompt_tokens`, `completion_tokens`, `cost_estimate`, `status`, `created_at`, `metadata`.
 
+Phase 5 local understanding records also store prompt version, model names, input/output hashes, API-call count, token usage when available, and error state inside each radar item's `model_metadata`.
+
 ### system_settings
 
 Feature flags and operational settings.
 
 Fields: `id`, `key`, `value`, `description`, `updated_by`, `updated_at`.
-

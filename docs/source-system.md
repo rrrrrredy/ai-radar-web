@@ -72,6 +72,24 @@ The local ingestion runner selects only sources with:
 
 Manual, future API, non-crawl, unknown, missing-public-URL, X automatic, and WeChat automatic workflows remain outside Phase 4 automation.
 
+## Phase 5 Understanding Use
+
+Phase 5 consumes raw items created by the public-source ingestion runner. It does not fetch new source content, does not auto-crawl X or WeChat, and does not require Supabase credentials.
+
+Source tier and source weight are carried into each radar item:
+
+- `source_tier` comes from the cleaned registry.
+- `source_weight` is copied from metadata when available, with tier-based fallback.
+- Credibility and final inclusion use source quality as rule-controlled inputs.
+
+DeepSeek can suggest relevance, summaries, categories, tags, entities, and scoring rationale, but the code applies validation, relevance thresholds, and the weighted formula before assigning `included`, `excluded`, `needs_review`, or `failed`.
+
+Local outputs:
+
+- `data/understanding/latest/radar-items.json`
+- `data/understanding/latest/understanding-run.json`
+- `data/understanding/runs/*.json`
+
 ## Source Rules
 
 - Prefer official and primary sources.

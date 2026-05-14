@@ -1,7 +1,12 @@
 import { formatDate } from "@/lib/utils";
 
 const supportedMethods = ["rss", "html", "api", "podcast_feed", "youtube_feed"];
-const outputPaths = ["data/ingestion/latest/raw-items.json", "data/ingestion/latest/ingestion-run.json"];
+const outputPaths = [
+  "data/ingestion/latest/raw-items.json",
+  "data/ingestion/latest/ingestion-run.json",
+  "data/understanding/latest/radar-items.json",
+  "data/understanding/latest/understanding-run.json"
+];
 const latestLocalSummary = {
   id: "phase4-local-latest",
   startedAt: "2026-05-13T09:00:00.000Z",
@@ -60,9 +65,9 @@ export default function AdminIngestionPage() {
           </div>
         </div>
         <div className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
-          <p className="text-sm font-semibold text-radar-muted">DeepSeek boundary</p>
-          <h2 className="mt-3 text-xl font-semibold text-radar-ink">Not called in Phase 4</h2>
-          <p className="mt-2 text-sm text-radar-muted">Phase 5 adds the understanding layer.</p>
+          <p className="text-sm font-semibold text-radar-muted">Understanding boundary</p>
+          <h2 className="mt-3 text-xl font-semibold text-radar-ink">Mock by default</h2>
+          <p className="mt-2 text-sm text-radar-muted">Live DeepSeek runs require an explicit CLI mode and local key.</p>
         </div>
       </section>
 
@@ -123,9 +128,38 @@ export default function AdminIngestionPage() {
       <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
         <h2 className="text-lg font-semibold text-radar-ink">Next step</h2>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-          Phase 5 will read the collected raw items, run the DeepSeek understanding
-          layer, and prepare scored radar items for Supabase-backed review.
+          Phase 5 reads the collected raw items, validates model outputs, extracts
+          entities, applies formula-based scoring, and prepares local radar items
+          for a future Supabase-backed review flow. Phase 6 will use those radar
+          items for retrieval-backed Q&A and writing assistance.
         </p>
+      </section>
+
+      <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
+        <h2 className="text-lg font-semibold text-radar-ink">Phase 5 controls</h2>
+        <div className="mt-5 grid gap-4 md:grid-cols-3">
+          <div className="rounded-md border border-radar-line p-4">
+            <p className="text-sm font-semibold text-radar-ink">Raw to radar</p>
+            <p className="mt-2 text-sm leading-6 text-radar-muted">
+              Raw ingestion items become structured radar items with summaries,
+              categories, tags, entities, scores, and model metadata.
+            </p>
+          </div>
+          <div className="rounded-md border border-radar-line p-4">
+            <p className="text-sm font-semibold text-radar-ink">Model boundary</p>
+            <p className="mt-2 text-sm leading-6 text-radar-muted">
+              DeepSeek is an understanding helper. Final inclusion is controlled
+              by code thresholds and source-weighted scoring.
+            </p>
+          </div>
+          <div className="rounded-md border border-radar-line p-4">
+            <p className="text-sm font-semibold text-radar-ink">Local outputs</p>
+            <p className="mt-2 text-sm leading-6 text-radar-muted">
+              Generated understanding JSON stays local and ignored by git, matching
+              the Phase 4 ingestion artifact policy.
+            </p>
+          </div>
+        </div>
       </section>
     </div>
   );

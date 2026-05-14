@@ -10,7 +10,7 @@ Phase 4 builds on the Phase 3 cleaned source registry. It provides the first loc
 4. Deduplicate by canonical URL, external ID, and content hash.
 5. Log the ingestion run and write local artifacts.
 
-Later phases will classify topics, summarize, tag, extract entities, score items, cluster events, and insert into Supabase.
+Phase 5 now classifies topics, summarizes, tags, extracts entities, and scores items into local radar-item artifacts. Supabase insertion, clustering, Q&A, and report generation remain later work.
 
 ## Phase 4 Commands
 
@@ -78,4 +78,15 @@ Ingestion must fetch public information only. Do not use private intranet links,
 
 ## DeepSeek Boundary
 
-Phase 4 does not call DeepSeek. Phase 5 will add the understanding layer for filtering, summarization, tagging, classification, scoring, and report preparation.
+Phase 4 does not call DeepSeek. Fetching stays public-source only and model-free.
+
+Phase 5 runs after ingestion:
+
+```bash
+npm run understand:items:mock
+npm run understand:items -- --limit 3 --mode mock
+```
+
+The understanding layer reads `data/ingestion/latest/raw-items.json`, writes `data/understanding/latest/radar-items.json` and `data/understanding/latest/understanding-run.json`, and keeps generated JSON ignored by git. Mock mode is deterministic and safe for builds. Live mode requires `--mode live` plus a local DeepSeek key.
+
+Model output is validated before radar items are written. Final inclusion uses deterministic thresholds and a source-weighted score formula rather than model preference alone.

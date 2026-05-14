@@ -11,7 +11,18 @@
     },
     "type": {
       "type": "string",
-      "enum": ["company", "person", "model", "product", "paper", "project"]
+      "enum": [
+        "company",
+        "person",
+        "model",
+        "product",
+        "paper",
+        "project",
+        "repository",
+        "investor",
+        "regulator",
+        "other"
+      ]
     },
     "name": {
       "type": "string"
@@ -34,4 +45,3 @@
     }
   }
 }
-

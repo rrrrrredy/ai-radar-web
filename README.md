@@ -20,9 +20,9 @@ The project uses public information only. Secrets, API keys, service tokens, coo
 
 ## Current Scope
 
-This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, validation scripts, a Phase 3 cleaned public source registry, and a Phase 4 local public-source ingestion foundation.
+This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, and a Phase 5 local understanding layer.
 
-The implementation is intentionally an application foundation, not the full product. It can run a limited local ingestion smoke test, but it does not insert into Supabase, call DeepSeek, enforce hard admin blocking, or generate reports yet.
+The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, but it does not insert into Supabase, enforce hard admin blocking, answer questions, or generate reports yet. DeepSeek live calls are opt-in only.
 
 ## Stack
 
@@ -52,6 +52,8 @@ Validation commands:
 npm run import:sources
 npm run ingest:sources:dry-run
 npm run ingest:sources -- --limit 3 --max-items-per-source 3
+npm run understand:items:mock
+npm run understand:items -- --limit 3 --mode mock
 npm run lint
 npm run typecheck
 npm run validate:data
@@ -102,6 +104,43 @@ Generated outputs:
 
 Generated ingestion JSON is local and ignored by git. The Phase 4 runner does not use Supabase credentials, does not call DeepSeek, does not auto-crawl X accounts, and does not auto-crawl WeChat public-account sources. Sources that lack a reviewed public URL, require sign-in, use manual/future crawl methods, or point to private infrastructure are skipped.
 
+## Phase 5 Understanding
+
+Phase 5 reads `data/ingestion/latest/raw-items.json` and writes structured local radar items without inserting into Supabase.
+
+Default commands:
+
+```bash
+npm run understand:items:mock
+npm run understand:items -- --input data/ingestion/latest/raw-items.json --limit 5 --mode mock
+npm run understand:items:live -- --limit 3
+```
+
+CLI options:
+
+- `--input <path>` defaults to `data/ingestion/latest/raw-items.json`.
+- `--limit <number>` defaults to `10`.
+- `--mode <mock|live>` defaults to `mock`.
+- `--max-text-chars <number>` defaults to `6000`.
+- `--prompt-version <string>` defaults to `v0.1.0`.
+- `--dry-run` prints the planned work without writing output files.
+
+Generated outputs:
+
+- `data/understanding/latest/radar-items.json`
+- `data/understanding/latest/understanding-run.json`
+- `data/understanding/runs/*.json`
+
+Generated understanding JSON is local and ignored by git. Mock mode is deterministic and makes no API calls, so validation and builds work without DeepSeek credentials. Live mode requires `DEEPSEEK_API_KEY` and explicit `--mode live`; it uses `DEEPSEEK_FAST_MODEL` for relevance, language, categories, tags, summaries, and entities, and `DEEPSEEK_SMART_MODEL` for scoring rationale and why-it-matters hints.
+
+Model output is validated before writing radar items. Final inclusion is controlled by code thresholds and scoring formula, not by the model alone:
+
+```text
+overall = relevance*0.30 + importance*0.20 + credibility*0.20 + novelty*0.15 + freshness*0.10 + source_weight*0.05
+```
+
+Items below `0.35` relevance are excluded, items from `0.35` to `0.60` need review, and higher-relevance low-credibility items still need review. Each radar item logs prompt version, model names, input/output hashes, API-call count, estimated/token usage when available, and error state.
+
 ## Environment Variables
 
 Copy `.env.example` to a local `.env` file and fill values only on your machine or deployment platform. Do not commit `.env`.
@@ -134,8 +173,8 @@ The app builds when Supabase and DeepSeek variables are missing. UI pages show s
 - `/ask` - Q&A placeholder with retrieval/model boundary copy
 - `/admin` - admin dashboard skeleton
 - `/admin/sources` - mock source registry
-- `/admin/ingestion` - Phase 4 local ingestion status and output paths
-- `/admin/scoring` - scoring dimensions and negative rules
+- `/admin/ingestion` - Phase 4/5 local ingestion and understanding status and output paths
+- `/admin/scoring` - understanding scoring formula, dimensions, and negative rules
 - `/admin/settings` - environment and feature flag status
 - `/auth/login` - Supabase auth setup UI
 - `/auth/callback` - Supabase OAuth callback route
@@ -168,7 +207,7 @@ WeChat auth is a placeholder only. Keep `ENABLE_WECHAT_AUTH=false` unless a futu
 - `deepseek-v4-flash`: relevance filtering, summarization, tagging, classification
 - `deepseek-v4-pro`: scoring, report generation, Q&A
 
-Phase 2 does not make real DeepSeek calls. Functions return typed mock responses so UI and future integration points can compile safely.
+Phase 5 keeps ingestion fetching separate from DeepSeek. Mock understanding is the default. Live understanding calls use an OpenAI-compatible chat-completions request only when `--mode live` is passed and `DEEPSEEK_API_KEY` exists locally.
 
 ## Validation
 
@@ -185,17 +224,18 @@ npm run build
 ## Current Limitations
 
 - Ingestion is local-only and writes ignored JSON artifacts.
+- Understanding is local-only and writes ignored JSON artifacts.
 - HTML ingestion records metadata-level summaries; it is not a full crawler.
 - YouTube ingestion records a placeholder only; video ingestion is not implemented.
 - No Supabase insertion from ingestion outputs.
-- No real DeepSeek API calls.
+- No automatic live DeepSeek calls.
 - No hard admin route blocking yet.
 - No working WeChat login.
+- No web Q&A or writing assistant yet.
 - No generated daily/weekly reports.
 - Radar item demo data is synthetic and does not describe current real-world events.
 - Many useful source names still need manual public URL completion before ingestion.
 
 ## Next Phases
 
-- Phase 5: DeepSeek understanding layer
-- Phase 6: Q&A and writing assistant
+- Phase 6: Q&A and writing assistant over validated radar items

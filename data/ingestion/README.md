@@ -10,10 +10,13 @@ Generated JSON files are ignored by git. Keep only `.gitkeep` and this README tr
 
 The Phase 4 runner is public-source only. It supports `rss`, `html`, `api`, `podcast_feed`, and `youtube_feed` source-selection methods, but the YouTube path records a placeholder instead of scraping videos. X automatic crawling, WeChat automatic crawling, private URLs, sign-in-only sources, and credentialed requests are intentionally unsupported.
 
+Phase 5 reads `latest/raw-items.json` and writes local understanding outputs under `data/understanding/`. Ingestion fetching itself remains model-free; DeepSeek is only used by the opt-in understanding CLI.
+
 Run locally:
 
 ```bash
 npm run ingest:sources:dry-run
 npm run ingest:sources -- --limit 5 --max-items-per-source 5
 npm run ingest:sources -- --method rss --limit 10
+npm run understand:items:mock
 ```

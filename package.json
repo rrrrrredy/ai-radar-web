@@ -10,6 +10,9 @@
     "import:sources": "tsx scripts/import-ai-learning-resources.ts",
     "ingest:sources": "tsx scripts/ingest-sources.ts",
     "ingest:sources:dry-run": "tsx scripts/ingest-sources.ts --dry-run",
+    "understand:items": "tsx scripts/understand-items.ts",
+    "understand:items:mock": "tsx scripts/understand-items.ts --mode mock",
+    "understand:items:live": "tsx scripts/understand-items.ts --mode live",
     "validate:data": "tsx scripts/validate-schemas.ts",
     "sensitive:scan": "tsx scripts/sensitive-scan.ts",
     "build": "next build"

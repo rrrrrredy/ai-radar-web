@@ -39,7 +39,11 @@ const forbiddenPatterns: Array<{ label: string; pattern: RegExp }> = [
   { label: "document.cookie assignment", pattern: /document\.cookie\s*=/i },
   { label: "Forbidden internal domain", pattern: /km\.sankuai\.com/i },
   { label: "Forbidden internal keyword", pattern: /\bsankuai\b/i },
+  { label: "Forbidden internal keyword", pattern: /\bmeituan\b/i },
   { label: "Forbidden internal URL", pattern: /https?:\/\/[^/\s]*meituan[^/\s]*/i },
+  { label: "Forbidden content query", pattern: /contentType=1/i },
+  { label: "Forbidden attachment URL", pattern: /api\/file\/cdn/i },
+  { label: "Forbidden image artifact", pattern: /image\.jpeg/i },
   {
     label: "Private browser profile path",
     pattern: /(AppData\\Local\\(?:Google\\Chrome|Microsoft\\Edge)\\User Data|Library\/Application Support\/(?:Google\/Chrome|Microsoft Edge)|\.config\/(?:google-chrome|chromium))/i

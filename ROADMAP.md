@@ -46,14 +46,19 @@ Deferred to later phases:
 - Scheduled production jobs and source-health persistence.
 - DeepSeek filtering, summarization, classification, scoring, and entity extraction.
 
-## Phase 5: DeepSeek Understanding Layer
+## Phase 5: DeepSeek Understanding Layer - Done
 
 - Add DeepSeek V4 Flash for filtering, summarization, tagging, language detection, and classification.
-- Add DeepSeek V4 Pro for scoring explanations, cluster synthesis, and report drafting.
-- Log API usage, prompt versions, and model output metadata.
+- Add DeepSeek V4 Pro for scoring explanations and report-ready synthesis hints.
+- Keep mock mode as the default path for validation and builds.
+- Require explicit live mode plus a local DeepSeek key before any model API call.
+- Validate model outputs before writing local radar items.
+- Apply deterministic relevance thresholds and the source-weighted scoring formula for final inclusion.
+- Log prompt versions, model names, hashes, API-call counts, token usage when available, and error state.
+- Write ignored local outputs under `data/understanding/latest/` and `data/understanding/runs/`.
 
 ## Phase 6: Q&A and Writing Assistant
 
-- Add retrieval-backed web Q&A over Radar database evidence.
+- Add retrieval-backed web Q&A over validated radar-item evidence.
 - Generate source-cited answers that state time windows and uncertainty.
 - Add writing assistant mode with evidence, counterpoints, outlines, and bilingual support.

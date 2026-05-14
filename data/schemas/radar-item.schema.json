@@ -3,7 +3,34 @@
   "$id": "https://example.com/ai-radar-web/radar-item.schema.json",
   "title": "Radar Item",
   "type": "object",
-  "required": ["id", "raw_item_id", "title", "status"],
+  "required": [
+    "id",
+    "raw_item_id",
+    "source_id",
+    "source_name",
+    "title",
+    "url",
+    "collected_at",
+    "processed_at",
+    "language",
+    "summary_zh",
+    "summary_en",
+    "ai_relevance_score",
+    "importance_score",
+    "credibility_score",
+    "novelty_score",
+    "freshness_score",
+    "overall_score",
+    "categories",
+    "tags",
+    "entities",
+    "source_tier",
+    "source_weight",
+    "confidence",
+    "status",
+    "evidence_notes",
+    "model_metadata"
+  ],
   "additionalProperties": true,
   "properties": {
     "id": {
@@ -12,8 +39,33 @@
     "raw_item_id": {
       "type": "string"
     },
+    "source_id": {
+      "type": "string"
+    },
+    "source_name": {
+      "type": "string"
+    },
     "title": {
       "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "collected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "processed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "language": {
+      "type": "string",
+      "enum": ["zh", "en", "mixed", "unknown"]
     },
     "summary_zh": {
       "type": "string"
@@ -21,15 +73,15 @@
     "summary_en": {
       "type": "string"
     },
-    "topics": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
+    "ai_relevance_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
     },
-    "status": {
-      "type": "string",
-      "enum": ["draft", "reviewed", "published", "archived"]
+    "importance_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
     },
     "credibility_score": {
       "type": "number",
@@ -41,11 +93,161 @@
       "minimum": 0,
       "maximum": 1
     },
-    "importance_score": {
+    "freshness_score": {
       "type": "number",
       "minimum": 0,
       "maximum": 1
+    },
+    "overall_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "categories": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "model_release",
+          "product_update",
+          "agent",
+          "research",
+          "open_source",
+          "infrastructure",
+          "funding",
+          "business",
+          "regulation",
+          "safety",
+          "benchmark",
+          "media_interview",
+          "opinion",
+          "other"
+        ]
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "confidence"],
+        "additionalProperties": true,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "company",
+              "model",
+              "product",
+              "person",
+              "paper",
+              "project",
+              "repository",
+              "investor",
+              "regulator",
+              "other"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "evidence_text": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "source_tier": {
+      "type": "string",
+      "enum": ["T1", "T1.5", "T2", "T3", "unreviewed"]
+    },
+    "source_weight": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["included", "excluded", "needs_review", "failed"]
+    },
+    "exclusion_reason": {
+      "type": "string"
+    },
+    "why_it_matters": {
+      "type": "string"
+    },
+    "evidence_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "model_metadata": {
+      "type": "object",
+      "required": [
+        "mode",
+        "provider",
+        "fast_model",
+        "smart_model",
+        "prompt_version",
+        "input_hash",
+        "output_hash"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["mock", "live"]
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["deepseek"]
+        },
+        "fast_model": {
+          "type": "string"
+        },
+        "smart_model": {
+          "type": "string"
+        },
+        "prompt_version": {
+          "type": "string"
+        },
+        "input_hash": {
+          "type": "string"
+        },
+        "output_hash": {
+          "type": "string"
+        },
+        "api_call_count": {
+          "type": "number",
+          "minimum": 0
+        },
+        "estimated_token_count": {
+          "type": "number",
+          "minimum": 0
+        },
+        "token_usage": {
+          "type": "object"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
     }
   }
 }
-

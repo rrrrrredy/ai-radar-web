@@ -45,3 +45,6 @@ cache/
 data/ingestion/latest/*.json
 data/ingestion/runs/*.json
 data/ingestion/tmp/
+data/understanding/latest/*.json
+data/understanding/runs/*.json
+data/understanding/tmp/
