@@ -143,7 +143,7 @@ Items below `0.35` relevance are excluded, items from `0.35` to `0.60` need revi
 
 ## Environment Variables
 
-Copy `.env.example` to a local `.env` file and fill values only on your machine or deployment platform. Do not commit `.env`.
+Copy `.env.example` to `.env.local` or another untracked local environment file and fill values only on your machine. Store deployed values only in the deployment platform environment variable manager. Do not commit `.env`, `.env.local`, or filled environment files.
 
 Core variables:
 
@@ -162,6 +162,21 @@ ENABLE_WECHAT_AUTH=false
 ```
 
 The app builds when Supabase and DeepSeek variables are missing. UI pages show setup placeholders instead of crashing.
+
+## API Key Handling
+
+Never paste DeepSeek API keys into Codex task text, ChatGPT messages, GitHub issues, commits, docs, or logs. Store local keys only in `.env.local` or equivalent untracked environment files, and store deployed keys only in the deployment platform environment variable manager.
+
+Keep `.env.example` blank for secret values:
+
+```bash
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_FAST_MODEL=deepseek-v4-flash
+DEEPSEEK_SMART_MODEL=deepseek-v4-pro
+```
+
+Mock mode requires no DeepSeek key and is the default for validation and builds. Live mode requires `DEEPSEEK_API_KEY` plus an explicit `--mode live` or the `understand:items:live` script. If a key is accidentally pasted into a prompt, task, log, issue, commit, or doc, rotate or revoke it before any live use.
 
 ## App Routes
 

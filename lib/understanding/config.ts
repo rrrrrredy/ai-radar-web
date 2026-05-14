@@ -31,6 +31,7 @@ export const UNDERSTANDING_LIMITS = {
 export function buildUnderstandingConfig(input: UnderstandingConfigInput = {}): UnderstandingConfig {
   const deepSeek = getDeepSeekConfig();
   const mode = input.mode ?? "mock";
+  const deepSeekApiKey = process.env.DEEPSEEK_API_KEY?.trim() || undefined;
   const limit = clampInteger(input.limit ?? UNDERSTANDING_LIMITS.defaultLimit, 1, UNDERSTANDING_LIMITS.maxLimit);
   const maxTextChars = clampInteger(
     input.maxTextChars ?? UNDERSTANDING_LIMITS.defaultMaxTextChars,
@@ -39,7 +40,7 @@ export function buildUnderstandingConfig(input: UnderstandingConfigInput = {}): 
   );
 
   if (mode === "live" && !deepSeek.hasApiKey) {
-    throw new Error("Live understanding mode requires DEEPSEEK_API_KEY. Set it locally or run with --mode mock.");
+    throw new Error("Live understanding mode requires DEEPSEEK_API_KEY. Set it in an untracked local environment file or run with --mode mock.");
   }
 
   return {
@@ -50,7 +51,7 @@ export function buildUnderstandingConfig(input: UnderstandingConfigInput = {}): 
     promptVersion: input.promptVersion ?? DEFAULT_PROMPT_VERSION,
     dryRun: input.dryRun ?? false,
     baseUrl: deepSeek.baseUrl,
-    apiKey: process.env.DEEPSEEK_API_KEY,
+    apiKey: deepSeekApiKey,
     fastModel: deepSeek.fastModel,
     smartModel: deepSeek.smartModel,
     timeoutMs: UNDERSTANDING_LIMITS.timeoutMs,

@@ -26,6 +26,21 @@ Defaults:
 
 Never commit filled environment values.
 
+## API Key Handling
+
+Never paste DeepSeek API keys into Codex task text, ChatGPT messages, GitHub issues, commits, docs, or logs. Use `.env.local` or an equivalent untracked local environment file for local development, and use the deployment platform environment variable manager for deployed runs.
+
+Keep `.env.example` blank for secret values:
+
+```bash
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_FAST_MODEL=deepseek-v4-flash
+DEEPSEEK_SMART_MODEL=deepseek-v4-pro
+```
+
+Mock mode is deterministic, requires no key, and remains the default for validation and builds. Live mode requires `DEEPSEEK_API_KEY` and an explicit `--mode live` or `npm run understand:items:live`. If a key is accidentally pasted into a prompt, task, log, GitHub issue, commit, or doc, rotate or revoke it before live use.
+
 ## Phase 5 Understanding
 
 The Phase 5 layer reads Phase 4 raw items from:

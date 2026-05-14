@@ -24,6 +24,7 @@ export type AppConfig = {
 export function getAppConfig(): AppConfig {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const deepSeekApiKey = process.env.DEEPSEEK_API_KEY?.trim();
 
   return {
     appBaseUrl: process.env.APP_BASE_URL || "http://localhost:3000",
@@ -42,7 +43,7 @@ export function getAppConfig(): AppConfig {
       baseUrl: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com",
       fastModel: process.env.DEEPSEEK_FAST_MODEL || "deepseek-v4-flash",
       smartModel: process.env.DEEPSEEK_SMART_MODEL || "deepseek-v4-pro",
-      hasApiKey: Boolean(process.env.DEEPSEEK_API_KEY)
+      hasApiKey: Boolean(deepSeekApiKey)
     }
   };
 }

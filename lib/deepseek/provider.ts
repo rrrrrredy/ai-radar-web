@@ -317,7 +317,7 @@ async function callJsonModel<T>(messages: ChatMessage[], options: DeepSeekCallOp
       if (!response.ok) {
         const retryable = isRetryableStatus(response.status);
         lastError = {
-          message: body.error?.message || `DeepSeek HTTP ${response.status}`,
+          message: sanitizeProviderErrorMessage(body.error?.message, `DeepSeek HTTP ${response.status}`),
           status: response.status,
           retryable
         };
@@ -353,7 +353,7 @@ async function callJsonModel<T>(messages: ChatMessage[], options: DeepSeekCallOp
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       lastError = {
-        message,
+        message: sanitizeProviderErrorMessage(message),
         retryable: true
       };
 
@@ -429,6 +429,24 @@ function completionUrl(baseUrl: string) {
 
 function isRetryableStatus(status: number) {
   return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+}
+
+function sanitizeProviderErrorMessage(message: string | undefined, fallback = "DeepSeek request failed.") {
+  const value = (message ?? fallback).trim() || fallback;
+  return redactSensitiveText(value).slice(0, 500);
+}
+
+function redactSensitiveText(value: string) {
+  return value
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/\bsk-ant-api\d{2}-[A-Za-z0-9_-]+/gi, "sk-ant-[redacted]")
+    .replace(/\bsk-(?:proj-)?[A-Za-z0-9_-]{8,}/gi, "sk-[redacted]")
+    .replace(/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]+/g, "[github-token-redacted]")
+    .replace(/\bgithub_pat_[A-Za-z0-9_]+/gi, "[github-token-redacted]")
+    .replace(/\b(DEEPSEEK_API_KEY\s*=\s*)[^\s]+/gi, "$1[redacted]")
+    .replace(/\b(authorization|api[-_]?key|token|cookie)\b\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .replace(/[A-Z]:\\Users\\[^\\\s]+\\[^\s]+/g, "[local-path-redacted]")
+    .replace(/\/(?:Users|home)\/[^/\s]+\/[^\s]+/g, "[local-path-redacted]");
 }
 
 function delay(ms: number) {

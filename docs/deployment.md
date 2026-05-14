@@ -12,7 +12,9 @@ Cloudflare Pages can be evaluated later if edge deployment or Cloudflare-specifi
 
 ## Environment Variables
 
-Configure all variables from `.env.example` in the deployment environment. Do not commit real secrets.
+Configure all variables from `.env.example` in the deployment platform environment variable manager. Keep `.env.example` blank for secret values, and do not commit real secrets or filled environment files.
+
+Do not paste API keys, service tokens, cookies, or bearer values into deployment notes, GitHub issues, commits, docs, logs, or agent task text. If a key is exposed in any of those places, rotate or revoke it before using live jobs.
 
 ## Scheduled Jobs
 
