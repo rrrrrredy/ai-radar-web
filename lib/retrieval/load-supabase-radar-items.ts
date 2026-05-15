@@ -1,7 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
-
 import { getAppConfig, getSupabasePublicConfig } from "@/lib/config";
 import type { LoadedRadarItems, RetrievalRadarItem } from "@/lib/retrieval/types";
+import { getSupabaseServerReadClient } from "@/lib/supabase/server-read";
 import { RADAR_CATEGORIES, type RadarCategory } from "@/lib/understanding/types";
 
 type SupabaseLoadAttempt = {
@@ -32,12 +31,14 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
   }
 
   try {
-    const supabase = createClient(publicConfig.url, publicConfig.anonKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    });
+    const supabase = getSupabaseServerReadClient();
+    if (!supabase) {
+      return {
+        loaded: null,
+        warnings: ["Supabase retrieval is enabled but public Supabase config is missing."]
+      };
+    }
+
     const { data, error } = await supabase
       .from("radar_items")
       .select(
@@ -84,12 +85,19 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
     if (error) {
       return {
         loaded: null,
-        warnings: [`Supabase retrieval failed and local fallback was used: ${error.message}`]
+        warnings: [`Supabase retrieval failed and local fallback was used: ${sanitizeSupabaseReadError(error.message)}`]
       };
     }
 
     const rows = (data ?? []) as unknown as SupabaseRadarRow[];
     const items = rows.map(normalizeSupabaseRow).filter((item): item is RetrievalRadarItem => Boolean(item));
+
+    if (rows.length === 0) {
+      return {
+        loaded: null,
+        warnings: ["Supabase retrieval returned no visible radar rows; local fallback was used."]
+      };
+    }
 
     if (items.length === 0) {
       return {
@@ -108,12 +116,20 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
       warnings: []
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = sanitizeSupabaseReadError(error instanceof Error ? error.message : String(error));
     return {
       loaded: null,
       warnings: [`Supabase retrieval threw an error and local fallback was used: ${message}`]
     };
   }
+}
+
+function sanitizeSupabaseReadError(value: string) {
+  return value
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/\bsk-(?:proj-)?[A-Za-z0-9_-]{8,}/gi, "sk-[redacted]")
+    .replace(/\b(authorization|api[-_]?key|token|cookie)\b\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .slice(0, 400);
 }
 
 function normalizeSupabaseRow(value: SupabaseRadarRow): RetrievalRadarItem | null {

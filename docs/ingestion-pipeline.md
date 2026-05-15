@@ -105,6 +105,6 @@ Model output is validated before radar items are written. Final inclusion uses d
 
 ## Phase 6 Retrieval Consumers
 
-`/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` read Supabase radar items first only when `ENABLE_SUPABASE_RETRIEVAL=true` and Supabase public config is present. If Supabase is disabled, unavailable, or returns no usable rows, they read `data/understanding/latest/radar-items.json`. If that local generated file is missing or invalid, they use synthetic mock radar items and disclose `mock_data` in the response.
+`/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` read Supabase radar items first only when `ENABLE_SUPABASE_RETRIEVAL=true` and Supabase public config is present. Supabase retrieval is server-side and read-only through the anon key; service-role access remains limited to explicit write scripts. If Supabase is disabled, unavailable, or returns no visible usable rows, they read `data/understanding/latest/radar-items.json`. If that local generated file is missing or invalid, they use synthetic mock radar items and disclose `mock_data` in the response.
 
 Generated ingestion and understanding JSON remains local and ignored by git. Phase 6 does not insert into Supabase, does not add production scheduled jobs, and does not run live DeepSeek calls unless an API request explicitly asks for live mode and the server has a local key.

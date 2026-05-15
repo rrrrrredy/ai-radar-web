@@ -190,6 +190,8 @@ supabase/migrations/202605140002_phase7_upsert_constraints.sql
 
 The second migration fixes the plain unique constraints required by the dry-run-first persistence upserts. Do not re-run the full skeleton schema against an existing project as a migration substitute.
 
+Retrieval is server-side and read-only. It uses the public Supabase anon key when `ENABLE_SUPABASE_RETRIEVAL=true`; service-role access remains limited to explicit write scripts gated by `--write` plus `ENABLE_SUPABASE_WRITES=true`.
+
 Retrieval order for `/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` is:
 
 1. Supabase radar items when `ENABLE_SUPABASE_RETRIEVAL=true` and public Supabase config exists.
