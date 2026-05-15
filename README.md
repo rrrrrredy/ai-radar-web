@@ -20,7 +20,7 @@ The project uses public information only. Secrets, API keys, service tokens, coo
 
 ## Current Scope
 
-This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, and Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes.
+This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes, and the Phase 8.4 production-safe admin console redesign.
 
 The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, answer questions against Supabase/local/mock radar evidence, and generate writing seeds with caveats, but it does not run production Supabase writes, enforce hard admin blocking, run scheduled jobs, or generate full daily/weekly reports yet. DeepSeek live calls are opt-in only.
 
@@ -28,7 +28,7 @@ The implementation is intentionally an application foundation, not the full prod
 
 `DESIGN.md` is the canonical design contract for AI Industry Radar. Public/product pages should follow the Editorial Intelligence Desk direction, while admin pages should follow the Production-safe Analyst Console direction.
 
-Evidence, freshness, and uncertainty are core UI surfaces, not decorative metadata. Ask and Write use shared evidence rail and citation anatomy so data source, time windows, confidence, review status, and missing evidence are visible before or beside synthesis. Future route redesigns should follow `DESIGN.md` before changing layouts.
+Evidence, freshness, and uncertainty are core UI surfaces, not decorative metadata. Ask and Write use shared evidence rail and citation anatomy so data source, time windows, confidence, review status, and missing evidence are visible before or beside synthesis. Admin surfaces separate read-only, dry-run, write-gated, missing setup, live/offline, and placeholder states so operational status cannot be mistaken for enabled production writes. Future route redesigns should follow `DESIGN.md` before changing layouts.
 
 ## Stack
 
@@ -255,11 +255,11 @@ Mock mode requires no DeepSeek key and is the default for validation and builds.
 - `/write` - evidence-bound writing assistant seeds, counterpoints, missing evidence, and citations over Supabase/local/mock evidence
 - `/api/ask` - structured Q&A JSON API, mock/local by default
 - `/api/writing-assistant` - structured writing-assistant JSON API, mock/local by default
-- `/admin` - admin dashboard skeleton
-- `/admin/sources` - cleaned registry summary, health-check eligibility, and Supabase persistence status
-- `/admin/ingestion` - Phase 4/5 local ingestion, Phase 7 persistence commands, and output paths
-- `/admin/scoring` - understanding scoring formula, dimensions, and negative rules
-- `/admin/settings` - environment and feature flag status
+- `/admin` - production-safe admin operations console entry point
+- `/admin/sources` - cleaned registry review queue, crawl eligibility, tier distribution, and dry-run/write-gated import boundaries
+- `/admin/ingestion` - source registry to ingestion to understanding to persistence to retrieval chain, local ignored outputs, and separated dry-run/write-gated command documentation
+- `/admin/scoring` - scoring formula, inclusion thresholds, source weight, confidence, and model-authority boundaries
+- `/admin/settings` - boolean-only environment, feature flag, provider, scheduled-job, and secret-boundary status
 - `/auth/login` - Supabase auth setup UI
 - `/auth/callback` - Supabase OAuth callback route
 
@@ -325,5 +325,4 @@ npm run build
 
 ## Next Phases
 
-- Phase 8.4: admin console density, write gates, source/review operations, and table ergonomics
-- Phase 9: scheduled jobs, deployment hardening, and admin review workflows
+- Phase 9: scheduled jobs, deployment hardening, and real admin review workflows

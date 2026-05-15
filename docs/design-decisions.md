@@ -72,3 +72,21 @@ Ask separates short answer, facts, evidence-backed inference, uncertainty, and c
 ### Review States Stay Cautious
 
 `needs_review`, mock data, local-only output, stale coverage, and disabled live-model paths use caution language and never receive confirmed or success-style treatment.
+
+## Phase 8.4 Admin Console Decisions
+
+### Admin Uses Production-Safe Analyst Console Patterns
+
+Admin pages now prioritize operational state, source review needs, pipeline boundaries, scoring rules, and configuration posture. The surfaces are denser than public pages and avoid fake charts, decorative dashboard polish, and unsupported production claims.
+
+### Read-Only, Dry-Run, and Write-Gated States Are Separate
+
+Read-only retrieval, dry-run scripts, write-gated CLI paths, missing setup, disabled source-health writes, scheduled-job absence, and live-model opt-in are separate visual concepts. Write-gated states use risk treatment even when the UI is only documenting commands.
+
+### Admin Commands Are Documentation Surfaces
+
+Command blocks use code/pre styling and explanatory copy. They are not buttons, do not imply browser execution, and do not bypass the existing CLI plus environment write gates.
+
+### Settings Never Render Secret Values
+
+Settings surfaces show booleans or setup placeholders only. URLs, keys, service-role tokens, provider model values, and admin email values are not rendered in admin UI.

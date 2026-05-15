@@ -1,12 +1,47 @@
+import { AdminCommandBlock } from "@/components/admin-command-block";
+import { AdminDataTable, type AdminDataTableColumn } from "@/components/admin-data-table";
+import { AdminStatusCard } from "@/components/admin-status-card";
+import { DataSourceChip } from "@/components/data-source-chip";
+import { EvidenceBadge } from "@/components/evidence-badge";
+import { StatusChip, type StatusTone } from "@/components/status-chip";
+import { getAppConfig } from "@/lib/config";
 import { formatDate } from "@/lib/utils";
 
 const supportedMethods = ["rss", "html", "api", "podcast_feed", "youtube_feed"];
-const outputPaths = [
-  "data/ingestion/latest/raw-items.json",
-  "data/ingestion/latest/ingestion-run.json",
-  "data/understanding/latest/radar-items.json",
-  "data/understanding/latest/understanding-run.json"
+
+const outputRows = [
+  {
+    path: "data/ingestion/latest/raw-items.json",
+    stage: "Ingestion raw items",
+    status: "ignored generated JSON"
+  },
+  {
+    path: "data/ingestion/latest/ingestion-run.json",
+    stage: "Ingestion run summary",
+    status: "ignored generated JSON"
+  },
+  {
+    path: "data/ingestion/runs/*.json",
+    stage: "Historical ingestion runs",
+    status: "ignored generated JSON"
+  },
+  {
+    path: "data/understanding/latest/radar-items.json",
+    stage: "Understanding radar items",
+    status: "ignored generated JSON"
+  },
+  {
+    path: "data/understanding/latest/understanding-run.json",
+    stage: "Understanding run summary",
+    status: "ignored generated JSON"
+  },
+  {
+    path: "data/understanding/runs/*.json",
+    stage: "Historical understanding runs",
+    status: "ignored generated JSON"
+  }
 ];
+
 const latestLocalSummary = {
   id: "phase4-local-latest",
   startedAt: "2026-05-13T09:00:00.000Z",
@@ -17,178 +52,360 @@ const latestLocalSummary = {
   errors: 0
 };
 
-const sourceStatusPreview = [
+const pipelineStages = [
   {
-    label: "Eligible public sources",
-    value: "active/trial only",
-    detail: "Registry rows with public URLs and supported crawl methods."
+    detail: "Cleaned public registry rows are selected only when status, crawl method, public URL, and safety checks pass.",
+    label: "Source registry",
+    tone: "admin" as const
   },
   {
-    label: "Skipped sources",
-    value: "manual/future",
-    detail: "X accounts, WeChat-style entries, books, courses, and records missing public URLs."
+    detail: "Local fetchers collect public metadata/feed items and write ignored JSON artifacts.",
+    label: "Ingestion",
+    tone: "freshness" as const
   },
   {
-    label: "Failure handling",
-    value: "source-level",
-    detail: "A failed source records its error and the remaining sources continue."
+    detail: "Mock mode is deterministic by default. Live DeepSeek requires explicit live mode and credentials.",
+    label: "Understanding",
+    tone: "caution" as const
+  },
+  {
+    detail: "Supabase persistence scripts are dry-run first and require both CLI and env write gates.",
+    label: "Supabase persistence",
+    tone: "risk" as const
+  },
+  {
+    detail: "Ask and Write can read Supabase public view when enabled, then local output, then mock data.",
+    label: "Retrieval",
+    tone: "evidence" as const
+  }
+];
+
+const dryRunCommands = [
+  {
+    command: "npm run ingest:sources:dry-run",
+    detail: "Plans source selection and ingestion work without writing generated JSON artifacts.",
+    title: "Ingestion plan"
+  },
+  {
+    command: "npm run understand:items:mock",
+    detail: "Runs deterministic mock understanding over local raw items without live provider calls.",
+    title: "Understanding mock"
+  },
+  {
+    command: "npm run supabase:import:sources",
+    detail: "Prints the cleaned source import plan. Default mode does not write to Supabase.",
+    title: "Source import"
+  },
+  {
+    command: "npm run supabase:persist:ingestion",
+    detail: "Prints the ingestion persistence plan. Default mode does not write to Supabase.",
+    title: "Ingestion persistence"
+  },
+  {
+    command: "npm run supabase:persist:understanding",
+    detail: "Prints the understanding persistence plan. Default mode does not write to Supabase.",
+    title: "Understanding persistence"
+  },
+  {
+    command: "npm run source-health:dry-run",
+    detail: "Reviews source-health eligibility in dry-run mode only. This page does not run checks.",
+    title: "Source health"
+  }
+];
+
+const writeGatedCommands = [
+  {
+    command: "npm run supabase:import:sources -- --write",
+    detail: "Requires ENABLE_SUPABASE_WRITES=true, public Supabase config, and service-role credentials.",
+    title: "Source import write"
+  },
+  {
+    command: "npm run supabase:persist:ingestion -- --write",
+    detail: "Requires the same write gate and persists local ingestion run/raw item records.",
+    title: "Ingestion write"
+  },
+  {
+    command: "npm run supabase:persist:understanding -- --write",
+    detail: "Requires the same write gate and persists validated understanding output.",
+    title: "Understanding write"
+  },
+  {
+    command: "source-health write path: not enabled",
+    detail: "No source-health write command is exposed for this phase. Keep source-health review dry-run only.",
+    title: "Source-health writes"
   }
 ];
 
 export default function AdminIngestionPage() {
+  const config = getAppConfig();
+
   return (
     <div className="space-y-8">
       <section>
-        <h1 className="text-3xl font-semibold text-radar-ink">Ingestion</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusChip label="Manual/local pipeline" tone="admin" />
+          <StatusChip label="ENABLE_SUPABASE_WRITES" tone={config.featureFlags.enableSupabaseWrites ? "risk" : "success"} value={String(config.featureFlags.enableSupabaseWrites)} />
+          <StatusChip label="No scheduled jobs" tone="caution" />
+          <StatusChip label="No live DeepSeek by default" tone="caution" />
+        </div>
+        <h1 className="mt-4 text-3xl font-semibold text-radar-ink">
+          Ingestion
+        </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-          Phase 4 adds a local public-source ingestion foundation. It selects safe
-          sources from the cleaned registry, fetches public metadata or feed items,
-          normalizes raw items, deduplicates within the run, and writes local JSON
-          artifacts. Phase 7 adds dry-run-first Supabase persistence scripts and
-          optional Supabase retrieval while preserving local and mock fallbacks.
+          Operational view of the source registry to ingestion to understanding
+          to persistence to retrieval chain. Command blocks below are
+          documentation surfaces only; they are not executable UI controls.
         </p>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
-          <p className="text-sm font-semibold text-radar-muted">Latest local summary</p>
-          <h2 className="mt-3 text-xl font-semibold text-radar-ink">{latestLocalSummary.status}</h2>
-          <p className="mt-2 text-sm text-radar-muted">{formatDate(latestLocalSummary.startedAt)}</p>
-        </div>
-        <div className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
-          <p className="text-sm font-semibold text-radar-muted">Supported methods</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {supportedMethods.map((method) => (
-              <span className="rounded-md border border-radar-line px-2 py-1 text-xs font-semibold text-radar-muted" key={method}>
-                {method}
-              </span>
-            ))}
+      <section
+        aria-label="Pipeline stages"
+        className="grid gap-4 md:grid-cols-2 xl:grid-cols-5"
+      >
+        {pipelineStages.map((stage) => (
+          <AdminStatusCard
+            detail={stage.detail}
+            key={stage.label}
+            label={stage.label}
+            tone={stage.tone}
+            value={stage.label === "Supabase persistence" ? "gated" : "visible"}
+          />
+        ))}
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-radar-ink">
+                Latest local run shape
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-radar-muted">
+                Static admin summary of the local artifact contract, not a live
+                scheduler or job monitor.
+              </p>
+            </div>
+            <StatusChip label={latestLocalSummary.status} tone="freshness" />
           </div>
+          <dl className="mt-4 grid gap-3 text-sm">
+            <RunRow label="Run ID" value={latestLocalSummary.id} />
+            <RunRow label="Started" value={formatDate(latestLocalSummary.startedAt)} />
+            <RunRow label="Selected sources" value={String(latestLocalSummary.selectedSources)} />
+            <RunRow label="Raw items" value={String(latestLocalSummary.rawItems)} />
+            <RunRow label="Duplicates" value={String(latestLocalSummary.duplicates)} />
+            <RunRow label="Errors" value={String(latestLocalSummary.errors)} />
+          </dl>
         </div>
-        <div className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
-          <p className="text-sm font-semibold text-radar-muted">Understanding boundary</p>
-          <h2 className="mt-3 text-xl font-semibold text-radar-ink">Mock by default</h2>
-          <p className="mt-2 text-sm text-radar-muted">Live DeepSeek runs require an explicit CLI mode and local key.</p>
+
+        <div className="rounded-lg border border-radar-line bg-radar-panel p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-radar-ink">
+                Operational boundaries
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-radar-muted">
+                These states must stay visibly separate from successful
+                read-only status.
+              </p>
+            </div>
+            <DataSourceChip detail="read-only fallback" source="local_understanding_output" />
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <BoundaryItem
+              detail="False means Supabase write scripts cannot obtain a write client. True would still require CLI write mode."
+              label="ENABLE_SUPABASE_WRITES"
+              tone={config.featureFlags.enableSupabaseWrites ? "risk" : "success"}
+              value={String(config.featureFlags.enableSupabaseWrites)}
+            />
+            <BoundaryItem
+              detail="No cron or scheduled production job is configured by this application phase."
+              label="Scheduled jobs"
+              tone="caution"
+              value="not enabled"
+            />
+            <BoundaryItem
+              detail="Understanding mock mode is default. Live mode requires an explicit live request and local key."
+              label="Live DeepSeek"
+              tone="caution"
+              value="opt-in only"
+            />
+            <BoundaryItem
+              detail="Source-health history writes are not enabled; keep source-health review dry-run only."
+              label="Source-health writes"
+              tone="risk"
+              value="not enabled"
+            />
+          </div>
         </div>
       </section>
 
-      <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
-        <h2 className="text-lg font-semibold text-radar-ink">Persistence commands</h2>
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {[
-            "npm run supabase:import:sources",
-            "npm run supabase:persist:ingestion",
-            "npm run supabase:persist:understanding",
-            "npm run source-health:dry-run"
-          ].map((command) => (
-            <div className="rounded-md border border-radar-line bg-radar-bg px-3 py-3" key={command}>
-              <p className="font-mono text-xs text-radar-ink">{command}</p>
-            </div>
+      <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-radar-ink">
+              Local output artifacts
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
+              Generated ingestion and understanding JSON is intentionally local
+              and ignored by git. Do not commit generated runs.
+            </p>
+          </div>
+          <EvidenceBadge
+            detail="gitignored"
+            kind="freshness"
+            label="Generated files"
+          />
+        </div>
+        <div className="mt-4">
+          <AdminDataTable
+            ariaLabel="Generated local output paths"
+            columns={outputColumns}
+            minWidth="860px"
+            rowKey={(row) => row.path}
+            rows={outputRows}
+          />
+        </div>
+      </section>
+
+      <section
+        aria-labelledby="dry-run-commands-title"
+        className="rounded-lg border border-radar-line bg-radar-panel p-4"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2
+              className="text-lg font-semibold text-radar-ink"
+              id="dry-run-commands-title"
+            >
+              Dry-run and local commands
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
+              These commands are listed for operator reference. They are not
+              buttons and are not run by this page.
+            </p>
+          </div>
+          <StatusChip label="Documentation only" tone="admin" />
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          {dryRunCommands.map((command) => (
+            <AdminCommandBlock
+              command={command.command}
+              detail={command.detail}
+              key={command.command}
+              label="dry-run/local"
+              title={command.title}
+              tone="caution"
+            />
           ))}
         </div>
-        <p className="mt-4 text-sm leading-6 text-radar-muted">
-          Each command is dry-run by default. Supabase writes require both a CLI
-          <span className="font-mono"> --write</span> flag and
-          <span className="font-mono"> ENABLE_SUPABASE_WRITES=true</span>.
-        </p>
       </section>
 
-      <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
-        <h2 className="text-lg font-semibold text-radar-ink">Local output artifacts</h2>
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {outputPaths.map((outputPath) => (
-            <div className="rounded-md border border-radar-line bg-radar-bg px-3 py-3" key={outputPath}>
-              <p className="font-mono text-xs text-radar-ink">{outputPath}</p>
-            </div>
+      <section
+        aria-labelledby="write-gated-commands-title"
+        className="rounded-lg border border-radar-risk/30 bg-white p-4 shadow-soft"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2
+              className="text-lg font-semibold text-radar-ink"
+              id="write-gated-commands-title"
+            >
+              Write-gated commands
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
+              These are high-risk CLI documentation paths. They require explicit
+              operator intent and environment gates outside the browser.
+            </p>
+          </div>
+          <StatusChip label="Not executed here" tone="risk" />
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+          {writeGatedCommands.map((command) => (
+            <AdminCommandBlock
+              command={command.command}
+              detail={command.detail}
+              key={command.command}
+              label="write-gated"
+              title={command.title}
+              tone="risk"
+            />
           ))}
         </div>
       </section>
 
-      <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
-        <h2 className="text-lg font-semibold text-radar-ink">Phase 4 run shape</h2>
-        <div className="mt-5 overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-            <thead>
-              <tr className="border-b border-radar-line text-radar-muted">
-                <th className="py-3 pr-4 font-semibold">Run</th>
-                <th className="py-3 pr-4 font-semibold">Started</th>
-                <th className="py-3 pr-4 font-semibold">Status</th>
-                <th className="py-3 pr-4 font-semibold">Sources</th>
-                <th className="py-3 pr-4 font-semibold">Raw</th>
-                <th className="py-3 pr-4 font-semibold">Duplicates</th>
-                <th className="py-3 pr-4 font-semibold">Errors</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-b border-radar-line last:border-0">
-                <td className="py-3 pr-4 font-medium text-radar-ink">{latestLocalSummary.id}</td>
-                <td className="py-3 pr-4 text-radar-muted">{formatDate(latestLocalSummary.startedAt)}</td>
-                <td className="py-3 pr-4 text-radar-muted">{latestLocalSummary.status}</td>
-                <td className="py-3 pr-4 text-radar-muted">{latestLocalSummary.selectedSources}</td>
-                <td className="py-3 pr-4 text-radar-muted">{latestLocalSummary.rawItems}</td>
-                <td className="py-3 pr-4 text-radar-muted">{latestLocalSummary.duplicates}</td>
-                <td className="py-3 pr-4 text-radar-muted">{latestLocalSummary.errors}</td>
-              </tr>
-            </tbody>
-          </table>
+      <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-radar-ink">
+              Supported public methods
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
+              X accounts, WeChat-style sources, books, courses, private links,
+              missing URLs, and manual-only rows are not auto-crawled.
+            </p>
+          </div>
+          <StatusChip label="Public metadata only" tone="freshness" />
         </div>
-      </section>
-
-      <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
-        <h2 className="text-lg font-semibold text-radar-ink">Source handling</h2>
-        <div className="mt-5 grid gap-4 md:grid-cols-3">
-          {sourceStatusPreview.map((item) => (
-            <div className="rounded-md border border-radar-line p-4" key={item.label}>
-              <p className="text-sm font-semibold text-radar-ink">{item.label}</p>
-              <p className="mt-2 text-sm font-medium text-radar-muted">{item.value}</p>
-              <p className="mt-2 text-sm leading-6 text-radar-muted">{item.detail}</p>
-            </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {supportedMethods.map((method) => (
+            <StatusChip key={method} label={method} tone="freshness" />
           ))}
         </div>
       </section>
+    </div>
+  );
+}
 
-      <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
-        <h2 className="text-lg font-semibold text-radar-ink">Next step</h2>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-          Phase 6 now uses local radar items for retrieval-backed Q&A and writing
-          assistance. Phase 7 can read persisted Supabase radar items when enabled,
-          then falls back to local understanding output and mock data.
-        </p>
-      </section>
+type OutputRow = (typeof outputRows)[number];
 
-      <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
-        <h2 className="text-lg font-semibold text-radar-ink">Phase 5 controls</h2>
-        <div className="mt-5 grid gap-4 md:grid-cols-3">
-          <div className="rounded-md border border-radar-line p-4">
-            <p className="text-sm font-semibold text-radar-ink">Raw to radar</p>
-            <p className="mt-2 text-sm leading-6 text-radar-muted">
-              Raw ingestion items become structured radar items with summaries,
-              categories, tags, entities, scores, and model metadata.
-            </p>
-          </div>
-          <div className="rounded-md border border-radar-line p-4">
-            <p className="text-sm font-semibold text-radar-ink">Model boundary</p>
-            <p className="mt-2 text-sm leading-6 text-radar-muted">
-              DeepSeek is an understanding helper. Final inclusion is controlled
-              by code thresholds and source-weighted scoring.
-            </p>
-          </div>
-          <div className="rounded-md border border-radar-line p-4">
-            <p className="text-sm font-semibold text-radar-ink">Local outputs</p>
-            <p className="mt-2 text-sm leading-6 text-radar-muted">
-              Generated understanding JSON stays local and ignored by git, matching
-              the Phase 4 ingestion artifact policy.
-            </p>
-          </div>
-          <div className="rounded-md border border-radar-line p-4">
-            <p className="text-sm font-semibold text-radar-ink">Retrieval consumers</p>
-            <p className="mt-2 text-sm leading-6 text-radar-muted">
-              Ask and Write read retrieved radar-item evidence first, cite sources,
-              and mark needs_review evidence before generating local mock output.
-            </p>
-          </div>
-        </div>
-      </section>
+const outputColumns: AdminDataTableColumn<OutputRow>[] = [
+  {
+    header: "Stage",
+    render: (row) => <p className="font-semibold text-radar-ink">{row.stage}</p>
+  },
+  {
+    header: "Path",
+    render: (row) => (
+      <p className="break-words font-mono text-xs leading-5 text-radar-code">
+        {row.path}
+      </p>
+    )
+  },
+  {
+    header: "Git status",
+    render: (row) => <StatusChip label={row.status} tone="success" />
+  }
+];
+
+function RunRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-2 border-t border-radar-line pt-3 first:border-t-0 first:pt-0 sm:grid-cols-[160px_1fr]">
+      <dt className="text-xs font-semibold uppercase tracking-normal text-radar-muted">
+        {label}
+      </dt>
+      <dd className="break-words text-radar-ink">{value}</dd>
+    </div>
+  );
+}
+
+function BoundaryItem({
+  detail,
+  label,
+  tone,
+  value
+}: {
+  detail: string;
+  label: string;
+  tone: StatusTone;
+  value: string;
+}) {
+  return (
+    <div className="rounded-md border border-radar-line bg-white p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-radar-ink">{label}</p>
+        <StatusChip label={value} tone={tone} />
+      </div>
+      <p className="mt-2 text-sm leading-6 text-radar-muted">{detail}</p>
     </div>
   );
 }
