@@ -8,7 +8,9 @@
 
 ## Auth Requirements
 
-Implement Email and GitHub auth in the first real implementation phase. Include a WeChat auth placeholder or adapter guarded by a feature flag, but do not fake a working WeChat integration unless credentials and platform configuration are available.
+Implement Supabase Email magic links first, with GitHub OAuth available after manual Supabase dashboard/provider setup. Include a WeChat auth placeholder or adapter guarded by a feature flag, but do not fake a working WeChat integration unless credentials and platform configuration are available.
+
+`/admin` and `/admin/*` require an authenticated Supabase user with the `admin` role. Public/product routes, `/ask`, and `/write` remain public. Highest role resolution is `admin > editor > viewer`.
 
 ## Tables and Entities
 
@@ -18,11 +20,15 @@ Application user profile linked to Supabase Auth.
 
 Fields: `id`, `auth_user_id`, `email`, `display_name`, `avatar_url`, `created_at`, `updated_at`, `last_seen_at`.
 
+RLS policy: authenticated users can read their own profile by `auth_user_id = auth.uid()`. Anon users do not receive broad table access.
+
 ### user_roles
 
 Role assignments.
 
 Fields: `id`, `user_id`, `role`, `created_at`, `created_by`.
+
+RLS policy: authenticated users can read their own role rows through their linked profile. Browser clients do not receive insert, update, or delete grants for roles; bootstrap/admin mutation remains service-role/server-only.
 
 ### sources
 

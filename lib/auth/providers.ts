@@ -29,7 +29,7 @@ export function getAuthProviders(): AuthProviderConfig[] {
     {
       id: "wechat",
       label: "WeChat",
-      description: "Placeholder adapter only; no working WeChat login is enabled in Phase 2.",
+      description: "Placeholder adapter only; no working WeChat login is enabled in this phase.",
       status: config.featureFlags.enableWechatAuth ? "needs_config" : "feature_disabled"
     }
   ];

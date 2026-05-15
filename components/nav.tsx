@@ -15,7 +15,7 @@ const publicNavItems = [
   { href: "/write", label: "Write" }
 ];
 
-const adminNavItem = { href: "/admin", label: "Admin" };
+const adminNavItem = { href: "/admin", label: "Ops/Admin" };
 
 export function Nav() {
   const pathname = usePathname();

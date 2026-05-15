@@ -26,16 +26,12 @@ export function getSupabaseServiceStatus(): SupabaseServiceStatus {
   };
 }
 
-export function getSupabaseServiceClientForWrite(): SupabaseClient {
+export function getSupabaseServiceClient(): SupabaseClient {
   const publicConfig = getSupabasePublicConfig();
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
-  if (!isEnabled(process.env.ENABLE_SUPABASE_WRITES)) {
-    throw new Error("Supabase write mode requires ENABLE_SUPABASE_WRITES=true.");
-  }
-
   if (!publicConfig || !serviceRoleKey) {
-    throw new Error("Supabase write mode requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+    throw new Error("Supabase service access requires public Supabase config and SUPABASE_SERVICE_ROLE_KEY.");
   }
 
   return createClient(publicConfig.url, serviceRoleKey, {
@@ -48,6 +44,14 @@ export function getSupabaseServiceClientForWrite(): SupabaseClient {
       transport: nodeRealtimeTransport
     }
   });
+}
+
+export function getSupabaseServiceClientForWrite(): SupabaseClient {
+  if (!isEnabled(process.env.ENABLE_SUPABASE_WRITES)) {
+    throw new Error("Supabase write mode requires ENABLE_SUPABASE_WRITES=true.");
+  }
+
+  return getSupabaseServiceClient();
 }
 
 export function assertSupabaseWriteGate(writeRequested: boolean) {

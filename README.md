@@ -20,9 +20,9 @@ The project uses public information only. Secrets, API keys, service tokens, coo
 
 ## Current Scope
 
-This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes, and the Phase 8.4 production-safe admin console redesign.
+This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes, the Phase 8.4 production-safe admin console redesign, and Phase 9.5 Supabase Auth/admin route protection foundations.
 
-The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, answer questions against Supabase/local/mock radar evidence, and generate writing seeds with caveats, but it does not run production Supabase writes, enforce hard admin blocking, run scheduled jobs, or generate full daily/weekly reports yet. DeepSeek live calls are opt-in only.
+The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, answer questions against Supabase/local/mock radar evidence, generate writing seeds with caveats, and protect `/admin` routes with server-side Supabase user plus `user_roles` checks. It does not run production Supabase writes, run scheduled jobs, or generate full daily/weekly reports yet. DeepSeek live calls are opt-in only.
 
 ## Design System
 
@@ -64,6 +64,7 @@ npm run supabase:import:sources
 npm run supabase:persist:ingestion
 npm run supabase:persist:understanding
 npm run source-health:dry-run
+npm run auth:bootstrap-admin
 npm run lint
 npm run typecheck
 npm run validate:data
@@ -197,6 +198,14 @@ supabase/migrations/202605140003_public_retrieval_view.sql
 
 The second migration fixes the plain unique constraints required by the dry-run-first persistence upserts. The third migration creates `public.public_radar_items`, a public-safe read view for retrieval. Do not re-run the full skeleton schema against an existing project as a migration substitute.
 
+Phase 9.5 adds a reviewable auth/admin RLS migration:
+
+```bash
+supabase/migrations/202605140004_auth_admin_rls.sql
+```
+
+Apply it manually in the Supabase SQL Editor before expecting browser-authenticated users to read their own profile and role rows. Do not apply it from this task or as part of validation.
+
 Retrieval is server-side and read-only. It uses the public Supabase anon key against the `public_radar_items` view when `ENABLE_SUPABASE_RETRIEVAL=true`; service-role access remains limited to explicit write scripts gated by `--write` plus `ENABLE_SUPABASE_WRITES=true`. The anon key can read only public-safe radar item fields from the view, not raw tables, raw text, model metadata, operational logs, or write surfaces.
 
 Retrieval order for `/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` is:
@@ -209,7 +218,21 @@ Retrieval order for `/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` i
 
 Phase 9.1 adds deployment readiness documentation without deploying the app. Vercel-first hosting, Supabase environment boundaries, pre-deployment checks, smoke checks, rollback steps, and no-deploy blockers are documented in `docs/deployment-hardening.md`.
 
-No scheduled jobs, production Supabase writes, or live DeepSeek job runs are enabled by this phase. The next recommended work is auth/admin route protection and real admin review workflows.
+No scheduled jobs, production Supabase writes, or live DeepSeek job runs are enabled by this phase.
+
+## Phase 9.5 Auth and Admin Protection
+
+Phase 9.5 wires Supabase Email magic links, GitHub OAuth initiation, sanitized auth callbacks, and server-side `/admin` authorization. `/admin` and `/admin/*` require an authenticated Supabase user whose highest role in `user_roles` is `admin`. Unauthenticated users are sent to `/auth/login?next=/admin...`; authenticated non-admin users are sent to `/unauthorized`.
+
+`/ask`, `/write`, `/`, `/radar`, and `/reports` remain public. Navigation is only a convenience surface; server-side role checks enforce admin access.
+
+Bootstrap the first admin only after the admin account has signed in once:
+
+```bash
+npm run auth:bootstrap-admin
+```
+
+The bootstrap script is dry-run by default. Write mode requires `--write`, `ENABLE_SUPABASE_WRITES=true`, `SUPABASE_SERVICE_ROLE_KEY`, and `ADMIN_EMAIL`; it does not create Auth users and does not print the configured email, keys, tokens, or cookies.
 
 ## Environment Variables
 
@@ -226,7 +249,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com
 DEEPSEEK_FAST_MODEL=deepseek-v4-flash
 DEEPSEEK_SMART_MODEL=deepseek-v4-pro
 APP_BASE_URL=
-ADMIN_EMAIL=luosongred@gmail.com
+ADMIN_EMAIL=
 ENABLE_X_API=false
 ENABLE_WECHAT_AUTH=false
 ENABLE_SUPABASE_RETRIEVAL=false
@@ -266,27 +289,29 @@ Mock mode requires no DeepSeek key and is the default for validation and builds.
 - `/admin/ingestion` - source registry to ingestion to understanding to persistence to retrieval chain, local ignored outputs, and separated dry-run/write-gated command documentation
 - `/admin/scoring` - scoring formula, inclusion thresholds, source weight, confidence, and model-authority boundaries
 - `/admin/settings` - boolean-only environment, feature flag, provider, scheduled-job, and secret-boundary status
-- `/auth/login` - Supabase auth setup UI
+- `/unauthorized` - signed-in but insufficient-role page
+- `/auth/login` - Supabase Email magic link and GitHub OAuth sign-in UI
 - `/auth/callback` - Supabase OAuth callback route
+- `/auth/logout` - Supabase sign-out route
 
 ## Supabase Setup
 
 Use `supabase/schema.sql` to create the initial tables and `supabase/seed.sql` for safe synthetic demo rows. See `supabase/README.md`.
 
-The schema covers `users_profile`, `user_roles`, `sources`, source health checks, raw/radar items, event clusters, entities, scores, reports, saved items, annotations, ingestion runs, API usage logs, and system settings. Phase 7 schema changes live in `supabase/migrations/202605140001_phase7_persistence.sql`, `supabase/migrations/202605140002_phase7_upsert_constraints.sql`, and `supabase/migrations/202605140003_public_retrieval_view.sql`.
+The schema covers `users_profile`, `user_roles`, `sources`, source health checks, raw/radar items, event clusters, entities, scores, reports, saved items, annotations, ingestion runs, API usage logs, and system settings. Phase 7 schema changes live in `supabase/migrations/202605140001_phase7_persistence.sql`, `supabase/migrations/202605140002_phase7_upsert_constraints.sql`, and `supabase/migrations/202605140003_public_retrieval_view.sql`. Phase 9.5 auth/admin RLS lives in `supabase/migrations/202605140004_auth_admin_rls.sql`.
 
 ## Auth Setup
 
-Supabase Email and GitHub auth are the first supported providers. Configure them in Supabase, then add:
+Supabase Email magic links are the first supported provider. GitHub OAuth is supported by the UI/code path after the GitHub provider is configured in the Supabase dashboard. Configure provider callbacks in Supabase, then add:
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-ADMIN_EMAIL=luosongred@gmail.com
+ADMIN_EMAIL=
 ```
 
-Roles are `admin`, `editor`, and `viewer`. Phase 2 structures role helpers and admin routes, but hard authorization enforcement should be added in the next implementation phase.
+Roles are `admin`, `editor`, and `viewer`; highest role wins in the order `admin > editor > viewer`. Server-side admin authorization checks the Supabase user and `user_roles`. Service-role access is limited to CLI/server bootstrap and write-gated scripts.
 
 WeChat auth is a placeholder only. Keep `ENABLE_WECHAT_AUTH=false` unless a future phase adds a real supported provider.
 
@@ -322,7 +347,7 @@ npm run build
 - No Supabase insertion from ingestion outputs.
 - Supabase-backed retrieval requires applying the public retrieval view migration before enabling the flag.
 - No automatic live DeepSeek calls.
-- No hard admin route blocking yet.
+- Admin role bootstrap write mode still requires a manual operator approval step and explicit write gates.
 - No working WeChat login.
 - No scheduled production jobs yet.
 - No generated daily/weekly reports.

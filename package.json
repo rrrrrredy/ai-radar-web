@@ -18,6 +18,7 @@
     "supabase:persist:understanding": "tsx scripts/supabase-persist-understanding.ts",
     "source-health:check": "tsx scripts/check-source-health.ts",
     "source-health:dry-run": "tsx scripts/check-source-health.ts --dry-run",
+    "auth:bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
     "validate:data": "tsx scripts/validate-schemas.ts",
     "sensitive:scan": "tsx scripts/sensitive-scan.ts",
     "check:deployment": "npm run lint && npm run typecheck && npm run validate:data && npm run sensitive:scan && npm run build",
@@ -29,6 +30,7 @@
     "next": "^15.5.18",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "server-only": "^0.0.1",
     "ws": "^8.20.1"
   },
   "devDependencies": {

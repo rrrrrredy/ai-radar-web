@@ -29,6 +29,8 @@ Phase 7 Supabase write scripts are dry-run by default. A real write is allowed o
 
 Do not paste Supabase keys into prompts, logs, docs, commits, or command output. `SUPABASE_SERVICE_ROLE_KEY` is read only by the server-side CLI/helper path and must never be imported into client components or browser bundles.
 
+The admin bootstrap path follows the same write boundary. `npm run auth:bootstrap-admin` is dry-run by default; write mode also requires `--write`, `ENABLE_SUPABASE_WRITES=true`, `SUPABASE_SERVICE_ROLE_KEY`, and `ADMIN_EMAIL`. It must not create Auth users or print the configured admin email, keys, tokens, cookies, or raw Supabase errors.
+
 ## Supabase Read Boundary
 
 Server-side retrieval uses the Supabase anon key only against `public.public_radar_items`. That view exposes public-safe radar item fields needed by `/ask` and `/write`, and it does not expose raw text, raw metadata, model metadata, service-role-only tables, operational logs, private notes, write access, or private/internal URLs.
@@ -51,7 +53,9 @@ If a secret or model API key is exposed, rotate or revoke it before live use. Ge
 
 ## Admin Access
 
-Admin functions must require authenticated users with the `admin` role. Editor functions should be limited to source management, manual import, annotations, reports, and review workflows.
+Admin routes must require an authenticated Supabase user with the `admin` role, verified server-side against `users_profile` and `user_roles`. Middleware may redirect unauthenticated visitors for convenience, but it must not be the only authorization layer and must not perform role authorization.
+
+Authenticated non-admin users should land on `/unauthorized`. Public/product routes, including `/ask` and `/write`, remain public unless a future phase explicitly changes that access model. Editor functions should be limited to source management, manual import, annotations, reports, and review workflows.
 
 ## Reporting Issues
 

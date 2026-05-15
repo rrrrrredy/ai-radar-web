@@ -20,7 +20,7 @@ Keep `.env.example` values blank or set to safe defaults. Store real values only
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Optional for mock/local; required for Supabase smoke | Yes | Yes | Public | Yes | Blank | Browser-safe anon key. It must be limited by RLS/view grants and should only read public-safe data. |
 | `SUPABASE_SERVICE_ROLE_KEY` | No, except controlled server write scripts | No, unless approved write workflow exists | No, unless approved write workflow exists | Server-only | No | Blank | Must remain server-only. Never import into client components or expose in browser bundles. |
 | `DEEPSEEK_API_KEY` | No; live mode only | No by default | No by default | Server-only | No | Blank | Must remain server-only. Live DeepSeek requires explicit live mode and a key. |
-| `ADMIN_EMAIL` | Optional | Yes before admin auth | Yes | Server-only | No | Blank or maintainer email | Identifies the initial admin account once auth/route protection is implemented. |
+| `ADMIN_EMAIL` | Optional for public-only local work | Yes before admin bootstrap | Yes | Server-only | No | Blank | Identifies the initial admin account for the dry-run-first bootstrap flow. |
 | `APP_BASE_URL` | Optional | Yes for deployed callbacks/links | Yes | Server-only | No | Blank | Set to the canonical deployment URL when deployed. |
 | `ENABLE_SUPABASE_RETRIEVAL` | Optional | Optional after read-only smoke | Optional after read-only smoke | Server-only flag | No | `false` | May be enabled only after the public retrieval view exists and a read-only smoke test passes. |
 | `ENABLE_SUPABASE_WRITES` | No | No | No by default | Server-only flag | No | `false` | Must stay `false` by default. Supabase writes also require an explicit `--write` command. |
@@ -51,8 +51,12 @@ Rules:
   - `202605140001_phase7_persistence.sql`
   - `202605140002_phase7_upsert_constraints.sql`
   - `202605140003_public_retrieval_view.sql`
+  - `202605140004_auth_admin_rls.sql`
 - A controlled Supabase write has been completed and reviewed before any write-capable production workflow is considered.
 - Read-only Supabase retrieval smoke passed against `public.public_radar_items`.
+- Supabase Email magic links are configured before relying on admin sign-in.
+- GitHub OAuth is configured in the Supabase dashboard before presenting it as a working provider.
+- The initial admin has signed in once and `npm run auth:bootstrap-admin` dry-run reports that the Auth user can be found.
 - `npm run lint`, `npm run typecheck`, `npm run validate:data`, `npm run sensitive:scan`, and `npm run build` passed.
 - Mock API smoke passed for `/api/ask` and `/api/writing-assistant`.
 - Admin write-gate language is visible on admin surfaces.
@@ -65,7 +69,8 @@ Run these after a preview deployment is created in a future phase. Keep generati
 - Homepage loads.
 - `/ask` loads.
 - `/write` loads.
-- `/admin` is either protected or clearly labeled as non-production if auth is not implemented yet.
+- `/admin` redirects unauthenticated visitors to `/auth/login?next=/admin`.
+- Authenticated non-admin users land on `/unauthorized`.
 - `POST /api/ask` works with `generationMode: "mock"`.
 - `POST /api/writing-assistant` works with `generationMode: "mock"`.
 - Optional Supabase read-only retrieval smoke passes with `ENABLE_SUPABASE_RETRIEVAL=true`.
@@ -91,5 +96,6 @@ Do not deploy when any of these are true:
 - The sensitive scan fails.
 - Admin UI implies writes without auth and authorization.
 - Required migrations have not been applied.
+- The auth/admin RLS migration has not been reviewed and applied before admin role checks are expected to work.
 - `public.public_radar_items` is missing.
 - A scheduled write job is enabled without explicit approval.

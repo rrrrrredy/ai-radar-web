@@ -27,10 +27,15 @@ For a new project, apply `supabase/schema.sql` and use `supabase/seed.sql` only 
 supabase/migrations/202605140001_phase7_persistence.sql
 supabase/migrations/202605140002_phase7_upsert_constraints.sql
 supabase/migrations/202605140003_public_retrieval_view.sql
+supabase/migrations/202605140004_auth_admin_rls.sql
 ```
 
 The public anon key should read only `public.public_radar_items`. The service role key must remain server-only and must not be exposed to browser code.
 
+Enable Email magic links in Supabase first. Configure GitHub OAuth manually in the Supabase dashboard before relying on the GitHub button. WeChat auth remains a disabled placeholder.
+
+After applying the auth/admin RLS migration, the initial admin must sign in once with the configured `ADMIN_EMAIL`, then run `npm run auth:bootstrap-admin` as a dry-run. A later explicitly approved write can run `npm run auth:bootstrap-admin -- --write` with `ENABLE_SUPABASE_WRITES=true`.
+
 ## Deferred Work
 
-Scheduled jobs, scheduled persistence, live DeepSeek in jobs, hard admin route protection, and admin review workflows are deferred to later Phase 9 work. Keep all scheduler flags disabled until explicitly approved.
+Scheduled jobs, scheduled persistence, live DeepSeek in jobs, and admin review workflows are deferred to later Phase 9 work. Keep all scheduler flags disabled until explicitly approved.

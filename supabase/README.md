@@ -12,7 +12,7 @@ This folder contains the Phase 2 database skeleton and later reviewable migratio
 The seed data uses only `https://example.com` demo URLs. It contains no private
 sources, credentials, or internal links.
 
-## Phase 7 Migration
+## Migrations
 
 For an existing project that already has the Phase 2 schema, apply these
 migrations in order:
@@ -21,6 +21,7 @@ migrations in order:
 supabase/migrations/202605140001_phase7_persistence.sql
 supabase/migrations/202605140002_phase7_upsert_constraints.sql
 supabase/migrations/202605140003_public_retrieval_view.sql
+supabase/migrations/202605140004_auth_admin_rls.sql
 ```
 
 The first migration adds nullable source URLs, cleaned-registry fields, source
@@ -31,6 +32,12 @@ persistence upserts. The third migration creates `public.public_radar_items`,
 the only Supabase read surface used by server-side anon retrieval. Review and
 apply them as ALTER migrations; do not use a full schema rerun as the migration
 path.
+
+The Phase 9.5 auth/admin migration enables RLS for `users_profile` and
+`user_roles`, revokes anon access, grants authenticated users read access to
+their own profile/role rows, and leaves role writes to service-role/server
+bootstrap paths. Review and apply it manually; do not run it as part of app
+validation.
 
 ## Public Retrieval View
 
@@ -54,7 +61,7 @@ Add these values locally and in deployment environments:
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-ADMIN_EMAIL=luosongred@gmail.com
+ADMIN_EMAIL=
 ENABLE_SUPABASE_RETRIEVAL=false
 ENABLE_SUPABASE_WRITES=false
 ```
@@ -68,17 +75,28 @@ they use the service-role client.
 Enable Email auth first. Enable GitHub OAuth in Supabase when a GitHub OAuth app
 is configured.
 
-WeChat auth is a placeholder only in Phase 2. Keep `ENABLE_WECHAT_AUTH=false`
+WeChat auth is a placeholder only. Keep `ENABLE_WECHAT_AUTH=false`
 unless a future phase adds a real supported provider flow and credentials.
 
 ## Role Setup
 
-The intended bootstrap admin is:
+Set `ADMIN_EMAIL` in the server environment. The admin account must sign in once
+through Supabase Auth before bootstrap can find it.
+
+Run the dry-run bootstrap first:
 
 ```bash
-ADMIN_EMAIL=luosongred@gmail.com
+npm run auth:bootstrap-admin
 ```
 
-After the first admin signs in, create a matching `users_profile` row and assign
-the `admin` role in `user_roles`. Future migrations can automate this with a
-server-side bootstrap script.
+Write mode requires all of these gates:
+
+```bash
+ENABLE_SUPABASE_WRITES=true
+SUPABASE_SERVICE_ROLE_KEY=<server-only value>
+ADMIN_EMAIL=<admin email>
+npm run auth:bootstrap-admin -- --write
+```
+
+The script does not create Auth users and does not print the configured email,
+keys, tokens, or cookies.

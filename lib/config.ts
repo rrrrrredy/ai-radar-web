@@ -29,7 +29,7 @@ export function getAppConfig(): AppConfig {
 
   return {
     appBaseUrl: process.env.APP_BASE_URL || "http://localhost:3000",
-    adminEmail: process.env.ADMIN_EMAIL || "luosongred@gmail.com",
+    adminEmail: process.env.ADMIN_EMAIL || "",
     featureFlags: {
       enableXApi: isEnabled(process.env.ENABLE_X_API),
       enableWechatAuth: isEnabled(process.env.ENABLE_WECHAT_AUTH),

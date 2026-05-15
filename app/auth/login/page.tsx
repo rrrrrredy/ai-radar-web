@@ -1,19 +1,38 @@
+import { redirect } from "next/navigation";
+
+import { sanitizeNextPath } from "@/lib/auth/redirects";
 import { getAuthProviders } from "@/lib/auth/providers";
 import { getAppConfig } from "@/lib/config";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
 
-export default function LoginPage() {
+type LoginPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const params = (await searchParams) ?? {};
+  const next = sanitizeNextPath(readParam(params.next), "/");
+  const status = readParam(params.status);
   const config = getAppConfig();
   const providers = getAuthProviders();
+  const statusMessage = loginStatusMessage(status);
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <section>
         <h1 className="text-3xl font-semibold text-radar-ink">Sign in</h1>
         <p className="mt-3 text-sm leading-6 text-radar-muted">
-          Supabase Email and GitHub auth are the first supported providers. WeChat
-          is a feature-flagged placeholder and is not presented as working login.
+          Supabase Email magic links and GitHub OAuth are the supported sign-in
+          paths for editors and admins. Public routes, Ask, and Write remain
+          available without signing in.
         </p>
       </section>
+
+      {statusMessage ? (
+        <div className={`rounded-lg border p-4 text-sm leading-6 ${statusMessage.className}`}>
+          {statusMessage.message}
+        </div>
+      ) : null}
 
       {!config.supabase.isConfigured ? (
         <div className="rounded-lg border border-radar-line bg-radar-panel p-5 text-sm leading-6 text-radar-muted">
@@ -24,22 +43,28 @@ export default function LoginPage() {
       ) : null}
 
       <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
-        <label className="block">
+        <form action={sendMagicLink} className="space-y-4">
+          <input name="next" type="hidden" value={next} />
+          <label className="block" htmlFor="email">
           <span className="text-sm font-semibold text-radar-ink">Email</span>
           <input
             className="mt-2 w-full rounded-md border border-radar-line px-3 py-2 text-sm text-radar-ink"
             disabled={!config.supabase.isConfigured}
+            id="email"
+            name="email"
             placeholder="you@example.com"
+            required
             type="email"
           />
         </label>
         <button
-          className="mt-4 rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          disabled
-          type="button"
+            className="rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!config.supabase.isConfigured}
+            type="submit"
         >
-          Email sign-in placeholder
+            Send magic link
         </button>
+        </form>
       </section>
 
       <section className="space-y-3">
@@ -50,13 +75,153 @@ export default function LoginPage() {
                 <h2 className="font-semibold text-radar-ink">{provider.label}</h2>
                 <p className="mt-1 text-sm text-radar-muted">{provider.description}</p>
               </div>
-              <span className="rounded-md bg-radar-panel px-2 py-1 text-xs font-medium text-radar-muted">
-                {provider.status}
-              </span>
+              {provider.id === "github" ? (
+                <form action={startGithubOAuth}>
+                  <input name="next" type="hidden" value={next} />
+                  <button
+                    className="rounded-md border border-radar-line px-3 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={provider.status !== "ready"}
+                    type="submit"
+                  >
+                    Continue with GitHub
+                  </button>
+                </form>
+              ) : (
+                <span className="rounded-md bg-radar-panel px-2 py-1 text-xs font-medium text-radar-muted">
+                  {provider.id === "wechat" ? "placeholder disabled" : provider.status}
+                </span>
+              )}
             </div>
           </div>
         ))}
       </section>
     </div>
   );
+}
+
+async function sendMagicLink(formData: FormData) {
+  "use server";
+
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const next = sanitizeNextPath(String(formData.get("next") ?? "/"), "/");
+  const config = getAppConfig();
+
+  if (!config.supabase.isConfigured) {
+    redirect(loginPath("supabase-not-configured", next));
+  }
+
+  if (!isValidEmail(email)) {
+    redirect(loginPath("invalid-email", next));
+  }
+
+  const supabase = await getSupabaseServerClient();
+
+  if (!supabase) {
+    redirect(loginPath("supabase-not-configured", next));
+  }
+
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: authCallbackUrl(next),
+      shouldCreateUser: true
+    }
+  });
+
+  if (error) {
+    redirect(loginPath("auth-error", next));
+  }
+
+  redirect(loginPath("magic-link-sent", next));
+}
+
+async function startGithubOAuth(formData: FormData) {
+  "use server";
+
+  const next = sanitizeNextPath(String(formData.get("next") ?? "/"), "/");
+  const config = getAppConfig();
+
+  if (!config.supabase.isConfigured) {
+    redirect(loginPath("supabase-not-configured", next));
+  }
+
+  const supabase = await getSupabaseServerClient();
+
+  if (!supabase) {
+    redirect(loginPath("supabase-not-configured", next));
+  }
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "github",
+    options: {
+      redirectTo: authCallbackUrl(next)
+    }
+  });
+
+  if (error || !data.url) {
+    redirect(loginPath("auth-error", next));
+  }
+
+  redirect(data.url);
+}
+
+function authCallbackUrl(next: string) {
+  const callback = new URL("/auth/callback", getAppConfig().appBaseUrl);
+  callback.searchParams.set("next", sanitizeNextPath(next));
+
+  return callback.toString();
+}
+
+function loginPath(status: string, next: string) {
+  const params = new URLSearchParams({
+    next: sanitizeNextPath(next),
+    status
+  });
+
+  return `/auth/login?${params.toString()}`;
+}
+
+function loginStatusMessage(status: string | null) {
+  switch (status) {
+    case "magic-link-sent":
+      return {
+        className: "border-radar-evidence/30 bg-radar-evidence/5 text-radar-ink",
+        message: "Magic link sent. Check the inbox for the configured Supabase Auth account."
+      };
+    case "signed-out":
+      return {
+        className: "border-radar-line bg-radar-panel text-radar-muted",
+        message: "Signed out."
+      };
+    case "missing-code":
+    case "auth-error":
+      return {
+        className: "border-radar-risk/30 bg-radar-risk/5 text-radar-risk",
+        message: "The sign-in callback could not be completed. Start a new sign-in request."
+      };
+    case "invalid-email":
+      return {
+        className: "border-radar-caution/30 bg-radar-caution/5 text-radar-caution",
+        message: "Enter a valid email address."
+      };
+    case "supabase-not-configured":
+      return {
+        className: "border-radar-caution/30 bg-radar-caution/5 text-radar-caution",
+        message: "Supabase Auth is not configured in this environment."
+      };
+    default:
+      return null;
+  }
+}
+
+function readParam(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+
+  return value ?? null;
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
