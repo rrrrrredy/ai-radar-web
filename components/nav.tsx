@@ -17,7 +17,7 @@ const publicNavItems = [
 
 const adminNavItem = { href: "/admin", label: "Ops/Admin" };
 
-export function Nav() {
+export function Nav({ isSignedIn = false }: { isSignedIn?: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -34,12 +34,26 @@ export function Nav() {
           </Link>
           <div className="flex items-center gap-3">
             <LanguageToggle />
-            <Link
-              className="rounded-md border border-radar-line px-3 py-2 text-sm font-medium text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
-              href="/auth/login"
-            >
-              Sign in
-            </Link>
+            {isSignedIn ? (
+              <div className="flex items-center gap-2">
+                <span className="rounded-md border border-radar-evidence/30 bg-radar-evidence/10 px-3 py-2 text-sm font-medium text-radar-evidence">
+                  Signed in
+                </span>
+                <a
+                  className="rounded-md border border-radar-line px-3 py-2 text-sm font-medium text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
+                  href="/auth/logout"
+                >
+                  Sign out
+                </a>
+              </div>
+            ) : (
+              <Link
+                className="rounded-md border border-radar-line px-3 py-2 text-sm font-medium text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
+                href="/auth/login"
+              >
+                Sign in
+              </Link>
+            )}
           </div>
         </div>
         <nav
