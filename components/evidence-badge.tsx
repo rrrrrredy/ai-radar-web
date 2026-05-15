@@ -1,4 +1,9 @@
-type EvidenceBadgeKind = "evidence" | "freshness" | "uncertainty" | "citation" | "needs_review";
+export type EvidenceBadgeKind =
+  | "evidence"
+  | "freshness"
+  | "uncertainty"
+  | "citation"
+  | "needs_review";
 
 const kindClasses: Record<EvidenceBadgeKind, string> = {
   evidence: "border-radar-evidence/30 bg-radar-evidence/10 text-radar-evidence",
@@ -9,16 +14,19 @@ const kindClasses: Record<EvidenceBadgeKind, string> = {
 };
 
 export function EvidenceBadge({
+  ariaLabel,
   label,
   kind = "evidence",
   detail
 }: {
+  ariaLabel?: string;
   label: string;
   kind?: EvidenceBadgeKind;
   detail?: string;
 }) {
   return (
     <span
+      aria-label={ariaLabel}
       className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-semibold ${kindClasses[kind]}`}
     >
       <span>{label}</span>

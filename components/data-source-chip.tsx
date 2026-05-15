@@ -1,4 +1,9 @@
-type DataSource = "supabase_radar_items" | "local_understanding_output" | "mock_data" | "empty" | "unknown";
+export type DataSource =
+  | "supabase_radar_items"
+  | "local_understanding_output"
+  | "mock_data"
+  | "empty"
+  | "unknown";
 
 const sourceLabels: Record<DataSource, string> = {
   supabase_radar_items: "Supabase",
@@ -17,14 +22,17 @@ const sourceClasses: Record<DataSource, string> = {
 };
 
 export function DataSourceChip({
+  ariaLabel,
   source,
   detail
 }: {
+  ariaLabel?: string;
   source: DataSource;
   detail?: string;
 }) {
   return (
     <span
+      aria-label={ariaLabel}
       className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-semibold ${sourceClasses[source]}`}
     >
       <span>Data: {sourceLabels[source]}</span>

@@ -44,3 +44,17 @@ Phase 8.2, 8.3, and 8.4 should redesign surfaces deliberately after the foundati
 - Phase 8.4: admin console density, write gates, source/review operations, and table ergonomics.
 
 The Phase 8.1 foundation intentionally avoids broad page redesigns.
+
+## Phase 8.2 Product Shell and Homepage Decisions
+
+### Homepage Becomes the Public Editorial Desk
+
+The `/` route now carries the public product direction instead of a generic skeleton hero. The first viewport prioritizes the product name, the three core intelligence questions, and a compact product contract surface for public-only data, freshness, uncertainty, live-model gating, and write/job gating.
+
+### Data Source Disclosure Is Route-Level
+
+The homepage preview labels itself as mock data, but it does not add global Supabase/local/mock noise to the shell. Ask and Write remain responsible for disclosing the actual route-level retrieval source: Supabase public view when enabled, local understanding output when present, or mock fallback.
+
+### Admin Is Distinguished Without a New Sidebar
+
+Admin remains in the top navigation, but it is visually grouped as operations. This keeps route names stable and avoids introducing an admin sidebar before the broader admin console redesign.

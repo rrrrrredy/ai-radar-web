@@ -1,4 +1,4 @@
-type StatusTone =
+export type StatusTone =
   | "neutral"
   | "evidence"
   | "freshness"
@@ -18,11 +18,13 @@ const toneClasses: Record<StatusTone, string> = {
 };
 
 export function StatusChip({
+  ariaLabel,
   label,
   tone = "neutral",
   value,
   title
 }: {
+  ariaLabel?: string;
   label: string;
   tone?: StatusTone;
   value?: string | number;
@@ -30,6 +32,7 @@ export function StatusChip({
 }) {
   return (
     <span
+      aria-label={ariaLabel}
       className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-semibold ${toneClasses[tone]}`}
       title={title}
     >

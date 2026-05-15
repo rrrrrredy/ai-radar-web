@@ -20,7 +20,7 @@ The project uses public information only. Secrets, API keys, service tokens, coo
 
 ## Current Scope
 
-This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, and a Phase 7 dry-run-first Supabase persistence layer.
+This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, and a Phase 8 public product shell/homepage design pass.
 
 The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, answer questions against Supabase/local/mock radar evidence, and generate writing seeds with caveats, but it does not run production Supabase writes, enforce hard admin blocking, run scheduled jobs, or generate full daily/weekly reports yet. DeepSeek live calls are opt-in only.
 
@@ -246,7 +246,7 @@ Mock mode requires no DeepSeek key and is the default for validation and builds.
 
 ## App Routes
 
-- `/` - public Today homepage and mock radar preview
+- `/` - public Editorial Intelligence Desk homepage and mock radar preview
 - `/radar` - radar list with static filter UI
 - `/clusters` - synthetic event clusters
 - `/entities` - synthetic entity cards
@@ -325,6 +325,6 @@ npm run build
 
 ## Next Phases
 
-- Phase 7: Supabase persistence and source health checks
-- Phase 8: scheduled jobs and deployment
-- Phase 9: admin review workflows
+- Phase 8.3: Ask and Write response anatomy, citation visibility, and uncertainty states
+- Phase 8.4: admin console density, write gates, source/review operations, and table ergonomics
+- Phase 9: scheduled jobs, deployment hardening, and admin review workflows
