@@ -2,42 +2,17 @@
 
 import { useState } from "react";
 
-type Citation = {
-  id: string;
-  title: string;
-  source_name: string;
-  url: string;
-  published_at?: string;
-  collected_at: string;
-  status: string;
-  confidence: number;
-};
+import { AnswerSection } from "@/components/answer-section";
+import { CitationList } from "@/components/citation-list";
+import { DataSourceChip } from "@/components/data-source-chip";
+import { EvidenceBadge } from "@/components/evidence-badge";
+import { EvidenceRail } from "@/components/evidence-rail";
+import { StatusChip } from "@/components/status-chip";
+import { TopicCandidateCard } from "@/components/topic-candidate-card";
+import type { WritingAssistantOutput } from "@/lib/writing-assistant/types";
 
-type CandidateTopic = {
-  title: string;
-  neutral_summary: string;
-  why_it_matters: string;
-  evidence: string[];
-  caveats: string[];
-  suggested_angle: string;
-  confidence: number;
-  citations: Citation[];
-};
-
-type WritingResponse = {
-  mode: "mock" | "live";
-  query: string;
-  resolved_time_window: {
-    start: string;
-    end: string;
-    explanation: string;
-  };
-  data_source: "supabase_radar_items" | "local_understanding_output" | "mock_data" | "empty";
-  candidate_topics: CandidateTopic[];
-  counterpoints: string[];
-  missing_evidence: string[];
-  citations: Citation[];
-};
+const WRITING_AUDIENCE = "AI practitioners";
+const WRITING_OUTPUT_TYPE = "topic_candidates";
 
 const suggestedPrompts = [
   "帮我从今天热点里挑5条适合写行业观察的内容。",
@@ -47,7 +22,7 @@ const suggestedPrompts = [
 
 export default function WritePage() {
   const [query, setQuery] = useState(suggestedPrompts[0]);
-  const [output, setOutput] = useState<WritingResponse | null>(null);
+  const [output, setOutput] = useState<WritingAssistantOutput | null>(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -64,18 +39,18 @@ export default function WritePage() {
         body: JSON.stringify({
           query,
           language: "zh",
-          audience: "AI practitioners",
-          outputType: "topic_candidates",
+          audience: WRITING_AUDIENCE,
+          outputType: WRITING_OUTPUT_TYPE,
           generationMode: "mock"
         })
       });
-      const body = (await response.json()) as WritingResponse | { error?: string };
+      const body = (await response.json()) as WritingAssistantOutput | { error?: string };
 
       if (!response.ok) {
         throw new Error("error" in body && body.error ? body.error : "Request failed.");
       }
 
-      setOutput(body as WritingResponse);
+      setOutput(body as WritingAssistantOutput);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to generate writing assistance.");
       setOutput(null);
@@ -86,55 +61,97 @@ export default function WritePage() {
 
   return (
     <div className="space-y-8">
-      <section>
-        <h1 className="text-3xl font-semibold text-radar-ink">Write</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-          Generate evidence-bound writing seeds from local radar items. Phase 6
-          returns candidate topics, caveats, and citations without requiring a
-          DeepSeek key.
-        </p>
+      <section className="grid gap-6 border-b border-radar-line pb-8 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div>
+          <h1 className="text-3xl font-semibold text-radar-ink">Write</h1>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
+            Build editorial topic candidates from retrieved radar evidence. The
+            writing surface treats caveats, counterpoints, and missing evidence
+            as part of the plan rather than cleanup notes.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <DataSourceChip detail="default fallback disclosed in output" source="mock_data" />
+            <EvidenceBadge detail="topic evidence trails" kind="evidence" label="Evidence" />
+            <EvidenceBadge detail="shown as sections" kind="uncertainty" label="Gaps" />
+            <StatusChip label="Live DeepSeek" tone="caution" value="opt-in" />
+          </div>
+        </div>
+
+        <aside className="border-l border-radar-line pl-6 max-lg:border-l-0 max-lg:border-t max-lg:pl-0 max-lg:pt-5">
+          <h2 className="text-sm font-semibold uppercase tracking-normal text-radar-muted">
+            Planning output order
+          </h2>
+          <ol className="mt-3 space-y-2 text-sm leading-6 text-radar-muted">
+            {[
+              "Data source and time window",
+              "Candidate topics",
+              "Counterpoints",
+              "Missing evidence",
+              "Citations"
+            ].map((item, index) => (
+              <li className="flex gap-3" key={item}>
+                <span className="font-mono text-xs font-semibold text-radar-muted">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ol>
+        </aside>
       </section>
 
-      <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
-        <label className="block">
-          <span className="text-sm font-semibold text-radar-ink">Writing prompt</span>
-          <textarea
-            className="mt-3 min-h-32 w-full resize-y rounded-md border border-radar-line px-3 py-3 text-sm leading-6 text-radar-ink outline-none focus:border-radar-cyan"
-            onChange={(event) => setQuery(event.target.value)}
-            value={query}
-          />
-        </label>
+      <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
+          <label className="block" htmlFor="write-query">
+            <span className="text-sm font-semibold text-radar-ink">Writing prompt</span>
+            <textarea
+              className="mt-3 min-h-28 w-full resize-y rounded-md border border-radar-line px-3 py-3 text-sm leading-6 text-radar-ink outline-none focus:border-radar-evidence"
+              id="write-query"
+              onChange={(event) => setQuery(event.target.value)}
+              value={query}
+            />
+          </label>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          {suggestedPrompts.map((prompt) => (
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm leading-6 text-radar-muted">
+              Suggestions are generated from retrieved evidence and caveats, not from unstated facts.
+            </p>
             <button
-              className="rounded-md border border-radar-line px-3 py-2 text-xs font-medium text-radar-muted hover:border-radar-cyan hover:text-radar-cyan"
-              key={prompt}
-              onClick={() => setQuery(prompt)}
+              className="rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isLoading || !query.trim()}
+              onClick={generate}
               type="button"
             >
-              {prompt}
+              {isLoading ? "Generating..." : "Generate seeds"}
             </button>
-          ))}
+          </div>
         </div>
 
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-radar-muted">
-            Suggestions are generated from retrieved evidence and caveats, not from unstated facts.
+        <aside className="rounded-lg border border-radar-line bg-radar-panel p-4">
+          <h2 className="text-sm font-semibold text-radar-ink">Industry observation workflows</h2>
+          <p className="mt-2 text-xs leading-5 text-radar-muted">
+            Each shortcut fills the same prompt field and keeps mock generation as the default.
           </p>
-          <button
-            className="rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={isLoading || !query.trim()}
-            onClick={generate}
-            type="button"
-          >
-            {isLoading ? "Generating..." : "Generate seeds"}
-          </button>
-        </div>
+          <div className="mt-4 space-y-2">
+            {suggestedPrompts.map((prompt, index) => (
+              <button
+                className="w-full rounded-md border border-radar-line bg-white px-3 py-3 text-left text-sm leading-6 text-radar-ink hover:border-radar-evidence focus:border-radar-evidence"
+                key={prompt}
+                onClick={() => setQuery(prompt)}
+                type="button"
+              >
+                <span className="mr-2 font-mono text-xs font-semibold text-radar-muted">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                {prompt}
+              </button>
+            ))}
+          </div>
+        </aside>
       </section>
 
       {error ? (
-        <section className="rounded-lg border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+        <section className="rounded-lg border border-radar-risk/30 bg-radar-risk/5 p-5 text-sm leading-6 text-radar-risk">
           {error}
         </section>
       ) : null}
@@ -144,87 +161,104 @@ export default function WritePage() {
   );
 }
 
-function WritingOutputView({ output }: { output: WritingResponse }) {
+function WritingOutputView({ output }: { output: WritingAssistantOutput }) {
   return (
-    <section className="space-y-5">
-      <div className="rounded-lg border border-radar-line bg-radar-panel p-4 text-sm leading-6 text-radar-muted">
-        Data source: {output.data_source}. {output.resolved_time_window.explanation} Window:{" "}
-        {output.resolved_time_window.start} to {output.resolved_time_window.end}.
-      </div>
+    <section aria-label="Writing assistant output" className="space-y-5">
+      <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
+        <EvidenceRail
+          citationsCount={output.citations.length}
+          context={[
+            { label: "Audience", value: WRITING_AUDIENCE },
+            { label: "Output type", value: WRITING_OUTPUT_TYPE },
+            { label: "Query", value: output.query }
+          ]}
+          dataSource={output.data_source}
+          generationMode={output.mode}
+          itemCount={output.candidate_topics.length}
+          itemCountLabel="Candidate topics"
+          modelMetadata={output.model_metadata}
+          timeWindow={output.resolved_time_window}
+          title="Data source and time window"
+        />
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        {output.candidate_topics.length > 0 ? (
-          output.candidate_topics.map((topic) => (
-            <article className="rounded-lg border border-radar-line bg-white p-5 shadow-soft" key={topic.title}>
-              <div className="flex flex-wrap gap-2">
-                <span className="rounded-md bg-radar-panel px-2 py-1 text-xs font-medium text-radar-muted">
-                  confidence {Math.round(topic.confidence * 100)}%
-                </span>
+        <div className="space-y-5">
+          <section className="space-y-4">
+            <div className="max-w-3xl">
+              <h2 className="text-lg font-semibold text-radar-ink">Candidate topics</h2>
+              <p className="mt-2 text-sm leading-6 text-radar-muted">
+                Topic candidates are drafts for editorial judgment, not confirmed conclusions.
+              </p>
+            </div>
+            {output.candidate_topics.length > 0 ? (
+              <div className="grid gap-4 xl:grid-cols-2">
+                {output.candidate_topics.map((topic, index) => (
+                  <TopicCandidateCard
+                    counterpoints={output.counterpoints}
+                    index={index}
+                    key={topic.title}
+                    missingEvidence={output.missing_evidence}
+                    topic={topic}
+                  />
+                ))}
               </div>
-              <h2 className="mt-4 text-lg font-semibold leading-7 text-radar-ink">{topic.title}</h2>
-              <p className="mt-3 text-sm leading-6 text-radar-muted">{topic.neutral_summary}</p>
-              <p className="mt-4 text-sm font-semibold text-radar-ink">Why it matters</p>
-              <p className="mt-2 text-sm leading-6 text-radar-muted">{topic.why_it_matters}</p>
-              <ListBlock title="Evidence" items={topic.evidence} />
-              <ListBlock title="Caveats" items={topic.caveats} />
-              <p className="mt-4 text-sm font-semibold text-radar-ink">Suggested angle</p>
-              <p className="mt-2 text-sm leading-6 text-radar-muted">{topic.suggested_angle}</p>
-              {topic.citations.length > 0 ? (
-                <div className="mt-4 space-y-2">
-                  {topic.citations.map((citation) => (
-                    <a
-                      className="block text-sm font-medium text-radar-cyan"
-                      href={citation.url}
-                      key={citation.id}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      {citation.source_name}: {citation.title}
-                    </a>
-                  ))}
-                </div>
-              ) : null}
-            </article>
-          ))
-        ) : (
-          <div className="rounded-lg border border-radar-line bg-white p-5 text-sm text-radar-muted shadow-soft">
-            No candidate topics could be generated from the current retrieval result.
-          </div>
-        )}
-      </section>
+            ) : (
+              <p className="rounded-md border border-radar-caution/30 bg-radar-caution/5 px-3 py-3 text-sm leading-6 text-radar-caution">
+                No candidate topics could be generated from the current retrieval result.
+              </p>
+            )}
+          </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <ListPanel title="Counterpoints" items={output.counterpoints} />
-        <ListPanel title="Missing evidence" items={output.missing_evidence} />
-      </section>
+          <PlanningList
+            description="Reasons a proposed angle may not yet hold up."
+            empty="No counterpoints were returned."
+            items={output.counterpoints}
+            title="Counterpoints"
+          />
+          <PlanningList
+            description="Evidence gaps are explicit work items before publication."
+            empty="No missing-evidence notes were returned."
+            items={output.missing_evidence}
+            title="Missing evidence"
+          />
+
+          <CitationList
+            citations={output.citations}
+            emptyMessage="No citations available for this writing output."
+            title="Citations"
+          />
+        </div>
+      </div>
     </section>
   );
 }
 
-function ListBlock({ title, items }: { title: string; items: string[] }) {
+function PlanningList({
+  description,
+  empty,
+  items,
+  title
+}: {
+  description: string;
+  empty: string;
+  items: string[];
+  title: string;
+}) {
   return (
-    <div className="mt-4">
-      <p className="text-sm font-semibold text-radar-ink">{title}</p>
-      <ul className="mt-2 space-y-2 text-sm leading-6 text-radar-muted">
-        {items.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function ListPanel({ title, items }: { title: string; items: string[] }) {
-  return (
-    <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
-      <h2 className="text-lg font-semibold text-radar-ink">{title}</h2>
-      <ul className="mt-4 space-y-3 text-sm leading-6 text-radar-muted">
-        {items.map((item) => (
-          <li className="rounded-md bg-radar-panel px-3 py-3" key={item}>
-            {item}
-          </li>
-        ))}
-      </ul>
-    </section>
+    <AnswerSection description={description} title={title} tone="caution">
+      {items.length > 0 ? (
+        <ul className="space-y-3">
+          {items.map((item) => (
+            <li
+              className="rounded-md border border-radar-caution/25 bg-radar-caution/5 px-3 py-3 text-sm leading-6 text-radar-muted"
+              key={item}
+            >
+              {item}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm leading-6 text-radar-muted">{empty}</p>
+      )}
+    </AnswerSection>
   );
 }

@@ -58,3 +58,17 @@ The homepage preview labels itself as mock data, but it does not add global Supa
 ### Admin Is Distinguished Without a New Sidebar
 
 Admin remains in the top navigation, but it is visually grouped as operations. This keeps route names stable and avoids introducing an admin sidebar before the broader admin console redesign.
+
+## Phase 8.3 Ask and Write Response Surface Decisions
+
+### Data Source Comes Before Synthesis
+
+`/ask` and `/write` now use a shared evidence rail so the rendered response discloses data source, resolved time window, citation count, generation mode, model status, and fallback caveats before the answer or candidate topics.
+
+### Citations and Uncertainty Are Response Anatomy
+
+Ask separates short answer, facts, evidence-backed inference, uncertainty, and citations. Write separates candidate topics, counterpoints, missing evidence, and citations. Missing evidence is treated as a planning feature instead of a failure state.
+
+### Review States Stay Cautious
+
+`needs_review`, mock data, local-only output, stale coverage, and disabled live-model paths use caution language and never receive confirmed or success-style treatment.

@@ -20,7 +20,7 @@ The project uses public information only. Secrets, API keys, service tokens, coo
 
 ## Current Scope
 
-This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, and a Phase 8 public product shell/homepage design pass.
+This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, an admin dashboard skeleton, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, and Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes.
 
 The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, answer questions against Supabase/local/mock radar evidence, and generate writing seeds with caveats, but it does not run production Supabase writes, enforce hard admin blocking, run scheduled jobs, or generate full daily/weekly reports yet. DeepSeek live calls are opt-in only.
 
@@ -28,7 +28,7 @@ The implementation is intentionally an application foundation, not the full prod
 
 `DESIGN.md` is the canonical design contract for AI Industry Radar. Public/product pages should follow the Editorial Intelligence Desk direction, while admin pages should follow the Production-safe Analyst Console direction.
 
-Evidence, freshness, and uncertainty are core UI surfaces, not decorative metadata. Future visual work should make citations, time windows, data source, confidence, and review status visible before or beside synthesis, and should follow `DESIGN.md` before redesigning route layouts.
+Evidence, freshness, and uncertainty are core UI surfaces, not decorative metadata. Ask and Write use shared evidence rail and citation anatomy so data source, time windows, confidence, review status, and missing evidence are visible before or beside synthesis. Future route redesigns should follow `DESIGN.md` before changing layouts.
 
 ## Stack
 
@@ -251,8 +251,8 @@ Mock mode requires no DeepSeek key and is the default for validation and builds.
 - `/clusters` - synthetic event clusters
 - `/entities` - synthetic entity cards
 - `/reports` - report placeholders that explain the Phase 6 retrieval and writing foundation
-- `/ask` - retrieval-backed Q&A over Supabase/local/mock radar-item evidence
-- `/write` - evidence-bound writing assistant seeds and caveats over Supabase/local/mock evidence
+- `/ask` - retrieval-backed Q&A over Supabase/local/mock radar-item evidence with evidence rail, uncertainty, and citation surfaces
+- `/write` - evidence-bound writing assistant seeds, counterpoints, missing evidence, and citations over Supabase/local/mock evidence
 - `/api/ask` - structured Q&A JSON API, mock/local by default
 - `/api/writing-assistant` - structured writing-assistant JSON API, mock/local by default
 - `/admin` - admin dashboard skeleton
@@ -325,6 +325,5 @@ npm run build
 
 ## Next Phases
 
-- Phase 8.3: Ask and Write response anatomy, citation visibility, and uncertainty states
 - Phase 8.4: admin console density, write gates, source/review operations, and table ergonomics
 - Phase 9: scheduled jobs, deployment hardening, and admin review workflows
