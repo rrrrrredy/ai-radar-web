@@ -64,10 +64,15 @@ enabling Phase 7 persistence writes:
 ```bash
 supabase/migrations/202605140001_phase7_persistence.sql
 supabase/migrations/202605140002_phase7_upsert_constraints.sql
+supabase/migrations/202605140003_public_retrieval_view.sql
 ```
 
 The second migration fixes the plain unique constraints required by the
-dry-run-first persistence upserts.
+dry-run-first persistence upserts. The third migration creates
+`public.public_radar_items`, the public-safe read view used by server-side anon
+retrieval. The anon key should read that view only; do not grant anon access to
+raw tables, write tables, raw text, raw metadata, model metadata, or operational
+logs.
 
 Required deployment variables:
 

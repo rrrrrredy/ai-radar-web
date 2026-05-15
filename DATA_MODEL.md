@@ -50,6 +50,14 @@ Phase 5 local JSON fields: `id`, `raw_item_id`, `source_id`, `source_name`, `tit
 
 Phase 7 database fields add: `local_id`, `source_id`, `source_name`, `url`, `published_at`, `collected_at`, `processed_at`, `language`, `ai_relevance_score`, `freshness_score`, `overall_score`, `categories`, `tags`, `source_tier`, `source_weight`, `confidence`, `understanding_status`, `exclusion_reason`, `why_it_matters`, `evidence_notes`, `model_metadata`, and `understanding_run_id`.
 
+### public_radar_items
+
+Public-safe retrieval view for server-side anon reads.
+
+Fields: `id`, `local_id`, `raw_item_id`, `source_id`, `source_name`, `title`, `url`, `published_at`, `collected_at`, `processed_at`, `language`, `summary_zh`, `summary_en`, `topics`, `categories`, `tags`, `status`, `understanding_status`, `exclusion_reason`, `ai_relevance_score`, `importance_score`, `credibility_score`, `novelty_score`, `freshness_score`, `overall_score`, `source_tier`, `source_weight`, `confidence`, `why_it_matters`, `evidence_notes`, `created_at`, `updated_at`.
+
+The view does not expose raw text, raw metadata, model metadata, operational logs, private notes, write access, or private/internal URLs.
+
 ### event_clusters
 
 Groups of related radar items.

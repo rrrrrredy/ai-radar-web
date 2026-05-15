@@ -55,7 +55,10 @@ npm run supabase:persist:understanding
 Both commands read the latest local JSON artifacts and print the rows that would
 be upserted. They do not require Supabase environment variables in dry-run mode.
 Actual writes require `--write` and `ENABLE_SUPABASE_WRITES=true`, and should only
-be run after applying the Phase 7 Supabase migration.
+be run after applying the Phase 7 Supabase migrations in order:
+`202605140001_phase7_persistence.sql`,
+`202605140002_phase7_upsert_constraints.sql`, and
+`202605140003_public_retrieval_view.sql`.
 
 ## Scheduling
 
@@ -105,6 +108,6 @@ Model output is validated before radar items are written. Final inclusion uses d
 
 ## Phase 6 Retrieval Consumers
 
-`/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` read Supabase radar items first only when `ENABLE_SUPABASE_RETRIEVAL=true` and Supabase public config is present. Supabase retrieval is server-side and read-only through the anon key; service-role access remains limited to explicit write scripts. If Supabase is disabled, unavailable, or returns no visible usable rows, they read `data/understanding/latest/radar-items.json`. If that local generated file is missing or invalid, they use synthetic mock radar items and disclose `mock_data` in the response.
+`/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` read Supabase radar items first only when `ENABLE_SUPABASE_RETRIEVAL=true` and Supabase public config is present. Supabase retrieval is server-side and read-only through the anon key against `public.public_radar_items`, a public-safe view that excludes raw text, raw metadata, model metadata, operational logs, private/internal URLs, and write access. Service-role access remains limited to explicit write scripts. If Supabase is disabled, unavailable, the view is missing, or the view returns no usable rows, retrieval reads `data/understanding/latest/radar-items.json`. If that local generated file is missing or invalid, it uses synthetic mock radar items and discloses `mock_data` in the response.
 
 Generated ingestion and understanding JSON remains local and ignored by git. Phase 6 does not insert into Supabase, does not add production scheduled jobs, and does not run live DeepSeek calls unless an API request explicitly asks for live mode and the server has a local key.

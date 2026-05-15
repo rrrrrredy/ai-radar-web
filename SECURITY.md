@@ -21,6 +21,12 @@ Phase 7 Supabase write scripts are dry-run by default. A real write is allowed o
 
 Do not paste Supabase keys into prompts, logs, docs, commits, or command output. `SUPABASE_SERVICE_ROLE_KEY` is read only by the server-side CLI/helper path and must never be imported into client components or browser bundles.
 
+## Supabase Read Boundary
+
+Server-side retrieval uses the Supabase anon key only against `public.public_radar_items`. That view exposes public-safe radar item fields needed by `/ask` and `/write`, and it does not expose raw text, raw metadata, model metadata, service-role-only tables, operational logs, private notes, write access, or private/internal URLs.
+
+Do not grant anon broad `select` access on `raw_items`, `radar_items`, source-health tables, API usage logs, or service-role-only operational tables. Use explicit migrations and review the view projection when retrieval needs new fields.
+
 ## Secrets and Model API Keys
 
 Never commit secrets and never paste API keys into agent tasks, Codex prompts, ChatGPT messages, GitHub issues, commits, docs, or logs. Use environment variables only: local keys belong in `.env.local` or equivalent untracked files, and deployed keys belong in the deployment platform environment variable manager.

@@ -186,15 +186,16 @@ Apply the Phase 7 Supabase migrations to an existing Supabase project before ena
 ```bash
 supabase/migrations/202605140001_phase7_persistence.sql
 supabase/migrations/202605140002_phase7_upsert_constraints.sql
+supabase/migrations/202605140003_public_retrieval_view.sql
 ```
 
-The second migration fixes the plain unique constraints required by the dry-run-first persistence upserts. Do not re-run the full skeleton schema against an existing project as a migration substitute.
+The second migration fixes the plain unique constraints required by the dry-run-first persistence upserts. The third migration creates `public.public_radar_items`, a public-safe read view for retrieval. Do not re-run the full skeleton schema against an existing project as a migration substitute.
 
-Retrieval is server-side and read-only. It uses the public Supabase anon key when `ENABLE_SUPABASE_RETRIEVAL=true`; service-role access remains limited to explicit write scripts gated by `--write` plus `ENABLE_SUPABASE_WRITES=true`.
+Retrieval is server-side and read-only. It uses the public Supabase anon key against the `public_radar_items` view when `ENABLE_SUPABASE_RETRIEVAL=true`; service-role access remains limited to explicit write scripts gated by `--write` plus `ENABLE_SUPABASE_WRITES=true`. The anon key can read only public-safe radar item fields from the view, not raw tables, raw text, model metadata, operational logs, or write surfaces.
 
 Retrieval order for `/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` is:
 
-1. Supabase radar items when `ENABLE_SUPABASE_RETRIEVAL=true` and public Supabase config exists.
+1. Supabase public radar item view rows when `ENABLE_SUPABASE_RETRIEVAL=true` and public Supabase config exists.
 2. Local generated radar items under `data/understanding/latest/`.
 3. Synthetic mock data.
 
@@ -260,7 +261,7 @@ Mock mode requires no DeepSeek key and is the default for validation and builds.
 
 Use `supabase/schema.sql` to create the initial tables and `supabase/seed.sql` for safe synthetic demo rows. See `supabase/README.md`.
 
-The schema covers `users_profile`, `user_roles`, `sources`, source health checks, raw/radar items, event clusters, entities, scores, reports, saved items, annotations, ingestion runs, API usage logs, and system settings. Phase 7 schema changes live in `supabase/migrations/202605140001_phase7_persistence.sql` and `supabase/migrations/202605140002_phase7_upsert_constraints.sql`.
+The schema covers `users_profile`, `user_roles`, `sources`, source health checks, raw/radar items, event clusters, entities, scores, reports, saved items, annotations, ingestion runs, API usage logs, and system settings. Phase 7 schema changes live in `supabase/migrations/202605140001_phase7_persistence.sql`, `supabase/migrations/202605140002_phase7_upsert_constraints.sql`, and `supabase/migrations/202605140003_public_retrieval_view.sql`.
 
 ## Auth Setup
 
@@ -303,11 +304,11 @@ npm run build
 - Ingestion still writes ignored JSON artifacts before optional persistence.
 - Understanding still writes ignored JSON artifacts before optional persistence.
 - Supabase write scripts are dry-run by default and are not production scheduled jobs.
-- Supabase-backed retrieval is feature-flagged and falls back to local/mock data.
+- Supabase-backed retrieval is feature-flagged, reads only the public-safe view, and falls back to local/mock data.
 - HTML ingestion records metadata-level summaries; it is not a full crawler.
 - YouTube ingestion records a placeholder only; video ingestion is not implemented.
 - No Supabase insertion from ingestion outputs.
-- No Supabase-backed retrieval yet.
+- Supabase-backed retrieval requires applying the public retrieval view migration before enabling the flag.
 - No automatic live DeepSeek calls.
 - No hard admin route blocking yet.
 - No working WeChat login.

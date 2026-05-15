@@ -10,6 +10,13 @@ type SupabaseLoadAttempt = {
 
 type SupabaseRadarRow = Record<string, unknown>;
 
+type SupabaseReadError = {
+  message: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+};
+
 const retrievalLimit = 250;
 
 export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
@@ -40,7 +47,7 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
     }
 
     const { data, error } = await supabase
-      .from("radar_items")
+      .from("public_radar_items")
       .select(
         [
           "id",
@@ -73,9 +80,8 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
           "confidence",
           "why_it_matters",
           "evidence_notes",
-          "model_metadata",
-          "raw_items(local_id)",
-          "sources(slug,name)"
+          "created_at",
+          "updated_at"
         ].join(",")
       )
       .in("understanding_status", ["included", "needs_review"])
@@ -83,26 +89,29 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
       .limit(retrievalLimit);
 
     if (error) {
+      const readError = error as SupabaseReadError;
+      if (isMissingPublicRetrievalViewError(readError)) {
+        return {
+          loaded: null,
+          warnings: ["Supabase public retrieval view is not available; local fallback was used."]
+        };
+      }
+
       return {
         loaded: null,
-        warnings: [`Supabase retrieval failed and local fallback was used: ${sanitizeSupabaseReadError(error.message)}`]
+        warnings: [
+          `Supabase public retrieval view read failed and local fallback was used: ${sanitizeSupabaseReadError(readError.message)}`
+        ]
       };
     }
 
     const rows = (data ?? []) as unknown as SupabaseRadarRow[];
     const items = rows.map(normalizeSupabaseRow).filter((item): item is RetrievalRadarItem => Boolean(item));
 
-    if (rows.length === 0) {
+    if (rows.length === 0 || items.length === 0) {
       return {
         loaded: null,
-        warnings: ["Supabase retrieval returned no visible radar rows; local fallback was used."]
-      };
-    }
-
-    if (items.length === 0) {
-      return {
-        loaded: null,
-        warnings: ["Supabase retrieval returned no usable radar items; local fallback was used."]
+        warnings: ["Supabase public retrieval view returned zero usable rows; local fallback was used."]
       };
     }
 
@@ -111,7 +120,10 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
         items,
         dataSource: "supabase_radar_items",
         freshness: freshnessFromItems(items),
-        warnings: items.length < rows.length ? ["Some Supabase radar rows were skipped because required fields were missing."] : []
+        warnings:
+          items.length < rows.length
+            ? ["Some Supabase public retrieval view rows were skipped because required fields were missing."]
+            : []
       },
       warnings: []
     };
@@ -119,9 +131,23 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
     const message = sanitizeSupabaseReadError(error instanceof Error ? error.message : String(error));
     return {
       loaded: null,
-      warnings: [`Supabase retrieval threw an error and local fallback was used: ${message}`]
+      warnings: [`Supabase public retrieval view threw an error and local fallback was used: ${message}`]
     };
   }
+}
+
+function isMissingPublicRetrievalViewError(error: SupabaseReadError) {
+  const haystack = [error.code, error.message, error.details, error.hint].filter(Boolean).join(" ").toLowerCase();
+
+  return (
+    error.code === "42P01" ||
+    error.code === "PGRST205" ||
+    (haystack.includes("public_radar_items") &&
+      (haystack.includes("does not exist") ||
+        haystack.includes("not find") ||
+        haystack.includes("not found") ||
+        haystack.includes("schema cache")))
+  );
 }
 
 function sanitizeSupabaseReadError(value: string) {
@@ -143,14 +169,12 @@ function normalizeSupabaseRow(value: SupabaseRadarRow): RetrievalRadarItem | nul
     return null;
   }
 
-  const sourceRelation = relationRecord(value.sources);
-  const rawItemRelation = relationRecord(value.raw_items);
-  const sourceName = text(value.source_name) || text(sourceRelation?.name) || "Supabase source";
+  const sourceName = text(value.source_name) || "Supabase public source";
 
   return {
     id,
-    raw_item_id: text(rawItemRelation?.local_id) || text(value.raw_item_id) || id,
-    source_id: text(sourceRelation?.slug) || text(value.source_id) || "unknown",
+    raw_item_id: text(value.raw_item_id) || id,
+    source_id: text(value.source_id) || "unknown",
     source_name: sourceName,
     title,
     url,
@@ -175,8 +199,7 @@ function normalizeSupabaseRow(value: SupabaseRadarRow): RetrievalRadarItem | nul
     status: normalizeStatus(value.understanding_status),
     exclusion_reason: optionalText(value.exclusion_reason),
     why_it_matters: optionalText(value.why_it_matters),
-    evidence_notes: stringArray(value.evidence_notes),
-    model_metadata: isRecord(value.model_metadata) ? value.model_metadata : undefined
+    evidence_notes: stringArray(value.evidence_notes)
   };
 }
 
@@ -209,18 +232,6 @@ function timestampCandidate(
     value,
     source
   };
-}
-
-function relationRecord(value: unknown): Record<string, unknown> | null {
-  if (Array.isArray(value)) {
-    return isRecord(value[0]) ? value[0] : null;
-  }
-
-  return isRecord(value) ? value : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function text(value: unknown) {
