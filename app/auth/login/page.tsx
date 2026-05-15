@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 
 import { sanitizeNextPath } from "@/lib/auth/redirects";
 import { getAuthProviders } from "@/lib/auth/providers";
@@ -123,7 +124,7 @@ async function sendMagicLink(formData: FormData) {
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: authCallbackUrl(next),
+      emailRedirectTo: await authCallbackUrl(next),
       shouldCreateUser: true
     }
   });
@@ -154,7 +155,7 @@ async function startGithubOAuth(formData: FormData) {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "github",
     options: {
-      redirectTo: authCallbackUrl(next)
+      redirectTo: await authCallbackUrl(next)
     }
   });
 
@@ -165,11 +166,46 @@ async function startGithubOAuth(formData: FormData) {
   redirect(data.url);
 }
 
-function authCallbackUrl(next: string) {
-  const callback = new URL("/auth/callback", getAppConfig().appBaseUrl);
+async function authCallbackUrl(next: string) {
+  const callback = new URL("/auth/callback", await currentRequestOrigin());
   callback.searchParams.set("next", sanitizeNextPath(next));
 
   return callback.toString();
+}
+
+async function currentRequestOrigin() {
+  const requestHeaders = await headers();
+  const origin = normalizeHttpOrigin(requestHeaders.get("origin"));
+
+  if (origin) {
+    return origin;
+  }
+
+  const forwardedProto = requestHeaders.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const forwardedHost = requestHeaders.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const host = forwardedHost || requestHeaders.get("host");
+  const protocol = forwardedProto || "http";
+  const headerOrigin = host ? normalizeHttpOrigin(`${protocol}://${host}`) : null;
+
+  return headerOrigin || getAppConfig().appBaseUrl;
+}
+
+function normalizeHttpOrigin(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value);
+
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+
+    return parsed.origin;
+  } catch {
+    return null;
+  }
 }
 
 function loginPath(status: string, next: string) {

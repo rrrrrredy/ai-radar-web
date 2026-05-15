@@ -28,7 +28,7 @@ export function getAppConfig(): AppConfig {
   const deepSeekApiKey = process.env.DEEPSEEK_API_KEY?.trim();
 
   return {
-    appBaseUrl: process.env.APP_BASE_URL || "http://localhost:3000",
+    appBaseUrl: process.env.APP_BASE_URL || "http://127.0.0.1:3001",
     adminEmail: process.env.ADMIN_EMAIL || "",
     featureFlags: {
       enableXApi: isEnabled(process.env.ENABLE_X_API),
