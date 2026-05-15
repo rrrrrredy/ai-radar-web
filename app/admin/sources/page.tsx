@@ -89,7 +89,7 @@ export default function AdminSourcesPage() {
         aria-labelledby="source-operations-title"
         className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]"
       >
-        <div className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
+        <div className="min-w-0 rounded-lg border border-radar-line bg-white p-4 shadow-soft">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2
@@ -121,7 +121,7 @@ export default function AdminSourcesPage() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-radar-line bg-radar-panel p-4">
+        <div className="min-w-0 rounded-lg border border-radar-line bg-radar-panel p-4">
           <h2 className="text-lg font-semibold text-radar-ink">
             Source limitations
           </h2>
@@ -148,7 +148,7 @@ export default function AdminSourcesPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
+      <section className="min-w-0 rounded-lg border border-radar-line bg-white p-4 shadow-soft">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-radar-ink">
@@ -172,7 +172,7 @@ export default function AdminSourcesPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
+      <section className="min-w-0 rounded-lg border border-radar-line bg-white p-5 shadow-soft">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-radar-ink">
@@ -205,7 +205,7 @@ export default function AdminSourcesPage() {
 
       <section
         aria-labelledby="supabase-source-import-title"
-        className="rounded-lg border border-radar-line bg-radar-panel p-4"
+        className="min-w-0 rounded-lg border border-radar-line bg-radar-panel p-4"
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

@@ -146,7 +146,7 @@ export default function AdminSettingsPage() {
         />
       </section>
 
-      <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
+      <section className="min-w-0 rounded-lg border border-radar-line bg-white p-4 shadow-soft">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-radar-ink">
@@ -170,7 +170,7 @@ export default function AdminSettingsPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-radar-risk/30 bg-white p-4 shadow-soft">
+      <section className="min-w-0 rounded-lg border border-radar-risk/30 bg-white p-4 shadow-soft">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-radar-ink">
@@ -194,7 +194,7 @@ export default function AdminSettingsPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-radar-line bg-radar-panel p-4">
+      <section className="min-w-0 rounded-lg border border-radar-line bg-radar-panel p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-radar-ink">

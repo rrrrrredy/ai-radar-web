@@ -26,14 +26,14 @@ export function AdminCommandBlock({
   return (
     <section
       aria-label={`${title}: ${label}`}
-      className={`rounded-lg border bg-white p-4 ${toneBorders[tone]}`}
+      className={`min-w-0 rounded-lg border bg-white p-4 ${toneBorders[tone]}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-radar-ink">{title}</h3>
         <StatusChip label={label} tone={tone} />
       </div>
-      <pre className="mt-3 overflow-x-auto rounded-md border border-radar-line bg-radar-panel px-3 py-2">
-        <code className="whitespace-pre text-xs leading-6 text-radar-code">
+      <pre className="mt-3 max-w-full overflow-x-auto rounded-md border border-radar-line bg-radar-panel px-3 py-2">
+        <code className="block whitespace-pre text-xs leading-6 text-radar-code">
           {command}
         </code>
       </pre>

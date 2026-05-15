@@ -174,7 +174,7 @@ export default function AdminIngestionPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
+        <div className="min-w-0 rounded-lg border border-radar-line bg-white p-4 shadow-soft">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-radar-ink">
@@ -197,7 +197,7 @@ export default function AdminIngestionPage() {
           </dl>
         </div>
 
-        <div className="rounded-lg border border-radar-line bg-radar-panel p-4">
+        <div className="min-w-0 rounded-lg border border-radar-line bg-radar-panel p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-radar-ink">
@@ -239,7 +239,7 @@ export default function AdminIngestionPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
+      <section className="min-w-0 rounded-lg border border-radar-line bg-white p-4 shadow-soft">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-radar-ink">
@@ -269,7 +269,7 @@ export default function AdminIngestionPage() {
 
       <section
         aria-labelledby="dry-run-commands-title"
-        className="rounded-lg border border-radar-line bg-radar-panel p-4"
+        className="min-w-0 rounded-lg border border-radar-line bg-radar-panel p-4"
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -302,7 +302,7 @@ export default function AdminIngestionPage() {
 
       <section
         aria-labelledby="write-gated-commands-title"
-        className="rounded-lg border border-radar-risk/30 bg-white p-4 shadow-soft"
+        className="min-w-0 rounded-lg border border-radar-risk/30 bg-white p-4 shadow-soft"
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

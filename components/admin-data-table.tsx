@@ -20,7 +20,7 @@ export function AdminDataTable<T>({
   rows: T[];
 }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="w-full max-w-full overflow-x-auto">
       <table
         aria-label={ariaLabel}
         className="w-full border-collapse text-left text-sm"
