@@ -205,6 +205,12 @@ Retrieval order for `/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` i
 2. Local generated radar items under `data/understanding/latest/`.
 3. Synthetic mock data.
 
+## Phase 9.1 Deployment Hardening
+
+Phase 9.1 adds deployment readiness documentation without deploying the app. Vercel-first hosting, Supabase environment boundaries, pre-deployment checks, smoke checks, rollback steps, and no-deploy blockers are documented in `docs/deployment-hardening.md`.
+
+No scheduled jobs, production Supabase writes, or live DeepSeek job runs are enabled by this phase. The next recommended work is auth/admin route protection and real admin review workflows.
+
 ## Environment Variables
 
 Copy `.env.example` to `.env.local` or another untracked local environment file and fill values only on your machine. Store deployed values only in the deployment platform environment variable manager. Do not commit `.env`, `.env.local`, or filled environment files.

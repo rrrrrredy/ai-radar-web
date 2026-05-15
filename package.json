@@ -20,6 +20,7 @@
     "source-health:dry-run": "tsx scripts/check-source-health.ts --dry-run",
     "validate:data": "tsx scripts/validate-schemas.ts",
     "sensitive:scan": "tsx scripts/sensitive-scan.ts",
+    "check:deployment": "npm run lint && npm run typecheck && npm run validate:data && npm run sensitive:scan && npm run build",
     "build": "next build"
   },
   "dependencies": {

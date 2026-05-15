@@ -15,6 +15,14 @@ Required secret handling:
 - `GITHUB_TOKEN` must not be exposed to browser code.
 - WeChat credentials must remain disabled unless real platform configuration exists.
 
+## Deployment Secret Boundary
+
+Local secrets belong only in `.env.local` or another untracked local environment file. Preview and production secrets belong only in the deployment platform environment manager.
+
+Never paste secrets into Codex task text, ChatGPT messages, GitHub issues, commits, documentation, deployment notes, or logs. If any secret is exposed, rotate or revoke it before using the project with live services.
+
+`SUPABASE_SERVICE_ROLE_KEY` is server-only and must never be imported by client components, shared browser utilities, or public bundles. `DEEPSEEK_API_KEY`, `X_BEARER_TOKEN`, `WECHAT_APP_SECRET`, and future scheduler secrets are also server-only.
+
 ## Supabase Write Boundary
 
 Phase 7 Supabase write scripts are dry-run by default. A real write is allowed only when the command includes `--write` and `ENABLE_SUPABASE_WRITES=true` is set in the server environment.
@@ -26,6 +34,14 @@ Do not paste Supabase keys into prompts, logs, docs, commits, or command output.
 Server-side retrieval uses the Supabase anon key only against `public.public_radar_items`. That view exposes public-safe radar item fields needed by `/ask` and `/write`, and it does not expose raw text, raw metadata, model metadata, service-role-only tables, operational logs, private notes, write access, or private/internal URLs.
 
 Do not grant anon broad `select` access on `raw_items`, `radar_items`, source-health tables, API usage logs, or service-role-only operational tables. Use explicit migrations and review the view projection when retrieval needs new fields.
+
+The public anon key may be exposed to the browser only when Supabase policies and grants restrict it to public-safe reads. It must not provide write access or broad raw table reads.
+
+## Scheduled Jobs And Live Providers
+
+Scheduled job writes require explicit approval in a later phase. Keep scheduler flags disabled by default, including `ENABLE_SCHEDULED_INGESTION=false`, `ENABLE_SCHEDULED_PERSISTENCE=false`, and any future cron secret configuration.
+
+Live DeepSeek in jobs is disabled by default. Do not enable live model calls in scheduled workflows until cost limits, logging, retries, and review boundaries are approved.
 
 ## Secrets and Model API Keys
 
