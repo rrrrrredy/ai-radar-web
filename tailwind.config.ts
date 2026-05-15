@@ -10,13 +10,22 @@ const config: Config = {
     extend: {
       colors: {
         radar: {
-          ink: "#111827",
-          muted: "#5f6b7a",
-          line: "#d8dee8",
-          panel: "#f7f9fc",
-          cyan: "#0f766e",
-          amber: "#b45309",
-          rose: "#be123c"
+          bg: "rgb(var(--radar-bg) / <alpha-value>)",
+          ink: "rgb(var(--radar-ink) / <alpha-value>)",
+          muted: "rgb(var(--radar-muted) / <alpha-value>)",
+          line: "rgb(var(--radar-line) / <alpha-value>)",
+          panel: "rgb(var(--radar-panel) / <alpha-value>)",
+          surface: "rgb(var(--radar-surface) / <alpha-value>)",
+          evidence: "rgb(var(--radar-evidence) / <alpha-value>)",
+          freshness: "rgb(var(--radar-freshness) / <alpha-value>)",
+          caution: "rgb(var(--radar-caution) / <alpha-value>)",
+          risk: "rgb(var(--radar-risk) / <alpha-value>)",
+          success: "rgb(var(--radar-success) / <alpha-value>)",
+          admin: "rgb(var(--radar-admin) / <alpha-value>)",
+          code: "rgb(var(--radar-code) / <alpha-value>)",
+          cyan: "rgb(var(--radar-evidence) / <alpha-value>)",
+          amber: "rgb(var(--radar-caution) / <alpha-value>)",
+          rose: "rgb(var(--radar-risk) / <alpha-value>)"
         }
       },
       boxShadow: {

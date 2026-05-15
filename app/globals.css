@@ -4,6 +4,20 @@
 
 :root {
   color-scheme: light;
+  --radar-bg: 255 255 255;
+  --radar-ink: 17 24 39;
+  --radar-muted: 95 107 122;
+  --radar-line: 216 222 232;
+  --radar-panel: 247 249 252;
+  --radar-surface: 255 255 255;
+  --radar-evidence: 15 118 110;
+  --radar-freshness: 37 99 235;
+  --radar-caution: 180 83 9;
+  --radar-risk: 190 18 60;
+  --radar-success: 21 128 61;
+  --radar-admin: 51 65 85;
+  --radar-code: 31 41 55;
+  --radar-selection: 204 251 241;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -16,7 +30,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #ffffff;
+  background: rgb(var(--radar-bg));
+  color: rgb(var(--radar-ink));
 }
 
 a {
@@ -24,6 +39,11 @@ a {
 }
 
 ::selection {
-  background: #ccfbf1;
-  color: #111827;
+  background: rgb(var(--radar-selection));
+  color: rgb(var(--radar-ink));
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--radar-evidence));
+  outline-offset: 2px;
 }

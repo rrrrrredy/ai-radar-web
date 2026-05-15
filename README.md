@@ -24,6 +24,12 @@ This repository now contains a Next.js App Router skeleton, Tailwind styling, Su
 
 The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, answer questions against Supabase/local/mock radar evidence, and generate writing seeds with caveats, but it does not run production Supabase writes, enforce hard admin blocking, run scheduled jobs, or generate full daily/weekly reports yet. DeepSeek live calls are opt-in only.
 
+## Design System
+
+`DESIGN.md` is the canonical design contract for AI Industry Radar. Public/product pages should follow the Editorial Intelligence Desk direction, while admin pages should follow the Production-safe Analyst Console direction.
+
+Evidence, freshness, and uncertainty are core UI surfaces, not decorative metadata. Future visual work should make citations, time windows, data source, confidence, and review status visible before or beside synthesis, and should follow `DESIGN.md` before redesigning route layouts.
+
 ## Stack
 
 - Next.js App Router
