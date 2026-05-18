@@ -72,6 +72,13 @@ Remove-Item Env:ENABLE_SUPABASE_WRITES
 
 Scheduled live DeepSeek remains disabled until a later phase.
 
+Milestone A uses the same explicit live path over the merged source registry,
+including `official-ai-sources.json`. Classification still validates model JSON,
+but deterministic fallback heuristics now use source type, URL, and release
+wording to reduce weak `other` categorization for arXiv papers, GitHub releases,
+official model/product updates, interviews, opinion/newsletter items,
+infrastructure posts, benchmarks, safety, and regulation.
+
 ## Phase 5 Understanding
 
 The Phase 5 layer reads Phase 4 raw items from:

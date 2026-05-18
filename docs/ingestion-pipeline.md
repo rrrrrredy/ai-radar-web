@@ -4,13 +4,14 @@ Phase 4 builds on the Phase 3 cleaned source registry. It provides the first loc
 
 ## Pipeline Stages
 
-1. Select active or trial public sources from `data/seed/sources/ai-learning-resources.cleaned.json`.
+1. Select active or trial public sources from the merged seed registries:
+   `ai-learning-resources.cleaned.json` and `official-ai-sources.json`.
 2. Fetch source data through public pages, public feeds, or public APIs.
 3. Normalize raw items.
 4. Deduplicate by canonical URL, external ID, and content hash.
 5. Log the ingestion run and write local artifacts.
 
-Phase 5 now classifies topics, summarizes, tags, extracts entities, and scores items into local radar-item artifacts. Phase 6 reads those artifacts for retrieval-backed Q&A and writing assistance. Phase 7 adds dry-run-first Supabase persistence for these local artifacts. Phase 9.2 adds GitHub Actions scheduled dry-runs while keeping scheduled persistence and production writes deferred. Phase 10.5 adds a one-shot activation script for bounded ingestion, optional live DeepSeek understanding, and explicit write-gated Supabase persistence.
+Phase 5 now classifies topics, summarizes, tags, extracts entities, and scores items into local radar-item artifacts. Phase 6 reads those artifacts for retrieval-backed Q&A and writing assistance. Phase 7 adds dry-run-first Supabase persistence for these local artifacts. Phase 9.2 adds GitHub Actions scheduled dry-runs while keeping scheduled persistence and production writes deferred. Phase 10.5 adds a one-shot activation script for bounded ingestion, optional live DeepSeek understanding, and explicit write-gated Supabase persistence. Milestone A adds an official/high-signal source extension and prioritizes eligible official sources during bounded activation.
 
 ## Phase 4 Commands
 
@@ -62,7 +63,7 @@ be run after applying the Phase 7 Supabase migrations in order:
 
 ## Phase 10.5 Activation Commands
 
-The activation script reads the cleaned source registry, runs bounded public-source ingestion, runs mock understanding by default, and can persist the selected source rows, ingestion rows, and radar rows through the same Supabase write gate.
+The activation script reads the merged source registries, runs bounded public-source ingestion, runs mock understanding by default, and can persist the selected source rows, ingestion rows, and radar rows through the same Supabase write gate.
 
 ```bash
 npm run data:activate:mock
@@ -86,6 +87,10 @@ $env:ENABLE_SUPABASE_WRITES="true"
 npm run data:activate:live:persist -- --limit 3 --max-items-per-source 3
 Remove-Item Env:ENABLE_SUPABASE_WRITES
 ```
+
+If a successful live run already exists locally and only persistence is needed,
+use `--skip-ingest --skip-understand` with the same temporary write gate. This
+persists the latest ignored local artifacts without repeating DeepSeek calls.
 
 For regular local product-page use after rows exist in `public.public_radar_items`, set `ENABLE_SUPABASE_RETRIEVAL=true` in `.env.local` or the process environment. The activation script does not edit `.env.local`.
 

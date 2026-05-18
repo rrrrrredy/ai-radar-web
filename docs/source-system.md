@@ -7,6 +7,7 @@ The source system manages public information sources and their trust characteris
 Phase 3 adds a cleaned seed registry generated from the local AI learning/resource markdown file:
 
 - `data/seed/sources/ai-learning-resources.cleaned.json`
+- `data/seed/sources/official-ai-sources.json`
 - `data/seed/sources/ai-learning-resources.audit.md`
 - `data/seed/sources/source-import-summary.json`
 
@@ -15,6 +16,10 @@ The raw input file is intentionally local-only and is not committed. Regenerate 
 ```bash
 npm run import:sources
 ```
+
+`official-ai-sources.json` is a curated extension for public, official AI sources.
+It is maintained by hand, loaded alongside the cleaned registry, and deduped by
+source slug and canonical public URLs.
 
 ## Source Categories
 
@@ -98,10 +103,11 @@ The cleaned registry can be imported into Supabase with:
 npm run supabase:import:sources
 ```
 
-The command is dry-run by default and upserts by `sources.slug` only when `--write`
-and `ENABLE_SUPABASE_WRITES=true` are both present. All registry rows are preserved,
-including `needs_public_url` rows, but source health checks only select public,
-active/trial sources with supported crawl methods.
+The command is dry-run by default and loads both source registries before upserting
+by `sources.slug` only when `--write` and `ENABLE_SUPABASE_WRITES=true` are both
+present. All registry rows are preserved, including `needs_public_url` and manual
+trial rows, but source health checks only select public, active/trial sources with
+supported crawl methods.
 
 Source health selection is available with:
 

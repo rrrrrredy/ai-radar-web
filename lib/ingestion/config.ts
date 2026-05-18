@@ -10,6 +10,14 @@ export const CLEANED_SOURCE_REGISTRY_PATH = path.join(
   "sources",
   "ai-learning-resources.cleaned.json"
 );
+export const OFFICIAL_SOURCE_REGISTRY_PATH = path.join(
+  INGESTION_ROOT,
+  "data",
+  "seed",
+  "sources",
+  "official-ai-sources.json"
+);
+export const SOURCE_REGISTRY_PATHS = [CLEANED_SOURCE_REGISTRY_PATH, OFFICIAL_SOURCE_REGISTRY_PATH];
 export const INGESTION_DIR = path.join(INGESTION_ROOT, "data", "ingestion");
 export const INGESTION_LATEST_DIR = path.join(INGESTION_DIR, "latest");
 export const INGESTION_RUNS_DIR = path.join(INGESTION_DIR, "runs");

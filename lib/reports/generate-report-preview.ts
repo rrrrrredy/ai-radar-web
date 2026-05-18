@@ -51,7 +51,7 @@ export function generateReportPreview(feed: RadarFeed, reportType: ReportPreview
   );
   const topItems = usableItems.slice(0, 5);
   const sections = buildSections(windowItems);
-  const citations = buildPreviewCitations(topItems, sections);
+  const citations = buildPreviewCitations(topItems, windowItems, sections);
   const includedCount = usableItems.filter((item) => item.status === "included").length;
   const needsReviewCount = usableItems.filter((item) => item.status === "needs_review").length;
 
@@ -199,20 +199,20 @@ function reportStatusRank(item: RetrievalRadarItem) {
 
 function buildPreviewCitations(
   topItems: RetrievalRadarItem[],
+  windowItems: RetrievalRadarItem[],
   sections: ReportPreviewSection[]
 ): RetrievalCitation[] {
   const citations = new Map<string, RetrievalCitation>();
-  const sectionItemIds = new Set(
-    sections.flatMap((section) =>
-      section.items
-        .filter((item) => item.status === "included" || item.status === "needs_review")
-        .map((item) => item.id)
-    )
+  const windowItemById = new Map(windowItems.map((item) => [item.id, item]));
+  const sectionItemIds = sections.flatMap((section) =>
+    section.items
+      .filter((item) => item.status === "included" || item.status === "needs_review")
+      .map((item) => item.id)
   );
-  const candidates = [
-    ...topItems,
-    ...topItems.filter((item) => sectionItemIds.has(item.id))
-  ];
+  const sectionItems = sectionItemIds
+    .map((id) => windowItemById.get(id))
+    .filter((item): item is RetrievalRadarItem => Boolean(item));
+  const candidates = [...topItems, ...sectionItems];
 
   for (const item of candidates) {
     citations.set(item.id, citationFromItem(item));

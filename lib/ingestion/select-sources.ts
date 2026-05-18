@@ -3,6 +3,8 @@ import fs from "node:fs";
 import {
   CLEANED_SOURCE_REGISTRY_PATH,
   DEFAULT_SELECTION_OPTIONS,
+  SOURCE_REGISTRY_PATHS,
+  canonicalizeUrl,
   hasUnsafeFragment,
   isAllowedCrawlMethod,
   isPublicHttpUrl
@@ -18,21 +20,86 @@ import type {
 const eligibleStatuses = new Set(["active", "trial"]);
 
 export function readCleanedSources(filePath = CLEANED_SOURCE_REGISTRY_PATH): CleanedSource[] {
+  if (filePath === CLEANED_SOURCE_REGISTRY_PATH) {
+    return readMergedSourceRegistries(SOURCE_REGISTRY_PATHS);
+  }
+
+  return readSourceRegistryFile(filePath);
+}
+
+export function readMergedSourceRegistries(filePaths = SOURCE_REGISTRY_PATHS): CleanedSource[] {
+  const sources = filePaths.flatMap((registryPath) => (fs.existsSync(registryPath) ? readSourceRegistryFile(registryPath) : []));
+  return mergeSourceRegistries(sources);
+}
+
+function readSourceRegistryFile(filePath: string): CleanedSource[] {
   const text = fs.readFileSync(filePath, "utf8");
   const data = JSON.parse(text) as unknown;
 
   if (!Array.isArray(data)) {
-    throw new Error("Cleaned source registry must be an array.");
+    throw new Error(`${filePath} must be a source registry array.`);
   }
 
   return data as CleanedSource[];
+}
+
+function mergeSourceRegistries(sources: CleanedSource[]) {
+  const merged: CleanedSource[] = [];
+  const sourceByKey = new Map<string, CleanedSource>();
+
+  for (const source of sources) {
+    const keys = registryDedupeKeys(source);
+    const existing = keys.map((key) => sourceByKey.get(key)).find(Boolean);
+
+    if (!existing) {
+      merged.push(source);
+      keys.forEach((key) => sourceByKey.set(key, source));
+      continue;
+    }
+
+    mergeSource(existing, source);
+    registryDedupeKeys(existing).forEach((key) => sourceByKey.set(key, existing));
+  }
+
+  return merged;
+}
+
+function mergeSource(existing: CleanedSource, incoming: CleanedSource) {
+  existing.tags = Array.from(new Set([...existing.tags, ...incoming.tags])).sort();
+  existing.risk_flags = Array.from(new Set([...existing.risk_flags, ...incoming.risk_flags])).sort();
+
+  if (!existing.description && incoming.description) {
+    existing.description = incoming.description;
+  }
+
+  for (const field of ["url", "rss_url", "github_url", "youtube_url", "podcast_url", "x_handle"] as const) {
+    if (!existing[field] && incoming[field]) {
+      existing[field] = incoming[field];
+    }
+  }
+
+  if (!existing.notes && incoming.notes) {
+    existing.notes = incoming.notes;
+  }
+}
+
+function registryDedupeKeys(source: CleanedSource) {
+  const keys = new Set<string>([`slug:${source.id}`]);
+
+  for (const url of [source.url, source.rss_url, source.github_url, source.youtube_url, source.podcast_url]) {
+    if (url) {
+      keys.add(`url:${canonicalizeUrl(url).toLowerCase().replace(/^https?:\/\/www\./, "https://")}`);
+    }
+  }
+
+  return Array.from(keys);
 }
 
 export function selectSources(options: Partial<SourceSelectionOptions> = {}): SourceSelectionResult {
   const normalizedOptions = normalizeSelectionOptions(options);
   const sources = readCleanedSources();
   const warnings: string[] = [];
-  const eligibleSources = sources.filter(isEligibleSource);
+  const eligibleSources = sortEligibleSources(sources.filter(isEligibleSource));
   let selected = eligibleSources;
 
   if (normalizedOptions.method !== "all") {
@@ -87,6 +154,60 @@ function isEligibleSource(source: CleanedSource): source is SelectedSource {
   return [source.url, source.rss_url, source.github_url, source.youtube_url, source.podcast_url, source.notes].every(
     (value) => !hasUnsafeFragment(value)
   );
+}
+
+function sortEligibleSources(sources: SelectedSource[]) {
+  return [...sources].sort((left, right) => {
+    const priorityDelta = sourcePriority(left) - sourcePriority(right);
+    if (priorityDelta !== 0) {
+      return priorityDelta;
+    }
+
+    const weightDelta = right.weight - left.weight;
+    if (weightDelta !== 0) {
+      return weightDelta;
+    }
+
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function sourcePriority(source: SelectedSource) {
+  return originRank(source) * 100 + tierRank(source.tier) * 10 + methodRank(source.crawl_method);
+}
+
+function originRank(source: SelectedSource) {
+  return source.source_origin === "official-ai-sources.json" ? 0 : 1;
+}
+
+function tierRank(tier: CleanedSource["tier"]) {
+  switch (tier) {
+    case "T1":
+      return 0;
+    case "T1.5":
+      return 1;
+    case "T2":
+      return 2;
+    case "T3":
+      return 3;
+    case "unreviewed":
+      return 4;
+  }
+}
+
+function methodRank(method: SelectedSource["crawl_method"]) {
+  switch (method) {
+    case "rss":
+      return 0;
+    case "api":
+      return 1;
+    case "html":
+      return 2;
+    case "podcast_feed":
+      return 3;
+    case "youtube_feed":
+      return 4;
+  }
 }
 
 function normalizeMethod(value: CrawlMethodFilter | undefined): CrawlMethodFilter {

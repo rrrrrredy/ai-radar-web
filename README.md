@@ -80,13 +80,14 @@ npm run build
 
 ## Source Registry
 
-Phase 3 imports the user's AI learning/resource list from a local-only markdown file into `data/seed/sources/ai-learning-resources.cleaned.json`.
+Phase 3 imports the user's AI learning/resource list from a local-only markdown file into `data/seed/sources/ai-learning-resources.cleaned.json`. Milestone A adds `data/seed/sources/official-ai-sources.json` as a hand-curated public official/high-signal extension that is loaded and imported with the cleaned registry.
 
 The raw input stays under `local-input/` and is excluded from git. The import script strips private, internal, local, credentialed, attachment-only, and image-only links before writing seed data. Sources with no public homepage remain in the registry with `url: null`, `status: "needs_public_url"`, and manual-review risk flags.
 
 Generated registry artifacts:
 
 - `data/seed/sources/ai-learning-resources.cleaned.json` - cleaned public seed registry.
+- `data/seed/sources/official-ai-sources.json` - curated public official/high-signal extension.
 - `data/seed/sources/ai-learning-resources.audit.md` - counts, dedupe notes, URL-completion follow-up, and first ingestion candidates.
 - `data/seed/sources/source-import-summary.json` - machine-readable import counts.
 - `data/seed/sources/README.md` - registry policy and regeneration notes.
@@ -230,7 +231,7 @@ Retrieval order for `/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` i
 
 ## Phase 10.5 Data Activation
 
-The activation workflow runs a bounded source-to-radar refresh from the cleaned source registry, with mock understanding by default and optional live DeepSeek only when the local/deployment environment is already configured.
+The activation workflow runs a bounded source-to-radar refresh from the merged source registries, with mock understanding by default and optional live DeepSeek only when the local/deployment environment is already configured.
 
 ```bash
 npm run data:activate:mock

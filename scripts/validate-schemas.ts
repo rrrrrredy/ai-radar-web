@@ -33,6 +33,12 @@ const sourceTypes = new Set([
 ]);
 
 const sourceCategories = new Set([
+  "official_company",
+  "official_blog",
+  "research_lab",
+  "arxiv",
+  "github",
+  "huggingface",
   "domestic_media",
   "overseas_media",
   "x_account",
@@ -52,6 +58,7 @@ const sourceStatuses = new Set(["active", "trial", "needs_public_url", "deferred
 const crawlMethods = new Set(["rss", "html", "api", "manual", "x_api_future", "podcast_feed", "youtube_feed", "no_crawl", "unknown"]);
 const sourceLanguages = new Set(["zh", "en", "mixed", "unknown"]);
 const sourceRegions = new Set(["china", "overseas", "global", "unknown"]);
+const sourceOrigins = new Set(["AI学习资源.md", "official-ai-sources.json"]);
 
 function walk(dir: string): string[] {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -151,22 +158,28 @@ function validateSeedData() {
   assert(Array.isArray(taxonomy.categories), "source-taxonomy.json must contain categories array");
   assert(taxonomy.categories.length >= 18, "source taxonomy should include all requested categories");
 
-  const cleanedSourcesPath = path.join(seedDir, "sources", "ai-learning-resources.cleaned.json");
-  if (fs.existsSync(cleanedSourcesPath)) {
-    validateCleanedSourceRegistry(readJson(cleanedSourcesPath));
+  const sourceRegistryPaths = [
+    path.join(seedDir, "sources", "ai-learning-resources.cleaned.json"),
+    path.join(seedDir, "sources", "official-ai-sources.json")
+  ];
+
+  for (const sourceRegistryPath of sourceRegistryPaths) {
+    if (fs.existsSync(sourceRegistryPath)) {
+      validateCleanedSourceRegistry(readJson(sourceRegistryPath), path.basename(sourceRegistryPath));
+    }
   }
 
   const importSummaryPath = path.join(seedDir, "sources", "source-import-summary.json");
   if (fs.existsSync(importSummaryPath)) {
-    validateImportSummary(readJson(importSummaryPath), cleanedSourcesPath);
+    validateImportSummary(readJson(importSummaryPath), sourceRegistryPaths[0]);
   }
 
   return seedFiles.length;
 }
 
-function validateCleanedSourceRegistry(value: Record<string, unknown> | Array<Record<string, unknown>>) {
-  assert(Array.isArray(value), "ai-learning-resources.cleaned.json must be an array");
-  assert(value.length > 0, "cleaned source registry must contain at least one source");
+function validateCleanedSourceRegistry(value: Record<string, unknown> | Array<Record<string, unknown>>, registryName: string) {
+  assert(Array.isArray(value), `${registryName} must be an array`);
+  assert(value.length > 0, `${registryName} must contain at least one source`);
 
   const ids = new Set<string>();
 
@@ -188,7 +201,7 @@ function validateCleanedSourceRegistry(value: Record<string, unknown> | Array<Re
     assert(typeof source.weight === "number" && source.weight >= 0 && source.weight <= 1, `${source.id}.weight must be between 0 and 1`);
     assertStringArray(source.tags, `${source.id}.tags must be a string array`);
     assertStringArray(source.risk_flags, `${source.id}.risk_flags must be a string array`);
-    assert(source.source_origin === "AI学习资源.md", `${source.id}.source_origin must record the local source file`);
+    assertEnum(source.source_origin, sourceOrigins, `${source.id}.source_origin must record a known source registry`);
 
     assertPublicUrl(source.url, source.id, "url", true);
     assertPublicUrl(source.rss_url, source.id, "rss_url", true);
