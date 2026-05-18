@@ -20,7 +20,7 @@ The project uses public information only. Secrets, API keys, service tokens, coo
 
 ## Current Scope
 
-This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes, the Phase 8.4 production-safe admin console redesign, Phase 9.2 scheduled dry-run job foundation, Phase 9.4 admin review workflow tables, Phase 9.4b controlled admin review actions, Phase 9.5 Supabase Auth/admin route protection foundations, and Phase 10 radar/report product surfaces.
+This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes, the Phase 8.4 production-safe admin console redesign, Phase 9.2 scheduled dry-run job foundation, Phase 9.4 admin review workflow tables, Phase 9.4b controlled admin review actions, Phase 9.5 Supabase Auth/admin route protection foundations, Phase 10 radar/report product surfaces, and a Phase 10.5 one-shot radar data activation workflow.
 
 The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, scheduled GitHub Actions dry-runs, answer questions against Supabase/local/mock radar evidence, generate writing seeds with caveats, render a filterable public radar list, generate deterministic daily/weekly report previews from retrieved radar items, protect `/admin` routes with server-side Supabase user plus `user_roles` checks, and run controlled server-side admin review actions for review tasks, source change requests, report candidates, and audit events. It does not run scheduled persistence, source-health writes, live DeepSeek by default, or daily/weekly report publication yet.
 
@@ -60,6 +60,9 @@ npm run ingest:sources:dry-run
 npm run ingest:sources -- --limit 3 --max-items-per-source 3
 npm run understand:items:mock
 npm run understand:items -- --limit 3 --mode mock
+npm run data:activate:mock
+npm run data:activate:live
+npm run data:status
 npm run supabase:import:sources
 npm run supabase:persist:ingestion
 npm run supabase:persist:understanding
@@ -225,6 +228,26 @@ Retrieval order for `/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` i
 2. Local generated radar items under `data/understanding/latest/`.
 3. Synthetic mock data.
 
+## Phase 10.5 Data Activation
+
+The activation workflow runs a bounded source-to-radar refresh from the cleaned source registry, with mock understanding by default and optional live DeepSeek only when the local/deployment environment is already configured.
+
+```bash
+npm run data:activate:mock
+npm run data:status
+npm run data:activate:live -- --limit 3 --max-items-per-source 3
+```
+
+To persist a reviewed live run, enable Supabase writes only for that process:
+
+```powershell
+$env:ENABLE_SUPABASE_WRITES="true"
+npm run data:activate:live:persist -- --limit 3 --max-items-per-source 3
+Remove-Item Env:ENABLE_SUPABASE_WRITES
+```
+
+The activation script never edits `.env.local`, never prints API keys, does not run scheduled jobs, and does not crawl X or WeChat sources automatically. Regular local Supabase-first product pages require setting `ENABLE_SUPABASE_RETRIEVAL=true` in `.env.local` or in the temporary process environment after the public retrieval view has rows.
+
 ## Phase 9.1 Deployment Hardening
 
 Phase 9.1 adds deployment readiness documentation without deploying the app. Vercel-first hosting, Supabase environment boundaries, pre-deployment checks, smoke checks, rollback steps, and no-deploy blockers are documented in `docs/deployment-hardening.md`.
@@ -278,6 +301,8 @@ Phase 10 turns `/radar` and `/reports` into public product surfaces backed by th
 
 These previews are not published reports. They do not call live DeepSeek, do not write to Supabase, do not run scheduled persistence, and do not claim complete current AI industry coverage.
 
+`npm run data:activate:*` can refresh bounded ingestion and understanding output, optionally persist it through the existing Supabase write gates, and report the current radar data source for `/radar` and `/reports`.
+
 ## Environment Variables
 
 Copy `.env.example` to `.env.local` or another untracked local environment file and fill values only on your machine. Store deployed values only in the deployment platform environment variable manager. Do not commit `.env`, `.env.local`, or filled environment files.
@@ -318,6 +343,17 @@ DEEPSEEK_SMART_MODEL=deepseek-v4-pro
 ```
 
 Mock mode requires no DeepSeek key and is the default for validation and builds. Live mode requires `DEEPSEEK_API_KEY` plus an explicit `--mode live` or the `understand:items:live` script. If a key is accidentally pasted into a prompt, task, log, issue, commit, or doc, rotate or revoke it before any live use.
+
+For one-time local DeepSeek setup, add these values to `.env.local` without pasting the key into Codex, ChatGPT, GitHub, docs, or logs:
+
+```bash
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_FAST_MODEL=deepseek-v4-flash
+DEEPSEEK_SMART_MODEL=deepseek-v4-pro
+```
+
+After the key is present, use `npm run data:activate:live` for a bounded live understanding check. Controlled Supabase persistence still requires temporary `ENABLE_SUPABASE_WRITES=true` plus `npm run data:activate:live:persist`. Scheduled live DeepSeek remains disabled until a later phase.
 
 ## App Routes
 
@@ -392,9 +428,9 @@ npm run build
 - Supabase-backed retrieval is feature-flagged, reads only the public-safe view, and falls back to local/mock data.
 - HTML ingestion records metadata-level summaries; it is not a full crawler.
 - YouTube ingestion records a placeholder only; video ingestion is not implemented.
-- No Supabase insertion from ingestion outputs.
+- Supabase insertion from ingestion and understanding outputs is available only through explicit activation or persistence commands with the write gate enabled.
 - Supabase-backed retrieval requires applying the public retrieval view migration before enabling the flag.
-- No automatic live DeepSeek calls.
+- No automatic live DeepSeek calls; activation live mode must be explicit and requires an environment key.
 - Admin role bootstrap write mode still requires a manual operator approval step and explicit write gates.
 - No working WeChat login.
 - No scheduled production persistence or report publication jobs yet.

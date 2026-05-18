@@ -10,7 +10,7 @@ Phase 4 builds on the Phase 3 cleaned source registry. It provides the first loc
 4. Deduplicate by canonical URL, external ID, and content hash.
 5. Log the ingestion run and write local artifacts.
 
-Phase 5 now classifies topics, summarizes, tags, extracts entities, and scores items into local radar-item artifacts. Phase 6 reads those artifacts for retrieval-backed Q&A and writing assistance. Phase 7 adds dry-run-first Supabase persistence for these local artifacts. Phase 9.2 adds GitHub Actions scheduled dry-runs while keeping scheduled persistence and production writes deferred.
+Phase 5 now classifies topics, summarizes, tags, extracts entities, and scores items into local radar-item artifacts. Phase 6 reads those artifacts for retrieval-backed Q&A and writing assistance. Phase 7 adds dry-run-first Supabase persistence for these local artifacts. Phase 9.2 adds GitHub Actions scheduled dry-runs while keeping scheduled persistence and production writes deferred. Phase 10.5 adds a one-shot activation script for bounded ingestion, optional live DeepSeek understanding, and explicit write-gated Supabase persistence.
 
 ## Phase 4 Commands
 
@@ -59,6 +59,35 @@ be run after applying the Phase 7 Supabase migrations in order:
 `202605140001_phase7_persistence.sql`,
 `202605140002_phase7_upsert_constraints.sql`, and
 `202605140003_public_retrieval_view.sql`.
+
+## Phase 10.5 Activation Commands
+
+The activation script reads the cleaned source registry, runs bounded public-source ingestion, runs mock understanding by default, and can persist the selected source rows, ingestion rows, and radar rows through the same Supabase write gate.
+
+```bash
+npm run data:activate:mock
+npm run data:status
+npm run data:activate:live -- --limit 3 --max-items-per-source 3
+```
+
+DeepSeek is configured once through `.env.local` locally or through the deployment environment manager:
+
+```bash
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_FAST_MODEL=deepseek-v4-flash
+DEEPSEEK_SMART_MODEL=deepseek-v4-pro
+```
+
+Do not paste the key into Codex, ChatGPT, GitHub, docs, or logs. When a live run has been reviewed, persist with a temporary process flag only:
+
+```powershell
+$env:ENABLE_SUPABASE_WRITES="true"
+npm run data:activate:live:persist -- --limit 3 --max-items-per-source 3
+Remove-Item Env:ENABLE_SUPABASE_WRITES
+```
+
+For regular local product-page use after rows exist in `public.public_radar_items`, set `ENABLE_SUPABASE_RETRIEVAL=true` in `.env.local` or the process environment. The activation script does not edit `.env.local`.
 
 ## Scheduling
 
@@ -112,7 +141,7 @@ npm run understand:items:mock
 npm run understand:items -- --limit 3 --mode mock
 ```
 
-The understanding layer reads `data/ingestion/latest/raw-items.json`, writes `data/understanding/latest/radar-items.json` and `data/understanding/latest/understanding-run.json`, and keeps generated JSON ignored by git. Mock mode is deterministic and safe for builds. Live mode requires `--mode live` plus a local DeepSeek key.
+The understanding layer reads `data/ingestion/latest/raw-items.json`, writes `data/understanding/latest/radar-items.json` and `data/understanding/latest/understanding-run.json`, and keeps generated JSON ignored by git. Mock mode is deterministic and safe for builds. Live mode requires `--mode live` or `npm run data:activate:live` plus a configured local DeepSeek key.
 
 Model output is validated before radar items are written. Final inclusion uses deterministic thresholds and a source-weighted score formula rather than model preference alone.
 

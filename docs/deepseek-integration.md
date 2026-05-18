@@ -26,6 +26,15 @@ Defaults:
 
 Never commit filled environment values.
 
+Configure DeepSeek once through `.env.local` for local development or through the deployment environment manager for deployed runs. Do not paste the key into Codex, ChatGPT, GitHub issues, commits, docs, or logs.
+
+```bash
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_FAST_MODEL=deepseek-v4-flash
+DEEPSEEK_SMART_MODEL=deepseek-v4-pro
+```
+
 ## API Key Handling
 
 Never paste DeepSeek API keys into Codex task text, ChatGPT messages, GitHub issues, commits, docs, or logs. Use `.env.local` or an equivalent untracked local environment file for local development, and use the deployment platform environment variable manager for deployed runs.
@@ -40,6 +49,28 @@ DEEPSEEK_SMART_MODEL=deepseek-v4-pro
 ```
 
 Mock mode is deterministic, requires no key, and remains the default for validation and builds. Live mode requires `DEEPSEEK_API_KEY` and an explicit `--mode live` or `npm run understand:items:live`. If a key is accidentally pasted into a prompt, task, log, GitHub issue, commit, or doc, rotate or revoke it before live use.
+
+## Phase 10.5 Data Activation
+
+Use the activation script for a bounded source-to-radar refresh:
+
+```bash
+npm run data:activate:mock
+npm run data:status
+npm run data:activate:live -- --limit 3 --max-items-per-source 3
+```
+
+If the key is present, `data:activate:live` runs live understanding for the selected batch. If the key is absent, the script reports that live DeepSeek was skipped without printing any environment values.
+
+Controlled Supabase persistence remains separate from live understanding and still requires a temporary write gate:
+
+```powershell
+$env:ENABLE_SUPABASE_WRITES="true"
+npm run data:activate:live:persist -- --limit 3 --max-items-per-source 3
+Remove-Item Env:ENABLE_SUPABASE_WRITES
+```
+
+Scheduled live DeepSeek remains disabled until a later phase.
 
 ## Phase 5 Understanding
 
@@ -92,7 +123,7 @@ Inclusion thresholds:
 - Log provider, model, purpose, token usage, status, and prompt version.
 - Store source links and timestamps alongside generated text.
 - Keep DeepSeek calls out of ingestion fetching.
-- Do not run live DeepSeek for persistence validation.
+- Do not run live DeepSeek from scheduled jobs.
 
 ## Phase 6 Q&A and Writing
 
