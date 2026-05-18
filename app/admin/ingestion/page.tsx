@@ -41,6 +41,16 @@ const outputRows = [
     path: "data/understanding/runs/*.json",
     stage: "Historical understanding runs",
     status: "ignored generated JSON"
+  },
+  {
+    path: "data/scheduled/latest/scheduled-run.json",
+    stage: "Scheduled dry-run summary",
+    status: "ignored generated JSON"
+  },
+  {
+    path: "data/scheduled/runs/*.json",
+    stage: "Historical scheduled dry-runs",
+    status: "ignored generated JSON"
   }
 ];
 
@@ -112,6 +122,11 @@ const dryRunCommands = [
     command: "npm run source-health:dry-run",
     detail: "Reviews source-health eligibility in dry-run mode only. This page does not run checks.",
     title: "Source health"
+  },
+  {
+    command: "npm run scheduled:hourly:dry-run",
+    detail: "Runs bounded public ingestion and mock understanding, then writes an ignored scheduled summary artifact.",
+    title: "Scheduled dry-run"
   }
 ];
 
@@ -147,7 +162,7 @@ export default function AdminIngestionPage() {
         <div className="flex flex-wrap items-center gap-2">
           <StatusChip label="Manual/local pipeline" tone="admin" />
           <StatusChip label="ENABLE_SUPABASE_WRITES" tone={config.featureFlags.enableSupabaseWrites ? "risk" : "success"} value={String(config.featureFlags.enableSupabaseWrites)} />
-          <StatusChip label="No scheduled jobs" tone="caution" />
+          <StatusChip label="Scheduled dry-run only" tone="caution" />
           <StatusChip label="No live DeepSeek by default" tone="caution" />
         </div>
         <h1 className="mt-4 text-3xl font-semibold text-radar-ink">
@@ -184,7 +199,7 @@ export default function AdminIngestionPage() {
             <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
               Ingestion and understanding outputs can now feed review-only
               admin queues for radar items, source changes, report candidates,
-              and audit visibility. No scheduled job, live DeepSeek, source-health
+              and audit visibility. No scheduled write job, live DeepSeek, source-health
               write, or Supabase write is started by the review route.
             </p>
           </div>
@@ -198,7 +213,7 @@ export default function AdminIngestionPage() {
         <div className="mt-4 flex flex-wrap gap-2">
           <StatusChip label="Review-only" tone="admin" />
           <StatusChip label="Writes gated" tone="risk" />
-          <StatusChip label="No jobs run" tone="caution" />
+          <StatusChip label="No write jobs run" tone="caution" />
         </div>
       </section>
 
@@ -211,7 +226,7 @@ export default function AdminIngestionPage() {
               </h2>
               <p className="mt-2 text-sm leading-6 text-radar-muted">
                 Static admin summary of the local artifact contract, not a live
-                scheduler or job monitor.
+                job monitor.
               </p>
             </div>
             <StatusChip label={latestLocalSummary.status} tone="freshness" />
@@ -247,10 +262,10 @@ export default function AdminIngestionPage() {
               value={String(config.featureFlags.enableSupabaseWrites)}
             />
             <BoundaryItem
-              detail="No cron or scheduled production job is configured by this application phase."
+              detail="GitHub Actions can run dry-run summaries only. Scheduled persistence and report jobs remain disabled."
               label="Scheduled jobs"
               tone="caution"
-              value="not enabled"
+              value="dry-run only"
             />
             <BoundaryItem
               detail="Understanding mock mode is default. Live mode requires an explicit live request and local key."

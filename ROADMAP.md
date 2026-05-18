@@ -81,9 +81,22 @@ Deferred to later phases:
 
 ## Phase 8: Scheduled Jobs and Deployment
 
-- Add scheduled ingestion and understanding jobs after persistence is reviewed.
+- Add scheduled ingestion and understanding dry-runs before persistence is enabled.
 - Configure production deployment, environment variables, and job observability.
 - Keep jobs idempotent, retry-safe, and bounded.
+
+## Phase 9.2: Scheduled Dry-Run Jobs Foundation - Done
+
+- Added GitHub Actions hourly scheduled dry-run workflow with manual dispatch.
+- Added a bounded scheduled runner for public ingestion plus mock understanding.
+- Wrote ignored scheduled summary artifacts under `data/scheduled/`.
+- Kept Supabase writes, scheduled persistence, source-health writes, live DeepSeek, X API use, and WeChat auto-crawling disabled.
+
+Deferred to later phases:
+
+- Controlled scheduled persistence behind explicit approval and protected workflow gates.
+- Daily and weekly report publication jobs.
+- Live DeepSeek job usage with approved cost, retry, and review boundaries.
 
 ## Phase 9: Admin Review Workflows
 

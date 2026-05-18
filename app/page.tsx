@@ -357,7 +357,7 @@ export default function HomePage() {
             <h2 className="text-xl font-semibold text-radar-ink">Admin / operations boundary</h2>
             <p className="mt-2 text-sm leading-6 text-radar-muted">
               Operational controls stay explicit: dry-run-first writes, feature-gated
-              Supabase persistence, opt-in live model calls, and no scheduled jobs yet.
+              Supabase persistence, opt-in live model calls, and scheduled dry-runs only.
             </p>
           </div>
           <Link

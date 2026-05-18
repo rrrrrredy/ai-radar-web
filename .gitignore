@@ -48,3 +48,6 @@ data/ingestion/tmp/
 data/understanding/latest/*.json
 data/understanding/runs/*.json
 data/understanding/tmp/
+data/scheduled/latest/*.json
+data/scheduled/runs/*.json
+data/scheduled/tmp/

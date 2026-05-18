@@ -10,7 +10,7 @@ type ConfigRow = {
   boundary: string;
   detail: string;
   keyName: string;
-  status: boolean | "setup placeholder";
+  status: boolean | "setup placeholder" | "dry-run only";
   tone?: StatusTone;
 };
 
@@ -70,9 +70,9 @@ export default function AdminSettingsPage() {
     },
     {
       boundary: "Scheduled jobs",
-      detail: "No scheduler is configured by this phase. Use setup placeholder until a future job phase exists.",
-      keyName: "Vercel Cron / GitHub Actions schedule",
-      status: "setup placeholder",
+      detail: "GitHub Actions runs dry-run summaries only. Scheduled persistence and report jobs stay disabled.",
+      keyName: ".github/workflows/radar-scheduled-dry-run.yml",
+      status: "dry-run only",
       tone: "caution"
     },
     {
@@ -139,10 +139,10 @@ export default function AdminSettingsPage() {
           value={String(deepSeek.hasApiKey)}
         />
         <AdminStatusCard
-          detail="Schedulers, WeChat auth, and X API integration are placeholders or disabled flags."
+          detail="Only scheduled dry-runs exist. WeChat auth and X API integration are placeholders or disabled flags."
           label="External ops"
           tone="caution"
-          value="placeholder"
+          value="dry-run"
         />
       </section>
 
@@ -202,7 +202,7 @@ export default function AdminSettingsPage() {
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
               Placeholders are explicit so they cannot be mistaken for enabled
-              production integrations or scheduled jobs.
+              production integrations or scheduled persistence jobs.
             </p>
           </div>
           <StatusChip label="No live job implied" tone="caution" />

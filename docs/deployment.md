@@ -1,6 +1,6 @@
 # Deployment
 
-Phase 9.1 is deployment hardening documentation only. No deployment has been performed, and scheduled jobs remain deferred.
+Phase 9.1 is deployment hardening documentation only. Phase 9.2 adds GitHub Actions scheduled dry-runs only. No deployment has been performed, and scheduled persistence/report jobs remain deferred.
 
 Use Vercel first for the Next.js App Router application and Supabase for managed Postgres/Auth. Cloudflare Pages can be evaluated later only if a platform-specific requirement appears.
 
@@ -38,4 +38,4 @@ After applying the auth/admin RLS migration, the initial admin must sign in once
 
 ## Deferred Work
 
-Scheduled jobs, scheduled persistence, live DeepSeek in jobs, and admin review workflows are deferred to later Phase 9 work. Keep all scheduler flags disabled until explicitly approved.
+Scheduled persistence, live DeepSeek in jobs, and report publication jobs are deferred to later Phase 9 work. Keep all scheduler write/provider flags disabled until explicitly approved. The current GitHub Actions workflow is dry-run only and does not require secrets.

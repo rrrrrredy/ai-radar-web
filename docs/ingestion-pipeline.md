@@ -10,7 +10,7 @@ Phase 4 builds on the Phase 3 cleaned source registry. It provides the first loc
 4. Deduplicate by canonical URL, external ID, and content hash.
 5. Log the ingestion run and write local artifacts.
 
-Phase 5 now classifies topics, summarizes, tags, extracts entities, and scores items into local radar-item artifacts. Phase 6 reads those artifacts for retrieval-backed Q&A and writing assistance. Phase 7 adds dry-run-first Supabase persistence for these local artifacts while keeping scheduling and production writes deferred.
+Phase 5 now classifies topics, summarizes, tags, extracts entities, and scores items into local radar-item artifacts. Phase 6 reads those artifacts for retrieval-backed Q&A and writing assistance. Phase 7 adds dry-run-first Supabase persistence for these local artifacts. Phase 9.2 adds GitHub Actions scheduled dry-runs while keeping scheduled persistence and production writes deferred.
 
 ## Phase 4 Commands
 
@@ -62,7 +62,17 @@ be run after applying the Phase 7 Supabase migrations in order:
 
 ## Scheduling
 
-Use GitHub Actions or Vercel Cron for scheduled ingestion in a later phase. Phase 4 is local-only. Jobs should remain idempotent, safe to retry, and observable through run summaries before database persistence is added.
+Phase 9.2 uses GitHub Actions first for scheduled dry-runs. The workflow lives at `.github/workflows/radar-scheduled-dry-run.yml`, supports manual dispatch, and runs an hourly cron against:
+
+```bash
+npm run scheduled:hourly:dry-run
+```
+
+The scheduled runner executes bounded public-source ingestion, then mock understanding with `dryRun: true`, and writes ignored summary artifacts under `data/scheduled/latest/` and `data/scheduled/runs/`.
+
+Scheduled jobs do not pass `--write`, persist to Supabase, run live DeepSeek, write source-health history, use the X API, or auto-crawl WeChat public accounts. Daily 08:00 Beijing and Monday 09:00 Beijing report jobs remain future work until controlled scheduled persistence is explicitly approved.
+
+Jobs should remain idempotent, safe to retry, and observable through run summaries before database persistence is added.
 
 ## Failure Handling
 

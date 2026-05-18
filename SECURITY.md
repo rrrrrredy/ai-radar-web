@@ -51,9 +51,13 @@ The public anon key may be exposed to the browser only when Supabase policies an
 
 ## Scheduled Jobs And Live Providers
 
-Scheduled job writes require explicit approval in a later phase. Keep scheduler flags disabled by default, including `ENABLE_SCHEDULED_INGESTION=false`, `ENABLE_SCHEDULED_PERSISTENCE=false`, and any future cron secret configuration.
+Phase 9.2 scheduled jobs are GitHub Actions dry-runs only. They run bounded public-source ingestion and mock understanding, upload ignored summary artifacts, and do not require secrets.
+
+Scheduled job writes require explicit approval in a later phase. Keep scheduler flags disabled by default, including `ENABLE_SCHEDULED_INGESTION=false`, `ENABLE_SCHEDULED_PERSISTENCE=false`, `ENABLE_LIVE_DEEPSEEK_IN_JOBS=false`, and any future cron secret configuration.
 
 Live DeepSeek in jobs is disabled by default. Do not enable live model calls in scheduled workflows until cost limits, logging, retries, and review boundaries are approved.
+
+Scheduled dry-run workflows must not pass `--write`, persist to Supabase, write source-health history, use the X API, auto-crawl WeChat public accounts, print secrets, or change public `/ask` and `/write` access.
 
 ## Secrets and Model API Keys
 

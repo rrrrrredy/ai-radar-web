@@ -20,9 +20,9 @@ The project uses public information only. Secrets, API keys, service tokens, coo
 
 ## Current Scope
 
-This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes, the Phase 8.4 production-safe admin console redesign, Phase 9.4 admin review workflow tables, Phase 9.4b controlled admin review actions, and Phase 9.5 Supabase Auth/admin route protection foundations.
+This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes, the Phase 8.4 production-safe admin console redesign, Phase 9.2 scheduled dry-run job foundation, Phase 9.4 admin review workflow tables, Phase 9.4b controlled admin review actions, and Phase 9.5 Supabase Auth/admin route protection foundations.
 
-The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, answer questions against Supabase/local/mock radar evidence, generate writing seeds with caveats, protect `/admin` routes with server-side Supabase user plus `user_roles` checks, and run controlled server-side admin review actions for review tasks, source change requests, report candidates, and audit events. It does not run scheduled jobs, source-health writes, live DeepSeek by default, or generated daily/weekly report publication yet.
+The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, scheduled GitHub Actions dry-runs, answer questions against Supabase/local/mock radar evidence, generate writing seeds with caveats, protect `/admin` routes with server-side Supabase user plus `user_roles` checks, and run controlled server-side admin review actions for review tasks, source change requests, report candidates, and audit events. It does not run scheduled persistence, source-health writes, live DeepSeek by default, or generated daily/weekly report publication yet.
 
 ## Design System
 
@@ -41,7 +41,7 @@ Evidence, freshness, and uncertainty are core UI surfaces, not decorative metada
 - WeChat auth placeholder behind `ENABLE_WECHAT_AUTH`
 - DeepSeek V4 Flash for low-cost filtering, summarization, tagging, and classification
 - DeepSeek V4 Pro for scoring, report generation, and Q&A
-- GitHub Actions and/or Vercel Cron for future scheduled ingestion
+- GitHub Actions scheduled dry-run jobs; Vercel Cron remains future/deferred
 
 ## Local Development
 
@@ -64,6 +64,9 @@ npm run supabase:import:sources
 npm run supabase:persist:ingestion
 npm run supabase:persist:understanding
 npm run source-health:dry-run
+npm run scheduled:hourly:dry-run
+npm run scheduled:daily:dry-run
+npm run scheduled:weekly:dry-run
 npm run auth:bootstrap-admin
 npm run lint
 npm run typecheck
@@ -226,7 +229,24 @@ Retrieval order for `/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` i
 
 Phase 9.1 adds deployment readiness documentation without deploying the app. Vercel-first hosting, Supabase environment boundaries, pre-deployment checks, smoke checks, rollback steps, and no-deploy blockers are documented in `docs/deployment-hardening.md`.
 
-No scheduled jobs, production Supabase writes, or live DeepSeek job runs are enabled by this phase.
+No scheduled persistence, production Supabase writes, or live DeepSeek job runs are enabled by this phase.
+
+## Phase 9.2 Scheduled Dry-Run Jobs
+
+Phase 9.2 adds a GitHub Actions-first scheduled dry-run workflow at `.github/workflows/radar-scheduled-dry-run.yml`.
+
+The workflow supports manual dispatch and an hourly cron. It installs dependencies, runs lint/typecheck/data validation/sensitive scan, then runs:
+
+```bash
+npm run scheduled:hourly:dry-run
+```
+
+The scheduled runner uses bounded public-source ingestion and mock understanding only. It writes ignored summary artifacts under:
+
+- `data/scheduled/latest/scheduled-run.json`
+- `data/scheduled/runs/*.json`
+
+The workflow explicitly sets `ENABLE_SUPABASE_WRITES=false`, `ENABLE_SUPABASE_RETRIEVAL=false`, `ENABLE_SCHEDULED_PERSISTENCE=false`, `ENABLE_LIVE_DEEPSEEK_IN_JOBS=false`, `ENABLE_X_API=false`, and `ENABLE_WECHAT_AUTH=false`. It does not pass `--write`, persist to Supabase, run live DeepSeek, write source-health history, use the X API, or auto-crawl WeChat public accounts. Daily 08:00 Beijing and Monday 09:00 Beijing report jobs remain documented future work, not scheduled write/report jobs.
 
 ## Phase 9.4 Admin Review Workflows
 
@@ -268,6 +288,8 @@ ENABLE_X_API=false
 ENABLE_WECHAT_AUTH=false
 ENABLE_SUPABASE_RETRIEVAL=false
 ENABLE_SUPABASE_WRITES=false
+ENABLE_SCHEDULED_PERSISTENCE=false
+ENABLE_LIVE_DEEPSEEK_IN_JOBS=false
 ```
 
 The app builds when Supabase and DeepSeek variables are missing. UI pages show setup placeholders instead of crashing.
@@ -355,6 +377,7 @@ npm run build
 
 - Ingestion still writes ignored JSON artifacts before optional persistence.
 - Understanding still writes ignored JSON artifacts before optional persistence.
+- Scheduled dry-run jobs write ignored summary artifacts only and do not persist.
 - Supabase write scripts are dry-run by default and are not production scheduled jobs.
 - Supabase-backed retrieval is feature-flagged, reads only the public-safe view, and falls back to local/mock data.
 - HTML ingestion records metadata-level summaries; it is not a full crawler.
@@ -364,7 +387,7 @@ npm run build
 - No automatic live DeepSeek calls.
 - Admin role bootstrap write mode still requires a manual operator approval step and explicit write gates.
 - No working WeChat login.
-- No scheduled production jobs yet.
+- No scheduled production persistence or report publication jobs yet.
 - No generated daily/weekly reports.
 - Admin review workflow tables require the Phase 9.4 migration before actions can persist rows; review actions are server-side/admin-only and audited.
 - Radar item demo data is synthetic and does not describe current real-world events.
@@ -372,4 +395,4 @@ npm run build
 
 ## Next Phases
 
-- Phase 9: scheduled jobs, deployment hardening, and real admin review workflows
+- Phase 9.3: controlled scheduled persistence design with explicit approval, protected workflow gates, and observability

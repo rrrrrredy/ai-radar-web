@@ -37,7 +37,7 @@ export default async function AdminReviewPage() {
           <StatusChip label="Controlled review workflow" tone="admin" />
           <StatusChip label="Admin role required" tone="risk" />
           <StatusChip label="Audited mutations" tone="success" />
-          <StatusChip label="No scheduled jobs" tone="caution" />
+          <StatusChip label="No scheduled writes" tone="caution" />
           <StatusChip label="No live DeepSeek" tone="caution" />
         </div>
         <h1 className="mt-4 text-3xl font-semibold text-radar-ink">
@@ -109,7 +109,7 @@ export default async function AdminReviewPage() {
             <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
               The page reads local review candidates and authenticated Supabase
               workflow rows. Writes are limited to explicit admin server actions;
-              this route does not apply migrations, run jobs, call DeepSeek, or
+              this route does not apply migrations, run scheduled writes, call DeepSeek, or
               write source-health history.
             </p>
           </div>
@@ -131,7 +131,7 @@ export default async function AdminReviewPage() {
             tone="success"
           />
           <AdminCommandBlock
-            command="scheduled jobs and live DeepSeek: not run by this route"
+            command="scheduled writes and live DeepSeek: not run by this route"
             detail="Review mutations do not start ingestion, source-health checks, scheduled jobs, or live model calls."
             label="read-only"
             title="Runtime side effects"

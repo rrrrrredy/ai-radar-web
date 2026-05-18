@@ -65,7 +65,7 @@ export default function AdminPage() {
         <div className="flex flex-wrap items-center gap-2">
           <StatusChip label="Production-safe Analyst Console" tone="admin" />
           <StatusChip label="Writes gated" tone="risk" />
-          <StatusChip label="No scheduled jobs" tone="caution" />
+          <StatusChip label="Scheduled dry-run only" tone="caution" />
         </div>
         <h1 className="mt-4 text-3xl font-semibold text-radar-ink">
           Admin console
@@ -74,8 +74,7 @@ export default function AdminPage() {
           Operations entry point for source review, local ingestion, understanding
           scoring, read-only retrieval, and feature-flag boundaries. This console
           documents state and commands; it does not enable production writes,
-          scheduled jobs, live model calls, source-health writes, or review
-          action writes.
+          scheduled persistence, live model calls, or source-health writes.
         </p>
       </section>
 

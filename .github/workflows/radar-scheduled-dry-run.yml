@@ -1,0 +1,65 @@
+name: Radar Scheduled Dry Run
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Dry-run only. Beijing daily 08:00 and Monday 09:00 report jobs are documented
+    # for later phases and are not implemented as write/report workflows here.
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: radar-scheduled-dry-run-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  hourly-dry-run:
+    name: Hourly dry-run foundation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Phase 9.2 is dry-run/mock only. Do not add secrets or persistence flags here.
+      ENABLE_SUPABASE_WRITES: "false"
+      ENABLE_SUPABASE_RETRIEVAL: "false"
+      ENABLE_SCHEDULED_PERSISTENCE: "false"
+      ENABLE_LIVE_DEEPSEEK_IN_JOBS: "false"
+      ENABLE_X_API: "false"
+      ENABLE_WECHAT_AUTH: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Validate data
+        run: npm run validate:data
+
+      - name: Sensitive scan
+        run: npm run sensitive:scan
+
+      - name: Run scheduled hourly dry-run
+        run: npm run scheduled:hourly:dry-run
+
+      - name: Upload scheduled dry-run summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-scheduled-dry-run-summary
+          path: |
+            data/scheduled/latest/scheduled-run.json
+            data/scheduled/runs/*.json
+          if-no-files-found: error

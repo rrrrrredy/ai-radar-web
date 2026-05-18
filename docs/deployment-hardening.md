@@ -1,6 +1,6 @@
 # Deployment Hardening
 
-Phase 9.1 documents deployment readiness only. It does not approve a deployment, enable scheduled jobs, run Supabase writes, or run live DeepSeek.
+Phase 9.1 documents deployment readiness only. Phase 9.2 adds GitHub Actions scheduled dry-runs only. These phases do not approve a deployment, enable scheduled persistence, run Supabase writes, or run live DeepSeek.
 
 ## Deployment Target Recommendation
 
@@ -41,6 +41,7 @@ Rules:
 - `ENABLE_SUPABASE_WRITES=false` is the default for local, preview, and production.
 - `ENABLE_SUPABASE_RETRIEVAL` may be enabled only after the read-only Supabase retrieval smoke test passes.
 - Scheduled persistence remains disabled until explicitly approved in a later phase.
+- GitHub Actions dry-run jobs must keep all scheduler/write/provider flags false and must not require repository secrets.
 
 ## Pre-Deployment Checklist
 
@@ -59,6 +60,7 @@ Rules:
 - GitHub OAuth is configured in the Supabase dashboard before presenting it as a working provider.
 - The initial admin has signed in once and `npm run auth:bootstrap-admin` dry-run reports that the Auth user can be found.
 - `npm run lint`, `npm run typecheck`, `npm run validate:data`, `npm run sensitive:scan`, and `npm run build` passed.
+- `npm run scheduled:hourly:dry-run`, `npm run scheduled:daily:dry-run`, and `npm run scheduled:weekly:dry-run` passed locally without Supabase writes or live DeepSeek.
 - Mock API smoke passed for `/api/ask` and `/api/writing-assistant`.
 - Admin write boundaries are visible on admin surfaces.
 - `/admin/review` is reachable only for admin users and clearly labels review actions as server-side/admin-only/audited.
@@ -78,6 +80,7 @@ Run these after a preview deployment is created in a future phase. Keep generati
 - `POST /api/writing-assistant` works with `generationMode: "mock"`.
 - Optional Supabase read-only retrieval smoke passes with `ENABLE_SUPABASE_RETRIEVAL=true`.
 - No live DeepSeek call runs by default.
+- The scheduled dry-run workflow can be inspected manually, but no remote dispatch is required for deployment readiness.
 
 ## Rollback Plan
 
@@ -85,6 +88,7 @@ Run these after a preview deployment is created in a future phase. Keep generati
 - Disable `ENABLE_SUPABASE_RETRIEVAL`.
 - Keep `ENABLE_SUPABASE_WRITES=false`.
 - Disable scheduled workflows and scheduler flags.
+- Keep `.github/workflows/radar-scheduled-dry-run.yml` disabled or reverted if dry-run scheduling itself becomes noisy.
 - Rotate or revoke exposed secrets if needed.
 - Fall back to local/mock data until the deployment is fixed.
 
