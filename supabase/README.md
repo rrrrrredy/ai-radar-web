@@ -22,6 +22,7 @@ supabase/migrations/202605140001_phase7_persistence.sql
 supabase/migrations/202605140002_phase7_upsert_constraints.sql
 supabase/migrations/202605140003_public_retrieval_view.sql
 supabase/migrations/202605140004_auth_admin_rls.sql
+supabase/migrations/202605140005_admin_review_workflows.sql
 ```
 
 The first migration adds nullable source URLs, cleaned-registry fields, source
@@ -38,6 +39,26 @@ The Phase 9.5 auth/admin migration enables RLS for `users_profile` and
 their own profile/role rows, and leaves role writes to service-role/server
 bootstrap paths. Review and apply it manually; do not run it as part of app
 validation.
+
+The Phase 9.4 admin review workflow migration creates `review_tasks`,
+`source_change_requests`, `report_candidates`, and `admin_audit_events` with RLS
+enabled, no anon access, authenticated admin/editor read policies, and no
+authenticated browser write grants. Apply it manually only after the auth/admin
+RLS migration has been reviewed and applied. It does not enable approve, reject,
+publish, scheduled job, source-health, or live DeepSeek workflows by itself.
+
+## Admin Review Workflow Tables
+
+`review_tasks` is the generic queue for radar items, sources, report candidates,
+source changes, and system issues. `source_change_requests` tracks proposed
+source add/update/trial/approve/reject/pause/resume decisions.
+`report_candidates` tracks draft daily, weekly, topic, and observation seeds.
+`admin_audit_events` is the future audit log for controlled server-side review
+actions.
+
+Browser clients receive read access only when authenticated as admin/editor by
+RLS. Future writes must use server-side role checks, explicit write gates, and
+audit logging. Do not grant anon access to these tables.
 
 ## Public Retrieval View
 

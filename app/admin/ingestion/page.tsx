@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { AdminCommandBlock } from "@/components/admin-command-block";
 import { AdminDataTable, type AdminDataTableColumn } from "@/components/admin-data-table";
 import { AdminStatusCard } from "@/components/admin-status-card";
@@ -171,6 +173,33 @@ export default function AdminIngestionPage() {
             value={stage.label === "Supabase persistence" ? "gated" : "visible"}
           />
         ))}
+      </section>
+
+      <section className="rounded-lg border border-radar-line bg-radar-panel p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-radar-ink">
+              Review queue handoff
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
+              Ingestion and understanding outputs can now feed review-only
+              admin queues for radar items, source changes, report candidates,
+              and audit visibility. No scheduled job, live DeepSeek, source-health
+              write, or Supabase write is started by the review route.
+            </p>
+          </div>
+          <Link
+            className="rounded-md border border-radar-admin/30 bg-white px-3 py-2 text-sm font-semibold text-radar-admin hover:border-radar-evidence hover:text-radar-evidence focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-radar-evidence"
+            href="/admin/review"
+          >
+            Open review queue
+          </Link>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <StatusChip label="Review-only" tone="admin" />
+          <StatusChip label="Writes gated" tone="risk" />
+          <StatusChip label="No jobs run" tone="caution" />
+        </div>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">

@@ -31,6 +31,14 @@ Do not paste Supabase keys into prompts, logs, docs, commits, or command output.
 
 The admin bootstrap path follows the same write boundary. `npm run auth:bootstrap-admin` is dry-run by default; write mode also requires `--write`, `ENABLE_SUPABASE_WRITES=true`, `SUPABASE_SERVICE_ROLE_KEY`, and `ADMIN_EMAIL`. It must not create Auth users or print the configured admin email, keys, tokens, cookies, or raw Supabase errors.
 
+## Admin Review Workflow Boundary
+
+The `/admin/review` route is a protected review-only foundation. It may read local/mock data and authenticated Supabase rows from `review_tasks`, `source_change_requests`, `report_candidates`, and `admin_audit_events` after the Phase 9.4 migration is manually applied, but it must not execute browser writes.
+
+The Phase 9.4 migration grants no anon access and no authenticated browser insert, update, or delete access for review workflow tables. Future approve, trial, reject, resolve, publish, annotation, and audit writes must be server-side, role-gated, audited, and protected by explicit write gates. The service role must remain server-only and must not enter client components, shared browser utilities, public route bundles, or logs.
+
+`/ask` and `/write` remain public. Adding review surfaces must not change public access or existing API response shapes.
+
 ## Supabase Read Boundary
 
 Server-side retrieval uses the Supabase anon key only against `public.public_radar_items`. That view exposes public-safe radar item fields needed by `/ask` and `/write`, and it does not expose raw text, raw metadata, model metadata, service-role-only tables, operational logs, private notes, write access, or private/internal URLs.

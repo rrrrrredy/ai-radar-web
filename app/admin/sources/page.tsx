@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { AdminCommandBlock } from "@/components/admin-command-block";
 import { AdminDataTable, type AdminDataTableColumn } from "@/components/admin-data-table";
 import { AdminStatusCard } from "@/components/admin-status-card";
@@ -83,6 +85,32 @@ export default function AdminSourcesPage() {
           tone="risk"
           value={statusCounts.rejected ?? 0}
         />
+      </section>
+
+      <section className="rounded-lg border border-radar-line bg-radar-panel p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-radar-ink">
+              Review workflow handoff
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
+              Missing public URLs and source approve/trial/reject decisions now
+              have a review queue surface. The workflow is review-only here;
+              source mutations remain future role-gated server actions.
+            </p>
+          </div>
+          <Link
+            className="rounded-md border border-radar-admin/30 bg-white px-3 py-2 text-sm font-semibold text-radar-admin hover:border-radar-evidence hover:text-radar-evidence focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-radar-evidence"
+            href="/admin/review"
+          >
+            Open review queue
+          </Link>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <StatusChip label="Review-only" tone="admin" />
+          <StatusChip label="Approve/reject disabled" tone="risk" />
+          <StatusChip label="No source-health writes" tone="risk" />
+        </div>
       </section>
 
       <section

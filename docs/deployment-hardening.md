@@ -52,6 +52,7 @@ Rules:
   - `202605140002_phase7_upsert_constraints.sql`
   - `202605140003_public_retrieval_view.sql`
   - `202605140004_auth_admin_rls.sql`
+  - `202605140005_admin_review_workflows.sql`
 - A controlled Supabase write has been completed and reviewed before any write-capable production workflow is considered.
 - Read-only Supabase retrieval smoke passed against `public.public_radar_items`.
 - Supabase Email magic links are configured before relying on admin sign-in.
@@ -60,6 +61,7 @@ Rules:
 - `npm run lint`, `npm run typecheck`, `npm run validate:data`, `npm run sensitive:scan`, and `npm run build` passed.
 - Mock API smoke passed for `/api/ask` and `/api/writing-assistant`.
 - Admin write-gate language is visible on admin surfaces.
+- `/admin/review` is reachable only for admin users and clearly labels review actions as disabled/write-gated.
 - Public copy makes no production claims beyond current capability.
 
 ## Deployment Smoke Checks
@@ -71,6 +73,7 @@ Run these after a preview deployment is created in a future phase. Keep generati
 - `/write` loads.
 - `/admin` redirects unauthenticated visitors to `/auth/login?next=/admin`.
 - Authenticated non-admin users land on `/unauthorized`.
+- `/admin/review` redirects unauthenticated visitors to `/auth/login?next=/admin/review`.
 - `POST /api/ask` works with `generationMode: "mock"`.
 - `POST /api/writing-assistant` works with `generationMode: "mock"`.
 - Optional Supabase read-only retrieval smoke passes with `ENABLE_SUPABASE_RETRIEVAL=true`.
@@ -97,5 +100,6 @@ Do not deploy when any of these are true:
 - Admin UI implies writes without auth and authorization.
 - Required migrations have not been applied.
 - The auth/admin RLS migration has not been reviewed and applied before admin role checks are expected to work.
+- The admin review workflow migration has not been reviewed and applied before persistent review queues are expected to work.
 - `public.public_radar_items` is missing.
 - A scheduled write job is enabled without explicit approval.

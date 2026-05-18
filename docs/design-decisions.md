@@ -90,3 +90,17 @@ Command blocks use code/pre styling and explanatory copy. They are not buttons, 
 ### Settings Never Render Secret Values
 
 Settings surfaces show booleans or setup placeholders only. URLs, keys, service-role tokens, provider model values, and admin email values are not rendered in admin UI.
+
+## Phase 9.4 Admin Review Workflow Decisions
+
+### Review Queues Are Operational, Not Action Surfaces Yet
+
+`/admin/review` introduces real review workflow surfaces for radar items, missing public source URLs, source change requests, report candidates, and audit events. The page is protected by the existing admin layout and uses the same Production-safe Analyst Console primitives as other admin routes.
+
+### Persistence Is Optional Until The Migration Is Applied
+
+The new review helpers prefer authenticated Supabase reads when `202605140005_admin_review_workflows.sql` has been applied and populated. Before then, the UI shows local/mock preview rows with explicit warnings. Preview rows are useful for operator shape and validation, but they are not persistent workflow state.
+
+### Browser Review Writes Stay Disabled
+
+Approve, trial, reject, resolve, publish, annotation, and audit writes are intentionally not implemented as browser actions in Phase 9.4. Future mutations must be server-side, role-gated, audited, and guarded by explicit write controls. Service-role access remains outside client bundles.

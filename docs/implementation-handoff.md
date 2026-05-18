@@ -16,6 +16,7 @@ Document the Phase 8 redesigned UI surfaces before Phase 9 deployment, scheduled
 - `/ask`: evidence-backed Q&A surface with data source, time window, facts, inference, uncertainty, and citations.
 - `/write`: writing-assistant surface with candidate topics, evidence, caveats, counterpoints, missing evidence, and citations.
 - `/admin`: Production-safe Analyst Console entry route.
+- `/admin/review`: protected review-only queue for radar review needs, missing source public URLs, source-change previews, report candidates, and audit rows.
 - `/admin/sources`: source registry review, crawl eligibility, and dry-run import boundary.
 - `/admin/ingestion`: local/manual pipeline, generated artifact contract, dry-run commands, and write-gated command documentation.
 - `/admin/scoring`: scoring formula, thresholds, source weight, confidence, and `needs_review` rules.
@@ -41,6 +42,8 @@ Document the Phase 8 redesigned UI surfaces before Phase 9 deployment, scheduled
 - `AnswerSection`: structured Q&A and planning sections.
 - `TopicCandidateCard`: writing candidate anatomy with confidence, review caution, evidence, caveats, counterpoints, missing evidence, and citations.
 - `AdminStatusCard`, `AdminSection`, `AdminDataTable`, `AdminCommandBlock`: dense admin primitives that separate read-only, dry-run, write-gated, and documentation-only states.
+- `lib/admin/review.ts`, `lib/admin/audit.ts`: server-only, role-gated review read/preview helpers. They do not import service-role access or perform writes.
+- `supabase/migrations/202605140005_admin_review_workflows.sql`: reviewable migration for `review_tasks`, `source_change_requests`, `report_candidates`, and `admin_audit_events`.
 
 ## Design System Usage
 
@@ -63,6 +66,7 @@ Document the Phase 8 redesigned UI surfaces before Phase 9 deployment, scheduled
 ## Admin Write-Gate Rules
 
 - Admin pages are non-writing documentation and inspection surfaces in Phase 8.
+- `/admin/review` extends this pattern for Phase 9.4 review workflows: radar review, source URL completion, source approve/trial/reject foundations, report candidates, and audit visibility are surfaced without browser mutations.
 - Read-only retrieval, dry-run scripts, write-gated scripts, source-health writes, scheduled jobs, and live DeepSeek must stay visually separate.
 - Supabase write paths require explicit CLI write mode plus environment gates outside the browser.
 - Command blocks must not become browser-executable controls without a future admin workflow design and backend authorization pass.
@@ -97,6 +101,15 @@ POST /api/writing-assistant with generationMode="mock"
 ```
 
 Do not run Supabase writes, live DeepSeek, scheduled jobs, source-health writes, or any command with `--write` during design QA.
+
+## Phase 9.4 Review Workflow Notes
+
+- The review migration is created but not applied by validation.
+- Review tables grant no anon access and no authenticated browser write access.
+- Authenticated reads are restricted to admin/editor policies once the migration is applied.
+- UI actions for approve, trial, reject, resolve, and publish remain disabled labels only.
+- Persistent audit writes are future work; preview audit rows document the expected shape.
+- Public `/ask` and `/write` access remains unchanged.
 
 ## Known Limitations
 

@@ -114,6 +114,42 @@ Human notes and review decisions.
 
 Fields: `id`, `user_id`, `target_type`, `target_id`, `body`, `visibility`, `created_at`, `updated_at`.
 
+### review_tasks
+
+Generic admin/editor review queue for radar items, sources, report candidates, source changes, and system issues.
+
+Fields: `id`, `target_type`, `target_id`, `target_local_id`, `title`, `description`, `status`, `priority`, `reason`, `assigned_to`, `created_by`, `resolved_by`, `created_at`, `updated_at`, `resolved_at`, `metadata`.
+
+Statuses: `open`, `in_review`, `approved`, `rejected`, `deferred`, `resolved`. Priorities: `low`, `normal`, `high`, `urgent`.
+
+RLS policy: anon receives no access. Authenticated admin/editor users can read after the Phase 9.4 migration is applied. Browser clients do not receive insert, update, or delete grants in this phase.
+
+### source_change_requests
+
+Source add/update/trial/approve/reject/pause/resume review records.
+
+Fields: `id`, `source_id`, `source_slug`, `request_type`, `proposed_url`, `proposed_status`, `proposed_tier`, `rationale`, `status`, `created_by`, `reviewed_by`, `created_at`, `updated_at`, `reviewed_at`, `metadata`.
+
+Request types: `add`, `update_url`, `trial`, `approve`, `reject`, `pause`, `resume`. Statuses: `open`, `approved`, `rejected`, `deferred`.
+
+RLS policy: anon receives no access. Authenticated admin/editor users can read after migration. Future mutations must be server-side, role-gated, audited, and explicitly write-enabled.
+
+### report_candidates
+
+Candidate daily, weekly, topic, and observation report seeds.
+
+Fields: `id`, `report_type`, `title`, `summary`, `time_window_start`, `time_window_end`, `source_item_ids`, `status`, `confidence`, `created_by`, `reviewed_by`, `created_at`, `updated_at`, `reviewed_at`, `metadata`.
+
+Statuses: `draft`, `needs_review`, `approved`, `rejected`, `published`. The Phase 9.4 UI does not publish reports.
+
+### admin_audit_events
+
+Immutable-ish admin action log for future controlled workflow writes and review activity.
+
+Fields: `id`, `actor_user_id`, `action`, `target_type`, `target_id`, `target_local_id`, `summary`, `created_at`, `metadata`.
+
+RLS policy: anon receives no access. Authenticated admin/editor users can read. Browser write grants are not provided; service-role/server actions can write in a later approved phase.
+
 ### ingestion_runs
 
 Operational ingestion logs.

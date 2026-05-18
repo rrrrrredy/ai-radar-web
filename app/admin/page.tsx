@@ -9,6 +9,14 @@ import { countBy, isSourceHealthEligible } from "@/lib/supabase/persistence";
 
 const sections = [
   {
+    boundary: "review-only",
+    href: "/admin/review",
+    title: "Review queue",
+    description: "Inspect radar review needs, missing public URLs, source-change previews, report candidates, and audit rows.",
+    metric: "workflow foundation",
+    tone: "caution" as const
+  },
+  {
     boundary: "review queue",
     href: "/admin/sources",
     title: "Sources",
@@ -66,14 +74,21 @@ export default function AdminPage() {
           Operations entry point for source review, local ingestion, understanding
           scoring, read-only retrieval, and feature-flag boundaries. This console
           documents state and commands; it does not enable production writes,
-          scheduled jobs, live model calls, or source-health writes.
+          scheduled jobs, live model calls, source-health writes, or review
+          action writes.
         </p>
       </section>
 
       <section
         aria-label="Operational overview"
-        className="grid gap-4 md:grid-cols-2 xl:grid-cols-5"
+        className="grid gap-4 md:grid-cols-2 xl:grid-cols-6"
       >
+        <AdminStatusCard
+          detail="Review workflow foundation is available at /admin/review; approve/reject/publish actions remain disabled."
+          label="Review"
+          tone="caution"
+          value={reviewCount}
+        />
         <AdminStatusCard
           detail="Cleaned public registry rows available for source review and dry-run import planning."
           label="Sources"
