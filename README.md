@@ -20,9 +20,9 @@ The project uses public information only. Secrets, API keys, service tokens, coo
 
 ## Current Scope
 
-This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes, the Phase 8.4 production-safe admin console redesign, Phase 9.4 admin review workflow foundations, and Phase 9.5 Supabase Auth/admin route protection foundations.
+This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes, the Phase 8.4 production-safe admin console redesign, Phase 9.4 admin review workflow tables, Phase 9.4b controlled admin review actions, and Phase 9.5 Supabase Auth/admin route protection foundations.
 
-The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, answer questions against Supabase/local/mock radar evidence, generate writing seeds with caveats, protect `/admin` routes with server-side Supabase user plus `user_roles` checks, and show review-only admin queues for radar items, missing source URLs, source changes, report candidates, and audit events. It does not run production Supabase writes, run scheduled jobs, execute review actions, or generate full daily/weekly reports yet. DeepSeek live calls are opt-in only.
+The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, answer questions against Supabase/local/mock radar evidence, generate writing seeds with caveats, protect `/admin` routes with server-side Supabase user plus `user_roles` checks, and run controlled server-side admin review actions for review tasks, source change requests, report candidates, and audit events. It does not run scheduled jobs, source-health writes, live DeepSeek by default, or generated daily/weekly report publication yet.
 
 ## Design System
 
@@ -212,9 +212,9 @@ Phase 9.4 adds a reviewable admin workflow migration:
 supabase/migrations/202605140005_admin_review_workflows.sql
 ```
 
-Apply it manually only after the auth/admin RLS migration has been reviewed and applied. It creates `review_tasks`, `source_change_requests`, `report_candidates`, and `admin_audit_events` with RLS, no anon access, authenticated admin/editor read policies, and no authenticated browser write grants. Do not apply it from validation, and do not treat it as approval for browser write actions.
+Apply it manually only after the auth/admin RLS migration has been reviewed and applied. It creates `review_tasks`, `source_change_requests`, `report_candidates`, and `admin_audit_events` with RLS, no anon access, authenticated admin/editor read policies, and no authenticated browser write grants. Do not apply it from validation.
 
-Retrieval is server-side and read-only. It uses the public Supabase anon key against the `public_radar_items` view when `ENABLE_SUPABASE_RETRIEVAL=true`; service-role access remains limited to explicit write scripts gated by `--write` plus `ENABLE_SUPABASE_WRITES=true`. The anon key can read only public-safe radar item fields from the view, not raw tables, raw text, model metadata, operational logs, or write surfaces.
+Retrieval is server-side and read-only. It uses the public Supabase anon key against the `public_radar_items` view when `ENABLE_SUPABASE_RETRIEVAL=true`; service-role access remains server-only. Ingestion, understanding, source import, and bootstrap scripts remain gated by `--write` plus `ENABLE_SUPABASE_WRITES=true`. Admin review mutations use server actions in `lib/admin/actions.ts`, require the signed-in admin role first, sanitize inputs, and write `admin_audit_events`. The anon key can read only public-safe radar item fields from the view, not raw tables, raw text, model metadata, operational logs, or write surfaces.
 
 Retrieval order for `/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` is:
 
@@ -230,9 +230,9 @@ No scheduled jobs, production Supabase writes, or live DeepSeek job runs are ena
 
 ## Phase 9.4 Admin Review Workflows
 
-Phase 9.4 adds the protected `/admin/review` route and server-only helpers under `lib/admin/`. The route is protected by the existing admin layout and shows review queues for radar items needing review, sources missing public URLs, source change request previews, report candidates, and recent audit events.
+Phase 9.4 adds the protected `/admin/review` route and server-only helpers under `lib/admin/`. Phase 9.4b turns that foundation into controlled admin actions. The route is protected by the existing admin layout and shows review queues for radar items needing review, sources missing public URLs, source change requests, report candidates, and recent audit events.
 
-The surface is production-safe and review-only. It can read local/mock data and authenticated Supabase rows after the migration exists, but it does not apply migrations, run scheduled jobs, run source-health writes, call live DeepSeek, or execute approve/trial/reject/resolve/publish actions. Future review mutations must stay server-side, role-gated, audited, and explicitly write-enabled in a later controlled phase.
+Review mutations are implemented as Next.js server actions. They re-check the signed-in admin role, resolve the actor from Supabase Auth/profile rows, use service-role access only server-side for the controlled write, sanitize mutation errors, and write an audit event for each successful mutation. The route does not apply migrations, run scheduled jobs, run source-health writes, call live DeepSeek, or change public `/ask` and `/write` access.
 
 ## Phase 9.5 Auth and Admin Protection
 
@@ -299,7 +299,7 @@ Mock mode requires no DeepSeek key and is the default for validation and builds.
 - `/api/ask` - structured Q&A JSON API, mock/local by default
 - `/api/writing-assistant` - structured writing-assistant JSON API, mock/local by default
 - `/admin` - production-safe admin operations console entry point
-- `/admin/review` - protected review-only queue for radar review needs, missing public URLs, source-change previews, report candidates, and audit rows
+- `/admin/review` - protected admin review workflow for review tasks, missing public URLs, source-change requests, report candidates, and audit rows
 - `/admin/sources` - cleaned registry review queue, crawl eligibility, tier distribution, and dry-run/write-gated import boundaries
 - `/admin/ingestion` - source registry to ingestion to understanding to persistence to retrieval chain, local ignored outputs, and separated dry-run/write-gated command documentation
 - `/admin/scoring` - scoring formula, inclusion thresholds, source weight, confidence, and model-authority boundaries
@@ -326,7 +326,7 @@ SUPABASE_SERVICE_ROLE_KEY=
 ADMIN_EMAIL=
 ```
 
-Roles are `admin`, `editor`, and `viewer`; highest role wins in the order `admin > editor > viewer`. Server-side admin authorization checks the Supabase user and `user_roles`. Service-role access is limited to CLI/server bootstrap and write-gated scripts.
+Roles are `admin`, `editor`, and `viewer`; highest role wins in the order `admin > editor > viewer`. Server-side admin authorization checks the Supabase user and `user_roles`. Service-role access is limited to server-only bootstrap/scripts and the role-gated admin review actions.
 
 WeChat auth is a placeholder only. Keep `ENABLE_WECHAT_AUTH=false` unless a future phase adds a real supported provider.
 
@@ -366,7 +366,7 @@ npm run build
 - No working WeChat login.
 - No scheduled production jobs yet.
 - No generated daily/weekly reports.
-- Admin review workflow tables are migration-only until manually applied, and review actions remain disabled.
+- Admin review workflow tables require the Phase 9.4 migration before actions can persist rows; review actions are server-side/admin-only and audited.
 - Radar item demo data is synthetic and does not describe current real-world events.
 - Many useful source names still need manual public URL completion before ingestion.
 

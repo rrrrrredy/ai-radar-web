@@ -2,13 +2,13 @@
 
 ## Goal
 
-Document the Phase 8 redesigned UI surfaces before Phase 9 deployment, scheduled jobs, and admin workflow work. This handoff preserves the product direction and the safety boundaries already established in `DESIGN.md`.
+Document the Phase 8 redesigned UI surfaces and the current Phase 9 admin workflow boundaries. This handoff preserves the product direction and the safety boundaries already established in `DESIGN.md`.
 
 ## Audience
 
 - Future implementers adding Phase 9 deployment, jobs, and admin workflows.
 - Reviewers checking that product surfaces stay evidence-first.
-- Operators validating that admin routes do not imply writes, live model calls, or scheduled execution.
+- Operators validating that admin routes do not imply unguarded writes, live model calls, or scheduled execution.
 
 ## Redesigned Routes
 
@@ -16,7 +16,7 @@ Document the Phase 8 redesigned UI surfaces before Phase 9 deployment, scheduled
 - `/ask`: evidence-backed Q&A surface with data source, time window, facts, inference, uncertainty, and citations.
 - `/write`: writing-assistant surface with candidate topics, evidence, caveats, counterpoints, missing evidence, and citations.
 - `/admin`: Production-safe Analyst Console entry route.
-- `/admin/review`: protected review-only queue for radar review needs, missing source public URLs, source-change previews, report candidates, and audit rows.
+- `/admin/review`: protected admin review workflow for review tasks, missing source public URLs, source-change requests, report candidates, and audit rows.
 - `/admin/sources`: source registry review, crawl eligibility, and dry-run import boundary.
 - `/admin/ingestion`: local/manual pipeline, generated artifact contract, dry-run commands, and write-gated command documentation.
 - `/admin/scoring`: scoring formula, thresholds, source weight, confidence, and `needs_review` rules.
@@ -41,8 +41,9 @@ Document the Phase 8 redesigned UI surfaces before Phase 9 deployment, scheduled
 - `CitationList`: visible citation cards with source, freshness, status, confidence, title, and URL.
 - `AnswerSection`: structured Q&A and planning sections.
 - `TopicCandidateCard`: writing candidate anatomy with confidence, review caution, evidence, caveats, counterpoints, missing evidence, and citations.
-- `AdminStatusCard`, `AdminSection`, `AdminDataTable`, `AdminCommandBlock`: dense admin primitives that separate read-only, dry-run, write-gated, and documentation-only states.
-- `lib/admin/review.ts`, `lib/admin/audit.ts`: server-only, role-gated review read/preview helpers. They do not import service-role access or perform writes.
+- `AdminStatusCard`, `AdminSection`, `AdminDataTable`, `AdminCommandBlock`: dense admin primitives that separate read-only, dry-run, server action, write-gated, and documentation-only states.
+- `lib/admin/review.ts`, `lib/admin/audit.ts`: server-only, role-gated review read helpers. They do not import service-role access or perform writes.
+- `lib/admin/actions.ts`, `lib/admin/validation.ts`: server-only review mutation and validation layer. Actions require admin role, sanitize inputs/errors, use service-role access only after authorization, and create audit events.
 - `supabase/migrations/202605140005_admin_review_workflows.sql`: reviewable migration for `review_tasks`, `source_change_requests`, `report_candidates`, and `admin_audit_events`.
 
 ## Design System Usage
@@ -65,11 +66,11 @@ Document the Phase 8 redesigned UI surfaces before Phase 9 deployment, scheduled
 
 ## Admin Write-Gate Rules
 
-- Admin pages are non-writing documentation and inspection surfaces in Phase 8.
-- `/admin/review` extends this pattern for Phase 9.4 review workflows: radar review, source URL completion, source approve/trial/reject foundations, report candidates, and audit visibility are surfaced without browser mutations.
+- Admin pages were non-writing documentation and inspection surfaces in Phase 8.
+- `/admin/review` now supports Phase 9.4b controlled server-side mutations for review tasks, source-change requests, report candidates, and audit rows. Browser/client components must not import service-role helpers.
 - Read-only retrieval, dry-run scripts, write-gated scripts, source-health writes, scheduled jobs, and live DeepSeek must stay visually separate.
-- Supabase write paths require explicit CLI write mode plus environment gates outside the browser.
-- Command blocks must not become browser-executable controls without a future admin workflow design and backend authorization pass.
+- Generic Supabase persistence scripts require explicit CLI write mode plus environment gates outside the browser.
+- Command blocks must not become browser-executable controls. Review forms must call server actions that re-check admin role and write audit events.
 - Settings may show booleans/placeholders only. Do not render keys, URLs, tokens, model names, admin email values, or service-role values.
 
 ## Data-Source Disclosure Rules
@@ -100,21 +101,22 @@ POST /api/ask with generationMode="mock"
 POST /api/writing-assistant with generationMode="mock"
 ```
 
-Do not run Supabase writes, live DeepSeek, scheduled jobs, source-health writes, or any command with `--write` during design QA.
+Do not run live DeepSeek, scheduled jobs, source-health writes, or generic Supabase persistence commands with `--write` during design QA. A controlled admin review action test may be run only through the authenticated `/admin/review` server-action path.
 
 ## Phase 9.4 Review Workflow Notes
 
 - The review migration is created but not applied by validation.
 - Review tables grant no anon access and no authenticated browser write access.
 - Authenticated reads are restricted to admin/editor policies once the migration is applied.
-- UI actions for approve, trial, reject, resolve, and publish remain disabled labels only.
-- Persistent audit writes are future work; preview audit rows document the expected shape.
+- UI controls for create task, approve, reject, defer, resolve, create source-change request, and create report candidate call server actions.
+- Each successful review mutation writes `admin_audit_events`.
+- Report candidate approval does not publish reports.
 - Public `/ask` and `/write` access remains unchanged.
 
 ## Known Limitations
 
 - `/radar` and `/reports` still communicate earlier-phase placeholder scope.
-- Admin routes document operations but do not execute role-protected workflows.
+- Admin review actions execute only through role-protected server actions.
 - Admin tables intentionally preserve dense columns with horizontal scroll on mobile.
 - Ask and Write default UI actions use mock generation.
 - The app does not claim autonomous production monitoring, scheduled ingestion, or live provider usage.
@@ -122,4 +124,4 @@ Do not run Supabase writes, live DeepSeek, scheduled jobs, source-health writes,
 
 ## Next Recommended Phase
 
-Phase 9 can start with deployment hardening, scheduled job design, and admin review workflow implementation, while preserving the Phase 8 evidence-first public surfaces and the read-only/dry-run/write-gated admin separation.
+The next phase can focus on report publication workflow design, richer manual admin smoke coverage, scheduled job design, and source-health review boundaries while preserving the Phase 8 evidence-first public surfaces and the dry-run/write-gated separation for non-review writes.

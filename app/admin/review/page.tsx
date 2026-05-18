@@ -5,6 +5,14 @@ import { DataSourceChip } from "@/components/data-source-chip";
 import { EvidenceBadge } from "@/components/evidence-badge";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import {
+  submitCreateReportCandidate,
+  submitCreateReviewTask,
+  submitCreateSourceChangeRequest,
+  submitUpdateReportCandidateStatus,
+  submitUpdateReviewTaskStatus,
+  submitUpdateSourceChangeRequestStatus
+} from "@/lib/admin/actions";
+import {
   getReviewDashboardData,
   type NeedsReviewRadarItemRow,
   type ReportCandidateRow,
@@ -26,8 +34,9 @@ export default async function AdminReviewPage() {
     <div className="space-y-8">
       <section>
         <div className="flex flex-wrap items-center gap-2">
-          <StatusChip label="Review-only foundation" tone="admin" />
-          <StatusChip label="Write actions gated" tone="risk" />
+          <StatusChip label="Controlled review workflow" tone="admin" />
+          <StatusChip label="Admin role required" tone="risk" />
+          <StatusChip label="Audited mutations" tone="success" />
           <StatusChip label="No scheduled jobs" tone="caution" />
           <StatusChip label="No live DeepSeek" tone="caution" />
         </div>
@@ -36,10 +45,10 @@ export default async function AdminReviewPage() {
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
           Operational review surface for radar items, missing public source
-          URLs, source change requests, report candidates, and audit events. In
-          this phase all actions are read-only previews; approve, trial, reject,
-          resolve, publish, and audit writes remain gated for a later controlled
-          server-side workflow.
+          URLs, source change requests, report candidates, and audit events.
+          Mutations are server actions that re-check the signed-in admin role,
+          sanitize inputs, and write admin audit events. Public Ask and Write
+          routes remain open.
         </p>
       </section>
 
@@ -48,7 +57,7 @@ export default async function AdminReviewPage() {
         className="grid gap-4 md:grid-cols-2 xl:grid-cols-6"
       >
         <AdminStatusCard
-          detail="Derived task queue, or persisted rows after the review migration is manually applied."
+          detail="Persisted task queue rows after the review migration is manually applied."
           label="Tasks"
           tone={openTaskCount > 0 ? "caution" : "success"}
           value={openTaskCount}
@@ -66,19 +75,19 @@ export default async function AdminReviewPage() {
           value={data.missingPublicUrlSources.rows.length}
         />
         <AdminStatusCard
-          detail="Source add, update URL, trial, approve, reject, pause, and resume workflow shape."
+          detail="Source add, update URL, trial, approve, reject, pause, and resume requests."
           label="Source changes"
           tone="admin"
           value={data.sourceChangeRequests.rows.length}
         />
         <AdminStatusCard
-          detail="Candidate daily, weekly, topic, or observation report seeds awaiting future review actions."
+          detail="Candidate daily, weekly, topic, or observation report seeds awaiting review."
           label="Reports"
           tone="evidence"
           value={data.reportCandidates.rows.length}
         />
         <AdminStatusCard
-          detail="Read-only audit surface; persistent writes are not enabled by this UI."
+          detail="Recent admin audit rows written by controlled server-side mutations."
           label="Audit"
           tone="admin"
           value={data.auditEvents.rows.length}
@@ -98,9 +107,10 @@ export default async function AdminReviewPage() {
               Review workflow boundaries
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
-              The page can read local previews and authenticated Supabase rows
-              when policies are ready. It does not apply migrations, does not
-              run jobs, does not call DeepSeek, and does not execute writes.
+              The page reads local review candidates and authenticated Supabase
+              workflow rows. Writes are limited to explicit admin server actions;
+              this route does not apply migrations, run jobs, call DeepSeek, or
+              write source-health history.
             </p>
           </div>
           <DataSourceChip detail="or local preview" source="supabase_radar_items" />
@@ -108,21 +118,21 @@ export default async function AdminReviewPage() {
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           <AdminCommandBlock
             command="supabase/migrations/202605140005_admin_review_workflows.sql"
-            detail="Reviewable migration only. Apply manually in Supabase after Phase 9.5 auth/admin RLS; validation does not apply it."
+            detail="Must be applied manually before persisted review actions can read and write workflow tables."
             label="manual review"
             title="Review schema"
             tone="admin"
           />
           <AdminCommandBlock
-            command="approve / trial / reject / publish actions: disabled in browser"
-            detail="Future workflow writes must be server-side, role-gated, audited, and explicitly enabled in a controlled write phase."
-            label="write-gated"
+            command="lib/admin/actions.ts"
+            detail="Server actions require admin role, sanitize inputs, use service role only after authorization, and write audit events."
+            label="server-only"
             title="Workflow actions"
-            tone="risk"
+            tone="success"
           />
           <AdminCommandBlock
             command="scheduled jobs and live DeepSeek: not run by this route"
-            detail="This page is an inspection surface. It does not start ingestion, source-health checks, scheduled jobs, or live model calls."
+            detail="Review mutations do not start ingestion, source-health checks, scheduled jobs, or live model calls."
             label="read-only"
             title="Runtime side effects"
             tone="caution"
@@ -138,11 +148,11 @@ export default async function AdminReviewPage() {
                 Persistence notes
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
-                These notes explain why local preview rows may appear before the
-                review migration is applied or populated.
+                These notes explain which authenticated reads are unavailable or
+                empty in the current environment.
               </p>
             </div>
-            <StatusChip label="No writes attempted" tone="success" />
+            <StatusChip label="Mutation errors sanitized" tone="success" />
           </div>
           <ul className="mt-4 grid gap-2 text-sm leading-6 text-radar-muted">
             {data.warnings.map((warning) => (
@@ -154,10 +164,18 @@ export default async function AdminReviewPage() {
         </section>
       ) : null}
 
+      <section
+        aria-label="Create admin review records"
+        className="grid gap-4 xl:grid-cols-[1fr_1fr]"
+      >
+        <CreateReviewTaskPanel />
+        <CreateReportCandidatePanel />
+      </section>
+
       <ReviewTable
         ariaLabel="Review task queue"
         columns={reviewTaskColumns}
-        description="Generic task queue for reviewable targets. Persisted rows take precedence after the migration is applied; otherwise the table shows derived local previews."
+        description="Generic task queue for reviewable targets. Persisted rows can be moved through in-review, approve, reject, defer, and resolve states."
         emptyLabel="No review tasks"
         minWidth="1040px"
         result={data.reviewTasks}
@@ -190,7 +208,7 @@ export default async function AdminReviewPage() {
       <ReviewTable
         ariaLabel="Source change requests"
         columns={sourceChangeColumns}
-        description="Foundation for source add, URL update, trial, approve, reject, pause, and resume review. Write actions are intentionally disabled."
+        description="Source add, URL update, trial, approve, reject, pause, and resume requests. Status changes are explicit audited admin actions."
         emptyLabel="No source change request rows"
         minWidth="1040px"
         result={data.sourceChangeRequests}
@@ -212,7 +230,7 @@ export default async function AdminReviewPage() {
       <ReviewTable
         ariaLabel="Recent admin audit events"
         columns={auditEventColumns}
-        description="Recent admin audit event rows when the migration is applied, with preview rows before persistent audit writes exist."
+        description="Recent admin audit event rows written by controlled review mutations."
         emptyLabel="No audit events"
         minWidth="980px"
         result={data.auditEvents}
@@ -276,6 +294,353 @@ function ReviewTable<T>({
   );
 }
 
+function CreateReviewTaskPanel() {
+  return (
+    <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-radar-ink">Create review task</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-radar-muted">
+            Creates a persisted task and audit row through the admin server action.
+          </p>
+        </div>
+        <StatusChip label="Admin action" tone="risk" />
+      </div>
+      <form action={submitCreateReviewTask} className="mt-4 grid gap-3">
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className={fieldClassName}>
+            <span className={labelClassName}>Target</span>
+            <select className={inputClassName} name="targetType" required>
+              <option value="radar_item">Radar item</option>
+              <option value="source">Source</option>
+              <option value="report_candidate">Report candidate</option>
+              <option value="source_change">Source change</option>
+              <option value="system">System</option>
+            </select>
+          </label>
+          <label className={fieldClassName}>
+            <span className={labelClassName}>Priority</span>
+            <select className={inputClassName} name="priority" required>
+              <option value="normal">Normal</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+              <option value="low">Low</option>
+            </select>
+          </label>
+          <label className={fieldClassName}>
+            <span className={labelClassName}>Target UUID</span>
+            <input className={inputClassName} name="targetId" placeholder="optional persisted id" />
+          </label>
+        </div>
+        <label className={fieldClassName}>
+          <span className={labelClassName}>Task title</span>
+          <input className={inputClassName} maxLength={160} name="title" required />
+        </label>
+        <label className={fieldClassName}>
+          <span className={labelClassName}>Local id</span>
+          <input className={inputClassName} maxLength={160} name="targetLocalId" placeholder="optional source slug or local id" />
+        </label>
+        <label className={fieldClassName}>
+          <span className={labelClassName}>Description</span>
+          <textarea className={textareaClassName} maxLength={800} name="description" rows={3} />
+        </label>
+        <label className={fieldClassName}>
+          <span className={labelClassName}>Reason</span>
+          <textarea className={textareaClassName} maxLength={500} name="reason" rows={2} />
+        </label>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs leading-5 text-radar-muted">
+            Submit only reviewed admin notes; the mutation writes an audit event.
+          </p>
+          <button className={buttonClassName("admin")} type="submit">
+            Create task
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function CreateReportCandidatePanel() {
+  return (
+    <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-radar-ink">Create report candidate</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-radar-muted">
+            Adds a needs-review report candidate without publishing a report.
+          </p>
+        </div>
+        <StatusChip label="No publish side effect" tone="caution" />
+      </div>
+      <form action={submitCreateReportCandidate} className="mt-4 grid gap-3">
+        <div className="grid gap-3 md:grid-cols-3">
+          <label className={fieldClassName}>
+            <span className={labelClassName}>Type</span>
+            <select className={inputClassName} name="reportType" required>
+              <option value="topic">Topic</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="observation">Observation</option>
+            </select>
+          </label>
+          <label className={fieldClassName}>
+            <span className={labelClassName}>Window start</span>
+            <input className={inputClassName} name="timeWindowStart" type="datetime-local" />
+          </label>
+          <label className={fieldClassName}>
+            <span className={labelClassName}>Window end</span>
+            <input className={inputClassName} name="timeWindowEnd" type="datetime-local" />
+          </label>
+        </div>
+        <label className={fieldClassName}>
+          <span className={labelClassName}>Title</span>
+          <input className={inputClassName} maxLength={180} name="title" required />
+        </label>
+        <label className={fieldClassName}>
+          <span className={labelClassName}>Summary</span>
+          <textarea className={textareaClassName} maxLength={1200} name="summary" required rows={4} />
+        </label>
+        <label className={fieldClassName}>
+          <span className={labelClassName}>Source item UUIDs</span>
+          <textarea
+            className={textareaClassName}
+            maxLength={2000}
+            name="sourceItemIds"
+            placeholder="optional comma-separated UUIDs"
+            rows={2}
+          />
+        </label>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs leading-5 text-radar-muted">
+            Approval and rejection remain separate audited actions.
+          </p>
+          <button className={buttonClassName("evidence")} type="submit">
+            Create candidate
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function ReviewTaskActions({ row }: { row: ReviewTaskRow }) {
+  if (row.source !== "supabase") {
+    return <StatusChip label="Persisted row required" tone="neutral" />;
+  }
+
+  if (row.status === "approved" || row.status === "rejected" || row.status === "deferred" || row.status === "resolved") {
+    return <StatusChip label="Terminal status" tone={reviewStatusTone(row.status)} />;
+  }
+
+  return (
+    <div className="grid gap-2">
+      <p className="text-xs leading-5 text-radar-muted">
+        Each status write is audited.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {row.status === "open" ? (
+          <StatusActionForm
+            action={submitUpdateReviewTaskStatus}
+            buttonLabel="Mark in review"
+            id={row.id}
+            noteName="resolutionNote"
+            status="in_review"
+            tone="admin"
+          />
+        ) : null}
+        <StatusActionForm
+          action={submitUpdateReviewTaskStatus}
+          buttonLabel="Approve"
+          id={row.id}
+          noteName="resolutionNote"
+          status="approved"
+          tone="success"
+        />
+        <StatusActionForm
+          action={submitUpdateReviewTaskStatus}
+          buttonLabel="Defer"
+          id={row.id}
+          noteName="resolutionNote"
+          status="deferred"
+          tone="caution"
+        />
+        <StatusActionForm
+          action={submitUpdateReviewTaskStatus}
+          buttonLabel="Resolve"
+          id={row.id}
+          noteName="resolutionNote"
+          status="resolved"
+          tone="neutral"
+        />
+        <StatusActionForm
+          action={submitUpdateReviewTaskStatus}
+          buttonLabel="Reject"
+          id={row.id}
+          noteName="resolutionNote"
+          status="rejected"
+          tone="risk"
+        />
+      </div>
+    </div>
+  );
+}
+
+function MissingPublicUrlRequestForm({ row }: { row: SourceMissingPublicUrlRow }) {
+  return (
+    <form action={submitCreateSourceChangeRequest} className="grid gap-2">
+      <input name="requestType" type="hidden" value="update_url" />
+      <input name="sourceSlug" type="hidden" value={row.id} />
+      <input name="proposedStatus" type="hidden" value="trial" />
+      <input
+        name="rationale"
+        type="hidden"
+        value={`Reviewed public URL proposed for ${row.name}.`}
+      />
+      <label className={fieldClassName}>
+        <span className={labelClassName}>Public URL</span>
+        <input
+          className={inputClassName}
+          name="proposedUrl"
+          placeholder="https://example.com"
+          required
+          type="url"
+        />
+      </label>
+      <button className={buttonClassName("admin")} type="submit">
+        Create URL request
+      </button>
+    </form>
+  );
+}
+
+function SourceChangeRequestActions({ row }: { row: SourceChangeRequestRow }) {
+  if (row.source !== "supabase") {
+    return <StatusChip label="Persisted row required" tone="neutral" />;
+  }
+
+  if (row.status !== "open") {
+    return <StatusChip label="Reviewed status" tone={sourceChangeStatusTone(row.status)} />;
+  }
+
+  return (
+    <div className="grid gap-2">
+      <p className="text-xs leading-5 text-radar-muted">
+        Approve, reject, or defer writes an audit event.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <StatusActionForm
+          action={submitUpdateSourceChangeRequestStatus}
+          buttonLabel="Approve"
+          id={row.id}
+          noteName="reviewNote"
+          status="approved"
+          tone="success"
+        />
+        <StatusActionForm
+          action={submitUpdateSourceChangeRequestStatus}
+          buttonLabel="Defer"
+          id={row.id}
+          noteName="reviewNote"
+          status="deferred"
+          tone="caution"
+        />
+        <StatusActionForm
+          action={submitUpdateSourceChangeRequestStatus}
+          buttonLabel="Reject"
+          id={row.id}
+          noteName="reviewNote"
+          status="rejected"
+          tone="risk"
+        />
+      </div>
+    </div>
+  );
+}
+
+function ReportCandidateActions({ row }: { row: ReportCandidateRow }) {
+  if (row.source !== "supabase") {
+    return <StatusChip label="Persisted row required" tone="neutral" />;
+  }
+
+  if (row.status === "approved" || row.status === "rejected" || row.status === "published") {
+    return <StatusChip label="Reviewed status" tone={reportStatusTone(row.status)} />;
+  }
+
+  return (
+    <div className="grid gap-2">
+      <p className="text-xs leading-5 text-radar-muted">
+        Approval does not publish a report.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <StatusActionForm
+          action={submitUpdateReportCandidateStatus}
+          buttonLabel="Approve"
+          id={row.id}
+          noteName="reviewNote"
+          status="approved"
+          tone="success"
+        />
+        <StatusActionForm
+          action={submitUpdateReportCandidateStatus}
+          buttonLabel="Reject"
+          id={row.id}
+          noteName="reviewNote"
+          status="rejected"
+          tone="risk"
+        />
+      </div>
+    </div>
+  );
+}
+
+function StatusActionForm({
+  action,
+  buttonLabel,
+  id,
+  noteName,
+  status,
+  tone
+}: {
+  action: (formData: FormData) => Promise<void>;
+  buttonLabel: string;
+  id: string;
+  noteName: "resolutionNote" | "reviewNote";
+  status: string;
+  tone: StatusTone;
+}) {
+  return (
+    <form action={action}>
+      <input name="id" type="hidden" value={id} />
+      <input name="status" type="hidden" value={status} />
+      <input name={noteName} type="hidden" value={`${buttonLabel} from admin review queue.`} />
+      <button className={buttonClassName(tone)} type="submit">
+        {buttonLabel}
+      </button>
+    </form>
+  );
+}
+
+const fieldClassName = "grid gap-1.5";
+const labelClassName = "text-xs font-semibold uppercase tracking-normal text-radar-muted";
+const inputClassName =
+  "w-full rounded-md border border-radar-line bg-white px-3 py-2 text-sm text-radar-ink shadow-sm placeholder:text-radar-muted/70 focus:border-radar-admin focus:outline-none focus:ring-2 focus:ring-radar-admin/20";
+const textareaClassName = `${inputClassName} min-h-[76px] resize-y`;
+
+function buttonClassName(tone: StatusTone) {
+  const toneClasses: Record<StatusTone, string> = {
+    admin: "border-radar-admin/30 bg-radar-admin text-white hover:bg-radar-evidence",
+    caution: "border-radar-caution/40 bg-radar-caution/10 text-radar-caution hover:bg-radar-caution/15",
+    evidence: "border-radar-evidence/30 bg-radar-evidence text-white hover:bg-radar-admin",
+    freshness: "border-radar-freshness/30 bg-radar-freshness/10 text-radar-freshness hover:bg-radar-freshness/15",
+    neutral: "border-radar-line bg-white text-radar-ink hover:border-radar-admin hover:text-radar-admin",
+    risk: "border-radar-risk/40 bg-radar-risk/10 text-radar-risk hover:bg-radar-risk/15",
+    success: "border-radar-success/30 bg-radar-success/10 text-radar-success hover:bg-radar-success/15"
+  };
+
+  return `rounded-md border px-3 py-2 text-xs font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-radar-admin ${toneClasses[tone]}`;
+}
+
 const reviewTaskColumns: AdminDataTableColumn<ReviewTaskRow>[] = [
   {
     header: "Task",
@@ -322,6 +687,11 @@ const reviewTaskColumns: AdminDataTableColumn<ReviewTaskRow>[] = [
         {formatOptionalDate(row.createdAt)}
       </p>
     )
+  },
+  {
+    className: "min-w-[250px]",
+    header: "Admin actions",
+    render: (row) => <ReviewTaskActions row={row} />
   }
 ];
 
@@ -425,6 +795,11 @@ const missingUrlColumns: AdminDataTableColumn<SourceMissingPublicUrlRow>[] = [
     render: (row) => (
       <p className="max-w-sm text-sm leading-6 text-radar-muted">{row.reason}</p>
     )
+  },
+  {
+    className: "min-w-[300px]",
+    header: "Create request",
+    render: (row) => <MissingPublicUrlRequestForm row={row} />
   }
 ];
 
@@ -476,8 +851,9 @@ const sourceChangeColumns: AdminDataTableColumn<SourceChangeRequestRow>[] = [
     )
   },
   {
-    header: "Write gate",
-    render: () => <StatusChip label="action disabled" tone="risk" />
+    className: "min-w-[250px]",
+    header: "Admin actions",
+    render: (row) => <SourceChangeRequestActions row={row} />
   }
 ];
 
@@ -524,8 +900,9 @@ const reportCandidateColumns: AdminDataTableColumn<ReportCandidateRow>[] = [
     )
   },
   {
-    header: "Write gate",
-    render: () => <StatusChip label="publish disabled" tone="risk" />
+    className: "min-w-[220px]",
+    header: "Admin actions",
+    render: (row) => <ReportCandidateActions row={row} />
   }
 ];
 

@@ -44,8 +44,9 @@ The Phase 9.4 admin review workflow migration creates `review_tasks`,
 `source_change_requests`, `report_candidates`, and `admin_audit_events` with RLS
 enabled, no anon access, authenticated admin/editor read policies, and no
 authenticated browser write grants. Apply it manually only after the auth/admin
-RLS migration has been reviewed and applied. It does not enable approve, reject,
-publish, scheduled job, source-health, or live DeepSeek workflows by itself.
+RLS migration has been reviewed and applied. Phase 9.4b server actions use these
+tables for controlled admin review mutations; the migration still does not
+enable scheduled job, source-health, live DeepSeek, or report publish workflows.
 
 ## Admin Review Workflow Tables
 
@@ -53,12 +54,11 @@ publish, scheduled job, source-health, or live DeepSeek workflows by itself.
 source changes, and system issues. `source_change_requests` tracks proposed
 source add/update/trial/approve/reject/pause/resume decisions.
 `report_candidates` tracks draft daily, weekly, topic, and observation seeds.
-`admin_audit_events` is the future audit log for controlled server-side review
-actions.
+`admin_audit_events` is the audit log for controlled server-side review actions.
 
 Browser clients receive read access only when authenticated as admin/editor by
-RLS. Future writes must use server-side role checks, explicit write gates, and
-audit logging. Do not grant anon access to these tables.
+RLS. Writes must use server-side admin role checks and audit logging. Do not
+grant anon access or authenticated browser write access to these tables.
 
 ## Public Retrieval View
 
@@ -88,8 +88,10 @@ ENABLE_SUPABASE_WRITES=false
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` is server-side only. Never expose it in browser code.
-Write scripts also require `--write` and `ENABLE_SUPABASE_WRITES=true` before
-they use the service-role client.
+Generic write scripts also require `--write` and `ENABLE_SUPABASE_WRITES=true`
+before they use the service-role client. Admin review server actions are the
+controlled exception: they require a signed-in admin role before using service
+role and write an `admin_audit_events` row for each successful mutation.
 
 ## Auth Providers
 

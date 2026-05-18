@@ -31,11 +31,13 @@ Do not paste Supabase keys into prompts, logs, docs, commits, or command output.
 
 The admin bootstrap path follows the same write boundary. `npm run auth:bootstrap-admin` is dry-run by default; write mode also requires `--write`, `ENABLE_SUPABASE_WRITES=true`, `SUPABASE_SERVICE_ROLE_KEY`, and `ADMIN_EMAIL`. It must not create Auth users or print the configured admin email, keys, tokens, cookies, or raw Supabase errors.
 
+Admin review mutations are a separate server-side path. They must run only through `lib/admin/actions.ts`, require the signed-in admin role before service-role access, sanitize all mutation errors, and create `admin_audit_events` for successful mutations.
+
 ## Admin Review Workflow Boundary
 
-The `/admin/review` route is a protected review-only foundation. It may read local/mock data and authenticated Supabase rows from `review_tasks`, `source_change_requests`, `report_candidates`, and `admin_audit_events` after the Phase 9.4 migration is manually applied, but it must not execute browser writes.
+The `/admin/review` route is protected by the admin layout. It may read local/mock data and authenticated Supabase rows from `review_tasks`, `source_change_requests`, `report_candidates`, and `admin_audit_events` after the Phase 9.4 migration is manually applied.
 
-The Phase 9.4 migration grants no anon access and no authenticated browser insert, update, or delete access for review workflow tables. Future approve, trial, reject, resolve, publish, annotation, and audit writes must be server-side, role-gated, audited, and protected by explicit write gates. The service role must remain server-only and must not enter client components, shared browser utilities, public route bundles, or logs.
+The Phase 9.4 migration grants no anon access and no authenticated browser insert, update, or delete access for review workflow tables. Approve, reject, defer, resolve, create task, create source-change, create report-candidate, and audit writes are implemented as server actions that re-check admin role and write audit events. The service role must remain server-only and must not enter client components, shared browser utilities, public route bundles, or logs.
 
 `/ask` and `/write` remain public. Adding review surfaces must not change public access or existing API response shapes.
 

@@ -11,7 +11,6 @@ import {
 import { requireUserRole } from "@/lib/auth/roles";
 import { readCleanedSources } from "@/lib/ingestion/select-sources";
 import type { CleanedSource } from "@/lib/ingestion/types";
-import { mockReports } from "@/lib/radar/mock-data";
 import { loadRadarItems } from "@/lib/retrieval/load-radar-items";
 import type { RetrievalDataSource, RetrievalRadarItem } from "@/lib/retrieval/types";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -127,7 +126,7 @@ export async function getReviewDashboardData(): Promise<AdminReviewDashboardData
   ]);
 
   const reviewTasks =
-    persistedReviewTasks.rows.length > 0
+    persistedReviewTasks.source === "supabase"
       ? persistedReviewTasks
       : {
           rows: buildReviewTaskPreview({
@@ -182,7 +181,7 @@ export async function listReviewTasks(): Promise<AdminReviewReadResult<ReviewTas
     listReportCandidatesInternal()
   ]);
 
-  if (persisted.rows.length > 0) {
+  if (persisted.source === "supabase") {
     return persisted;
   }
 
@@ -246,7 +245,7 @@ export function buildReviewTaskPreview({
       title: `${missingPublicUrlSourceCount} sources need public URL review`
     },
     {
-      description: "Approve, trial, reject, pause, and resume decisions remain write-gated. Preview rows show the future workflow shape only.",
+      description: "Derived count for persisted source-change requests. Actual source-change mutations are server-side admin actions.",
       id: "preview-task-source-changes",
       priority: sourceChangeRequestCount > 0 ? "normal" : "low",
       reason: "source_change_requests migration not applied or empty",
@@ -257,7 +256,7 @@ export function buildReviewTaskPreview({
       title: `${sourceChangeRequestCount} source change requests visible`
     },
     {
-      description: "Report candidates are draft/needs-review seeds only. Publish actions are disabled until a later controlled write phase.",
+      description: "Derived count for report candidates. Approval and rejection are controlled admin actions; publication is not enabled.",
       id: "preview-task-report-candidates",
       priority: reportCandidateCount > 0 ? "normal" : "low",
       reason: "report_candidates migration not applied or empty",
@@ -328,7 +327,7 @@ async function listReviewTasksFromSupabase(): Promise<AdminReviewReadResult<Revi
       .from("review_tasks")
       .select("id, target_type, target_id, target_local_id, title, description, status, priority, reason, created_at")
       .order("created_at", { ascending: false, nullsFirst: false })
-      .limit(12);
+      .limit(24);
 
     if (error) {
       return {
@@ -362,44 +361,40 @@ async function listSourceChangeRequestsInternal(): Promise<AdminReviewReadResult
         .from("source_change_requests")
         .select("id, source_slug, request_type, proposed_url, proposed_status, proposed_tier, rationale, status, created_at")
         .order("created_at", { ascending: false, nullsFirst: false })
-        .limit(12);
+        .limit(24);
 
       if (!error) {
         const rows = ((data ?? []) as Record<string, unknown>[])
           .map(normalizeSourceChangeRequest)
           .filter((row): row is SourceChangeRequestRow => Boolean(row));
 
-        if (rows.length > 0) {
-          return {
-            rows,
-            source: "supabase",
-            warnings: []
-          };
-        }
+        return {
+          rows,
+          source: "supabase",
+          warnings: []
+        };
       }
 
       if (error) {
         return {
-          rows: buildSourceChangeRequestPreview(),
-          source: "local_preview",
+          rows: [],
+          source: "unavailable",
           warnings: [readErrorMessage("source_change_requests", error as SupabaseReadError)]
         };
       }
     } catch (error) {
       return {
-        rows: buildSourceChangeRequestPreview(),
-        source: "local_preview",
-        warnings: [`source_change_requests read failed; showing preview rows only: ${sanitizeAdminError(error)}`]
+        rows: [],
+        source: "unavailable",
+        warnings: [`source_change_requests read failed: ${sanitizeAdminError(error)}`]
       };
     }
   }
 
   return {
-    rows: buildSourceChangeRequestPreview(),
-    source: "local_preview",
-    warnings: supabase
-      ? ["No persisted source change requests were readable; showing preview rows only."]
-      : ["Supabase browser-auth read client is not configured; showing source-change preview rows."]
+    rows: [],
+    source: "unavailable",
+    warnings: ["Supabase browser-auth read client is not configured; source change requests are not readable."]
   };
 }
 
@@ -411,119 +406,41 @@ async function listReportCandidatesInternal(): Promise<AdminReviewReadResult<Rep
         .from("report_candidates")
         .select("id, report_type, title, summary, time_window_start, time_window_end, source_item_ids, status, confidence, created_at")
         .order("created_at", { ascending: false, nullsFirst: false })
-        .limit(12);
+        .limit(24);
 
       if (!error) {
         const rows = ((data ?? []) as Record<string, unknown>[])
           .map(normalizeReportCandidate)
           .filter((row): row is ReportCandidateRow => Boolean(row));
 
-        if (rows.length > 0) {
-          return {
-            rows,
-            source: "supabase",
-            warnings: []
-          };
-        }
+        return {
+          rows,
+          source: "supabase",
+          warnings: []
+        };
       }
 
       if (error) {
         return {
-          rows: buildReportCandidatePreview(),
-          source: "local_preview",
+          rows: [],
+          source: "unavailable",
           warnings: [readErrorMessage("report_candidates", error as SupabaseReadError)]
         };
       }
     } catch (error) {
       return {
-        rows: buildReportCandidatePreview(),
-        source: "local_preview",
-        warnings: [`report_candidates read failed; showing preview rows only: ${sanitizeAdminError(error)}`]
+        rows: [],
+        source: "unavailable",
+        warnings: [`report_candidates read failed: ${sanitizeAdminError(error)}`]
       };
     }
   }
 
   return {
-    rows: buildReportCandidatePreview(),
-    source: "local_preview",
-    warnings: supabase
-      ? ["No persisted report candidates were readable; showing preview rows only."]
-      : ["Supabase browser-auth read client is not configured; showing report candidate preview rows."]
+    rows: [],
+    source: "unavailable",
+    warnings: ["Supabase browser-auth read client is not configured; report candidates are not readable."]
   };
-}
-
-function buildSourceChangeRequestPreview(): SourceChangeRequestRow[] {
-  const cleanedSources = readCleanedSources();
-  const missingUrlRows = cleanedSources
-    .filter((source) => !source.url || source.status === "needs_public_url")
-    .toSorted(compareMissingPublicUrlPriority)
-    .slice(0, 4)
-    .map((source) => ({
-      id: `preview-source-url-${source.id}`,
-      proposedStatus: "trial",
-      rationale: "Public URL must be reviewed before this source can enter trial or active ingestion.",
-      requestType: "update_url" as const,
-      source: "local_preview" as const,
-      sourceName: source.name,
-      sourceSlug: source.id,
-      status: "open" as const
-    }));
-
-  const trialRows = cleanedSources
-    .filter((source) => source.status === "trial")
-    .toSorted((left, right) => right.weight - left.weight)
-    .slice(0, 4)
-    .map((source) => ({
-      id: `preview-source-approve-${source.id}`,
-      proposedStatus: "active",
-      proposedTier: source.tier,
-      rationale: "Trial source approval remains a future controlled server-side write action.",
-      requestType: "approve" as const,
-      source: "local_preview" as const,
-      sourceName: source.name,
-      sourceSlug: source.id,
-      status: "open" as const
-    }));
-
-  const rejectedRows = cleanedSources
-    .filter((source) => source.status === "rejected")
-    .toSorted((left, right) => right.weight - left.weight)
-    .slice(0, 2)
-    .map((source) => ({
-      id: `preview-source-reject-${source.id}`,
-      proposedStatus: "rejected",
-      proposedTier: source.tier,
-      rationale: "Rejected source decisions can be audited here after persistence and controlled writes are approved.",
-      requestType: "reject" as const,
-      source: "local_preview" as const,
-      sourceName: source.name,
-      sourceSlug: source.id,
-      status: "open" as const
-    }));
-
-  return [...missingUrlRows, ...trialRows, ...rejectedRows].slice(0, 10);
-}
-
-function buildReportCandidatePreview(): ReportCandidateRow[] {
-  return mockReports.flatMap((report) => {
-    const reportType = normalizeReportType(report.type);
-    if (!reportType) {
-      return [];
-    }
-
-    return [{
-      createdAt: report.createdAt,
-      id: `preview-${report.id}`,
-      reportType,
-      source: "local_preview" as const,
-      sourceItemCount: 0,
-      status: report.status === "published" ? "published" : "draft",
-      summary: "Synthetic report seed preview. Candidate persistence and publish decisions are not enabled in this phase.",
-      timeWindowEnd: report.timeWindowEnd,
-      timeWindowStart: report.timeWindowStart,
-      title: report.title
-    }];
-  });
 }
 
 function normalizeReviewTask(value: Record<string, unknown>): ReviewTaskRow | null {
@@ -652,7 +569,7 @@ function readErrorMessage(tableName: string, error: SupabaseReadError) {
     return `${tableName} is not available yet; apply the Phase 9.4 migration manually before persistent review reads.`;
   }
 
-  return `${tableName} read failed; showing preview rows only: ${sanitizeAdminError(error.message)}`;
+  return `${tableName} read failed: ${sanitizeAdminError(error.message)}`;
 }
 
 function isMissingReviewTableError(tableName: string, error: SupabaseReadError) {

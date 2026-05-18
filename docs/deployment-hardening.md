@@ -18,7 +18,7 @@ Keep `.env.example` values blank or set to safe defaults. Store real values only
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | Optional for mock/local; required for Supabase smoke | Yes | Yes | Public | Yes | Blank | Browser-safe Supabase project URL. Required before auth or Supabase retrieval can work. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Optional for mock/local; required for Supabase smoke | Yes | Yes | Public | Yes | Blank | Browser-safe anon key. It must be limited by RLS/view grants and should only read public-safe data. |
-| `SUPABASE_SERVICE_ROLE_KEY` | No, except controlled server write scripts | No, unless approved write workflow exists | No, unless approved write workflow exists | Server-only | No | Blank | Must remain server-only. Never import into client components or expose in browser bundles. |
+| `SUPABASE_SERVICE_ROLE_KEY` | No, except controlled server write scripts/actions | Required only where admin review mutations are enabled | Required only where admin review mutations are enabled | Server-only | No | Blank | Must remain server-only. Never import into client components or expose in browser bundles. |
 | `DEEPSEEK_API_KEY` | No; live mode only | No by default | No by default | Server-only | No | Blank | Must remain server-only. Live DeepSeek requires explicit live mode and a key. |
 | `ADMIN_EMAIL` | Optional for public-only local work | Yes before admin bootstrap | Yes | Server-only | No | Blank | Identifies the initial admin account for the dry-run-first bootstrap flow. |
 | `APP_BASE_URL` | Optional | Yes for deployed callbacks/links | Yes | Server-only | No | Blank | Set to the canonical deployment URL when deployed. |
@@ -53,15 +53,15 @@ Rules:
   - `202605140003_public_retrieval_view.sql`
   - `202605140004_auth_admin_rls.sql`
   - `202605140005_admin_review_workflows.sql`
-- A controlled Supabase write has been completed and reviewed before any write-capable production workflow is considered.
+- A controlled admin review action smoke has been completed through `/admin/review`, or manual steps are documented if browser session automation is unavailable.
 - Read-only Supabase retrieval smoke passed against `public.public_radar_items`.
 - Supabase Email magic links are configured before relying on admin sign-in.
 - GitHub OAuth is configured in the Supabase dashboard before presenting it as a working provider.
 - The initial admin has signed in once and `npm run auth:bootstrap-admin` dry-run reports that the Auth user can be found.
 - `npm run lint`, `npm run typecheck`, `npm run validate:data`, `npm run sensitive:scan`, and `npm run build` passed.
 - Mock API smoke passed for `/api/ask` and `/api/writing-assistant`.
-- Admin write-gate language is visible on admin surfaces.
-- `/admin/review` is reachable only for admin users and clearly labels review actions as disabled/write-gated.
+- Admin write boundaries are visible on admin surfaces.
+- `/admin/review` is reachable only for admin users and clearly labels review actions as server-side/admin-only/audited.
 - Public copy makes no production claims beyond current capability.
 
 ## Deployment Smoke Checks

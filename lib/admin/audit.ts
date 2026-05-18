@@ -41,9 +41,9 @@ export async function listRecentAuditEvents(limit = 8): Promise<AdminReviewReadR
   const supabase = await getSupabaseServerClient();
   if (!supabase) {
     return {
-      rows: buildAuditEventPreview(),
-      source: "local_preview",
-      warnings: ["Supabase browser-auth read client is not configured; showing local audit preview rows."]
+      rows: [],
+      source: "unavailable",
+      warnings: ["Supabase browser-auth read client is not configured; persistent audit events are not readable."]
     };
   }
 
@@ -62,25 +62,17 @@ export async function listRecentAuditEvents(limit = 8): Promise<AdminReviewReadR
       .map(normalizeAuditEvent)
       .filter((row): row is AdminAuditEventRow => Boolean(row));
 
-    if (rows.length > 0) {
-      return {
-        rows,
-        source: "supabase",
-        warnings: []
-      };
-    }
-
     return {
-      rows: buildAuditEventPreview(),
-      source: "local_preview",
-      warnings: ["No persisted admin audit events were readable; showing preview rows only."]
+      rows,
+      source: "supabase",
+      warnings: []
     };
   } catch (error) {
     return {
-      rows: buildAuditEventPreview(),
-      source: "local_preview",
+      rows: [],
+      source: "unavailable",
       warnings: [
-        `Admin audit event read failed; showing preview rows only: ${sanitizeAdminError(error)}`
+        `Admin audit event read failed: ${sanitizeAdminError(error)}`
       ]
     };
   }
@@ -93,16 +85,16 @@ export function buildAuditEventPreview(): AdminAuditEventRow[] {
       createdAt: "2026-05-14T00:05:00.000Z",
       id: "preview-audit-review-foundation",
       source: "local_preview",
-      summary: "Local preview row. Persistent admin audit events start after the migration is applied and controlled writes are approved.",
+      summary: "Local preview row. Persistent admin audit events are written by controlled admin review server actions.",
       targetLocalId: "phase-9-4",
       targetType: "system"
     },
     {
-      action: "write_actions_gated",
+      action: "server_actions_enabled",
       createdAt: "2026-05-14T00:05:00.000Z",
       id: "preview-audit-write-gate",
       source: "local_preview",
-      summary: "Approve, reject, publish, and source-change writes remain disabled in the browser for this phase.",
+      summary: "Review mutations must run through server actions that require admin role and write audit events.",
       targetLocalId: "review-actions",
       targetType: "system"
     }
@@ -122,11 +114,11 @@ export function sanitizeAdminError(error: unknown) {
 function auditFallback(error: SupabaseReadError): AdminReviewReadResult<AdminAuditEventRow> {
   const reason = isMissingReviewTableError(error)
     ? "admin_audit_events is not available yet; apply the Phase 9.4 migration manually before persistent audit reads."
-    : `Admin audit event read failed; showing preview rows only: ${sanitizeAdminError(error.message)}`;
+    : `Admin audit event read failed: ${sanitizeAdminError(error.message)}`;
 
   return {
-    rows: buildAuditEventPreview(),
-    source: "local_preview",
+    rows: [],
+    source: "unavailable",
     warnings: [reason]
   };
 }

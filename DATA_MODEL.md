@@ -122,7 +122,7 @@ Fields: `id`, `target_type`, `target_id`, `target_local_id`, `title`, `descripti
 
 Statuses: `open`, `in_review`, `approved`, `rejected`, `deferred`, `resolved`. Priorities: `low`, `normal`, `high`, `urgent`.
 
-RLS policy: anon receives no access. Authenticated admin/editor users can read after the Phase 9.4 migration is applied. Browser clients do not receive insert, update, or delete grants in this phase.
+RLS policy: anon receives no access. Authenticated admin/editor users can read after the Phase 9.4 migration is applied. Browser clients do not receive insert, update, or delete grants. Phase 9.4b mutations are server-side admin actions that re-check the admin role, use service-role access only after authorization, and create audit events.
 
 ### source_change_requests
 
@@ -132,7 +132,7 @@ Fields: `id`, `source_id`, `source_slug`, `request_type`, `proposed_url`, `propo
 
 Request types: `add`, `update_url`, `trial`, `approve`, `reject`, `pause`, `resume`. Statuses: `open`, `approved`, `rejected`, `deferred`.
 
-RLS policy: anon receives no access. Authenticated admin/editor users can read after migration. Future mutations must be server-side, role-gated, audited, and explicitly write-enabled.
+RLS policy: anon receives no access. Authenticated admin/editor users can read after migration. Create/approve/reject/defer mutations are server-side, admin role-gated, sanitized, and audited.
 
 ### report_candidates
 
@@ -140,15 +140,15 @@ Candidate daily, weekly, topic, and observation report seeds.
 
 Fields: `id`, `report_type`, `title`, `summary`, `time_window_start`, `time_window_end`, `source_item_ids`, `status`, `confidence`, `created_by`, `reviewed_by`, `created_at`, `updated_at`, `reviewed_at`, `metadata`.
 
-Statuses: `draft`, `needs_review`, `approved`, `rejected`, `published`. The Phase 9.4 UI does not publish reports.
+Statuses: `draft`, `needs_review`, `approved`, `rejected`, `published`. Phase 9.4b can create, approve, and reject candidates; it does not publish reports.
 
 ### admin_audit_events
 
-Immutable-ish admin action log for future controlled workflow writes and review activity.
+Immutable-ish admin action log for controlled workflow writes and review activity.
 
 Fields: `id`, `actor_user_id`, `action`, `target_type`, `target_id`, `target_local_id`, `summary`, `created_at`, `metadata`.
 
-RLS policy: anon receives no access. Authenticated admin/editor users can read. Browser write grants are not provided; service-role/server actions can write in a later approved phase.
+RLS policy: anon receives no access. Authenticated admin/editor users can read. Browser write grants are not provided; server-side admin actions write audit rows after role checks.
 
 ### ingestion_runs
 
