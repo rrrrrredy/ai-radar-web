@@ -146,7 +146,9 @@ create table if not exists event_cluster_items (
 
 create table if not exists entities (
   id uuid primary key default gen_random_uuid(),
-  type text not null check (type in ('company', 'person', 'model', 'product', 'paper', 'project')),
+  type text not null check (
+    type in ('company', 'person', 'model', 'product', 'paper', 'project', 'repository', 'investor', 'regulator', 'other')
+  ),
   name text not null,
   aliases text[] not null default '{}',
   description text,
