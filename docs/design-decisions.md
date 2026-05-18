@@ -104,3 +104,17 @@ The new review helpers prefer authenticated Supabase reads when `202605140005_ad
 ### Browser Review Writes Stay Disabled
 
 Approve, trial, reject, resolve, publish, annotation, and audit writes are intentionally not implemented as browser actions in Phase 9.4. Future mutations must be server-side, role-gated, audited, and guarded by explicit write controls. Service-role access remains outside client bundles.
+
+## Phase 10 Radar And Reports Product Decisions
+
+### Radar Uses The Retrieval Fallback Chain Directly
+
+`/radar` is now a public evidence list instead of a static placeholder. It uses the existing safe retrieval order: read-only Supabase public radar view when enabled, local understanding output when present, then disclosed mock data. The route-level source, freshness timestamp, caveats, status counts, category counts, source-tier counts, filters, and citations are visible before users read individual item summaries.
+
+### Report Previews Are Deterministic And Non-Published
+
+`/reports` generates daily and weekly previews from retrieved radar items without model calls. Sections are deterministic category/status groupings, not natural-language claims from an LLM. The page explicitly says report publication is a future workflow and does not imply published reports exist.
+
+### Weak Evidence Remains Visible
+
+`needs_review`, excluded, failed, local, and mock evidence remain surfaced as uncertainty instead of being hidden. This keeps the public product useful for review and planning while avoiding claims that current data is comprehensive or fully verified.

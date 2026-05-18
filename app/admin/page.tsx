@@ -216,6 +216,35 @@ export default function AdminPage() {
         </div>
       </section>
 
+      <section className="rounded-lg border border-radar-line bg-radar-panel p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-radar-ink">
+              Public product shortcuts
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
+              These links inspect public read surfaces only. They do not create
+              review tasks, publish reports, run live models, or write to Supabase.
+            </p>
+          </div>
+          <StatusChip label="Read-only" tone="success" />
+        </div>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <a
+            className="rounded-md border border-radar-line bg-white px-3 py-2 text-sm font-semibold text-radar-ink hover:border-radar-caution hover:text-radar-caution"
+            href="/radar?status=needs_review"
+          >
+            Review needs_review radar rows
+          </a>
+          <a
+            className="rounded-md border border-radar-line bg-white px-3 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
+            href="/reports"
+          >
+            Inspect report previews
+          </a>
+        </div>
+      </section>
+
       <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {sections.map((section) => (
           <AdminSection key={section.href} {...section} />

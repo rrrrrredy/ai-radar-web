@@ -2,7 +2,7 @@
 
 ## Goal
 
-Document the Phase 8 redesigned UI surfaces and the current Phase 9 admin workflow boundaries. This handoff preserves the product direction and the safety boundaries already established in `DESIGN.md`.
+Document the Phase 8 redesigned UI surfaces, Phase 9 admin workflow boundaries, and Phase 10 radar/report product surfaces. This handoff preserves the product direction and the safety boundaries already established in `DESIGN.md`.
 
 ## Audience
 
@@ -21,8 +21,8 @@ Document the Phase 8 redesigned UI surfaces and the current Phase 9 admin workfl
 - `/admin/ingestion`: local/manual pipeline, generated artifact contract, dry-run commands, and write-gated command documentation.
 - `/admin/scoring`: scoring formula, thresholds, source weight, confidence, and `needs_review` rules.
 - `/admin/settings`: boolean-only configuration posture without secret values.
-
-`/radar` and `/reports` remain valid smoke-tested routes, but they are still earlier-phase placeholder/product surfaces rather than fully redesigned Phase 8 editorial flows.
+- `/radar`: filterable public radar evidence list backed by Supabase/local/mock retrieval, with counts, freshness, caveats, review states, and citations.
+- `/reports`: deterministic daily/weekly report preview surface generated from available radar items, with sections, missing evidence, caveats, and citations.
 
 ## Design Direction
 
@@ -42,6 +42,8 @@ Document the Phase 8 redesigned UI surfaces and the current Phase 9 admin workfl
 - `AnswerSection`: structured Q&A and planning sections.
 - `TopicCandidateCard`: writing candidate anatomy with confidence, review caution, evidence, caveats, counterpoints, missing evidence, and citations.
 - `AdminStatusCard`, `AdminSection`, `AdminDataTable`, `AdminCommandBlock`: dense admin primitives that separate read-only, dry-run, server action, write-gated, and documentation-only states.
+- `lib/radar/feed.ts`: server-side radar feed loader that wraps the existing retrieval fallback path and adds counts, freshness notes, caveats, timestamps, and citations.
+- `lib/reports/generate-report-preview.ts`, `lib/reports/types.ts`: deterministic report preview generator and types for daily/weekly public preview surfaces.
 - `lib/admin/review.ts`, `lib/admin/audit.ts`: server-only, role-gated review read helpers. They do not import service-role access or perform writes.
 - `lib/admin/actions.ts`, `lib/admin/validation.ts`: server-only review mutation and validation layer. Actions require admin role, sanitize inputs/errors, use service-role access only after authorization, and create audit events.
 - `supabase/migrations/202605140005_admin_review_workflows.sql`: reviewable migration for `review_tasks`, `source_change_requests`, `report_candidates`, and `admin_audit_events`.
@@ -80,6 +82,7 @@ Document the Phase 8 redesigned UI surfaces and the current Phase 9 admin workfl
 - Mock data: label as synthetic workflow data, not production-current intelligence.
 - Empty retrieval: label synthesis as limited and unconfirmed.
 - Unknown retrieval: keep confidence low and disclose uncertainty.
+- Radar/report public surfaces should consume `loadRadarFeed()` so source, freshness, caveats, and counts stay consistent with Ask/Write retrieval behavior.
 
 ## Validation Commands
 
@@ -115,13 +118,15 @@ Do not run live DeepSeek, scheduled jobs, source-health writes, or generic Supab
 
 ## Known Limitations
 
-- `/radar` and `/reports` still communicate earlier-phase placeholder scope.
+- `/radar` and `/reports` are now useful public previews, but they only reflect currently retrievable Supabase/local/mock radar items.
 - Admin review actions execute only through role-protected server actions.
 - Admin tables intentionally preserve dense columns with horizontal scroll on mobile.
 - Ask and Write default UI actions use mock generation.
+- Report previews are deterministic planning previews, not persisted or published reports.
+- Local understanding output may be metadata-level and mostly `needs_review`, which limits synthesis quality.
 - The app does not claim autonomous production monitoring, scheduled ingestion, or live provider usage.
 - Browser plugin QA was unavailable in this environment because the Node REPL runtime resolved Node 20.19.1 and requires Node 22.22.0 or newer; Playwright/Chrome checks were used instead.
 
 ## Next Recommended Phase
 
-The next phase can focus on report publication workflow design, richer manual admin smoke coverage, scheduled job design, and source-health review boundaries while preserving the Phase 8 evidence-first public surfaces and the dry-run/write-gated separation for non-review writes.
+The next phase can focus on report candidate persistence from previews, report publication workflow design, richer manual admin smoke coverage, scheduled job design, and source-health review boundaries while preserving the Phase 8/10 evidence-first public surfaces and the dry-run/write-gated separation for non-review writes.
