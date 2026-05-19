@@ -10,7 +10,7 @@ Last updated: 2026-05-19
 - Vercel CLI: `54.1.0`
 - Latest immutable Preview deployment: `https://ai-radar-q5k10fvr3-luosongred-5507s-projects.vercel.app`
 - Active Preview alias: `https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`
-- Production deployment: **not attempted**
+- Production deployment: no completed Production deployment. The required docs push to `main` triggered Git-connected Production build `dpl_CSm4jBoY8uQCfNXehHVeM8Zak2EJ`, which was canceled while building.
 
 Use the active Preview alias for deployed callback configuration because it is assigned to the latest Preview deployment without changing on each immutable deployment URL.
 
@@ -105,4 +105,4 @@ Expected POST results:
 - `POST /api/ask` with `{"question":"Which AI radar signals are ready for review?","generationMode":"mock","language":"en"}` -> 200
 - `POST /api/writing-assistant` with `{"query":"Find newsletter topics from current radar items.","generationMode":"mock","outputType":"topic_candidates","language":"en"}` -> 200
 
-No production deploy, Supabase writes, scheduled jobs, or live DeepSeek calls were run for this preview.
+No `vercel --prod` command was run. The Git-triggered Production build noted above was canceled while building. No Supabase writes, scheduled jobs, or live DeepSeek calls were run for this preview.
