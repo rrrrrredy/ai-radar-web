@@ -33,7 +33,7 @@ export default async function ReportsPage({
             <DataSourceChip detail={modeLabel(selectedReport)} source={selectedReport.data_source} />
             <StatusChip label="Report status" tone={statusTone(selectedReport.status)} value={selectedReport.status} />
             <StatusChip label="Saved mode" tone={selectedReport.read_source === "supabase" ? "success" : "caution"} value={readSourceLabel(selectedReport)} />
-            <StatusChip label="Publication" tone={selectedReport.status === "published" ? "success" : "caution"} value={selectedReport.status === "published" ? "published" : "not published"} />
+            <StatusChip label="Publication" tone={publicationTone(selectedReport)} value={publicationLabel(selectedReport)} />
           </div>
           <h1 className="mt-4 text-3xl font-semibold text-radar-ink">Reports</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
@@ -101,16 +101,27 @@ export default async function ReportsPage({
           <dl className="space-y-3 text-sm">
             <RailRow label="Status" value={selectedReport.status} />
             <RailRow label="Mode" value={modeLabel(selectedReport)} />
+            <RailRow label="Publication" value={publicationLabel(selectedReport)} />
             <RailRow label="Saved at" value={selectedReport.saved_at ?? "not saved"} />
             <RailRow label="Model/API calls" value={`${selectedReport.model_metadata.provider}; ${selectedReport.model_metadata.api_call_count} call(s)`} />
             <RailRow label="Window rule" value={selectedReport.time_window.explanation} />
           </dl>
-          <a
-            className="inline-flex rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black"
-            href="/write"
-          >
-            Expand in Write
-          </a>
+          <div className="flex flex-wrap gap-2">
+            {selectedReport.id ? (
+              <a
+                className="inline-flex rounded-md border border-radar-line bg-white px-4 py-2 text-sm font-semibold text-radar-ink hover:border-radar-admin hover:text-radar-admin"
+                href={`/reports/${selectedReport.id}`}
+              >
+                Open detail
+              </a>
+            ) : null}
+            <a
+              className="inline-flex rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black"
+              href="/write"
+            >
+              Expand in Write
+            </a>
+          </div>
         </aside>
 
         <div className="space-y-5">
@@ -183,6 +194,7 @@ function ReportTabCard({
       <div className="flex flex-wrap gap-2">
         <StatusChip label={report.report_type} tone={isSelected ? "evidence" : "neutral"} />
         <StatusChip label={report.status} tone={statusTone(report.status)} />
+        <StatusChip label={modeLabel(report)} tone={publicationTone(report)} />
         <StatusChip label={readSourceLabel(report)} tone={report.read_source === "supabase" ? "success" : "caution"} />
         <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="Citations" />
       </div>
@@ -323,17 +335,81 @@ function statusTone(status: GeneratedReportStatus): StatusTone {
   return "neutral";
 }
 
+function publicationTone(report: ReportWorkflowDocument): StatusTone {
+  if (report.status === "published") {
+    return "success";
+  }
+
+  if (report.mode === "saved_report" || report.status === "approved" || report.status === "reviewed") {
+    return "admin";
+  }
+
+  if (report.read_source === "generated_preview" || report.status === "needs_review" || report.status === "deferred" || report.status === "draft") {
+    return "caution";
+  }
+
+  if (report.status === "rejected" || report.status === "archived") {
+    return "risk";
+  }
+
+  return "neutral";
+}
+
+function publicationLabel(report: ReportWorkflowDocument) {
+  if (report.read_source === "generated_preview") {
+    return "generated preview";
+  }
+
+  if (report.mode === "saved_candidate") {
+    if (report.status === "approved") {
+      return "approved candidate";
+    }
+
+    if (report.status === "published") {
+      return "candidate published";
+    }
+
+    return "saved candidate";
+  }
+
+  if (report.mode === "saved_report") {
+    if (report.status === "published") {
+      return "published report";
+    }
+
+    if (report.status === "reviewed") {
+      return "approved report";
+    }
+
+    return "saved report";
+  }
+
+  return modeLabel(report);
+}
+
 function readSourceLabel(report: ReportWorkflowDocument) {
   return report.read_source === "supabase" ? "saved workflow" : "generated preview";
 }
 
 function modeLabel(report: ReportWorkflowDocument) {
   if (report.mode === "saved_candidate") {
+    if (report.status === "approved") {
+      return "approved report candidate";
+    }
+
     return "saved report candidate";
   }
 
   if (report.mode === "saved_report") {
-    return "saved report";
+    if (report.status === "published") {
+      return "published report";
+    }
+
+    if (report.status === "reviewed") {
+      return "approved saved report";
+    }
+
+    return "saved report record";
   }
 
   if (report.model_metadata.mode === "live_deepseek") {

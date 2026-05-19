@@ -9,12 +9,14 @@ export const sourceChangeReviewStatuses = ["approved", "rejected", "deferred"] a
 export const reportCandidateTypes = ["daily", "weekly", "topic", "observation"] as const;
 export const reportCandidateStatuses = ["draft", "needs_review", "approved", "deferred", "rejected", "published"] as const;
 export const reportCandidateReviewStatuses = ["approved", "deferred", "rejected"] as const;
+export const reportPublicationStatuses = ["reviewed", "published"] as const;
 export const sourceStatuses = ["active", "trial", "paused", "rejected", "needs_public_url", "deferred", "monitor"] as const;
 export const sourceTiers = ["T1", "T1.5", "T2", "T3", "unreviewed"] as const;
 export const auditTargetTypes = [
   "review_task",
   "source_change_request",
   "report_candidate",
+  "report",
   "radar_item",
   "source",
   "system",
@@ -30,6 +32,7 @@ export type SourceChangeReviewStatus = (typeof sourceChangeReviewStatuses)[numbe
 export type ReportCandidateType = (typeof reportCandidateTypes)[number];
 export type ReportCandidateStatus = (typeof reportCandidateStatuses)[number];
 export type ReportCandidateReviewStatus = (typeof reportCandidateReviewStatuses)[number];
+export type ReportPublicationStatus = (typeof reportPublicationStatuses)[number];
 export type AuditTargetType = (typeof auditTargetTypes)[number];
 
 export type CreateReviewTaskInput = {
@@ -78,6 +81,12 @@ export type UpdateReportCandidateStatusInput = {
   id: string;
   status: ReportCandidateReviewStatus;
   reviewNote?: string;
+};
+
+export type PublishReportCandidateInput = {
+  id: string;
+  reportStatus: ReportPublicationStatus;
+  publicationNote?: string;
 };
 
 export type CreateAdminAuditEventInput = {
@@ -338,6 +347,40 @@ export function validateUpdateReportCandidateStatusInput(
       id: id.value,
       reviewNote: note,
       status: normalizedStatus
+    }
+  };
+}
+
+export function validatePublishReportCandidateInput(
+  idOrInput: unknown,
+  reportStatus?: unknown,
+  publicationNote?: unknown
+): AdminValidationResult<PublishReportCandidateInput> {
+  const record = isStructuredInput(idOrInput)
+    ? inputRecord(idOrInput)
+    : {
+        id: idOrInput,
+        publicationNote,
+        reportStatus
+      };
+  const id = requiredUuid(record.id);
+  const normalizedStatus = enumValue(record.reportStatus ?? record.report_status, reportPublicationStatuses);
+  const note = optionalText(record.publicationNote ?? record.publication_note, 500);
+
+  if (!id.ok) {
+    return id;
+  }
+
+  if (!normalizedStatus) {
+    return failure("Select reviewed or published for the report record.");
+  }
+
+  return {
+    ok: true,
+    value: {
+      id: id.value,
+      publicationNote: note,
+      reportStatus: normalizedStatus
     }
   };
 }

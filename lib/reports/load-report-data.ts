@@ -318,7 +318,40 @@ function latestByType(documents: ReportWorkflowDocument[]) {
 }
 
 function compareSavedDocuments(left: ReportWorkflowDocument, right: ReportWorkflowDocument) {
+  const priority = savedDocumentPriority(right) - savedDocumentPriority(left);
+  if (priority !== 0) {
+    return priority;
+  }
+
   return Date.parse(right.saved_at ?? right.generated_at) - Date.parse(left.saved_at ?? left.generated_at);
+}
+
+function savedDocumentPriority(document: ReportWorkflowDocument) {
+  if (document.mode === "saved_report" && document.status === "published") {
+    return 6;
+  }
+
+  if (document.mode === "saved_report" && document.status === "reviewed") {
+    return 5;
+  }
+
+  if (document.mode === "saved_report") {
+    return 4;
+  }
+
+  if (document.mode === "saved_candidate" && document.status === "approved") {
+    return 3;
+  }
+
+  if (document.mode === "saved_candidate" && (document.status === "draft" || document.status === "needs_review")) {
+    return 2;
+  }
+
+  if (document.mode === "saved_candidate" && document.status === "deferred") {
+    return 1;
+  }
+
+  return 0;
 }
 
 function normalizeSections(value: unknown): GeneratedReportSection[] {

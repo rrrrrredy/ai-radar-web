@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { AdminStatusCard } from "@/components/admin-status-card";
 import { AdminSection } from "@/components/admin-section";
 import { DataSourceChip } from "@/components/data-source-chip";
@@ -230,18 +232,18 @@ export default function AdminPage() {
           <StatusChip label="Read-only" tone="success" />
         </div>
         <div className="mt-4 flex flex-wrap gap-3">
-          <a
+          <Link
             className="rounded-md border border-radar-line bg-white px-3 py-2 text-sm font-semibold text-radar-ink hover:border-radar-caution hover:text-radar-caution"
             href="/radar?status=needs_review"
           >
             Review needs_review radar rows
-          </a>
-          <a
+          </Link>
+          <Link
             className="rounded-md border border-radar-line bg-white px-3 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
             href="/reports"
           >
             Inspect report previews
-          </a>
+          </Link>
         </div>
       </section>
 

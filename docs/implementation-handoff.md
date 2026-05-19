@@ -112,9 +112,9 @@ Do not run live DeepSeek, scheduled jobs, source-health writes, or generic Supab
 - The review migration is created but not applied by validation.
 - Review tables grant no anon access and no authenticated browser write access.
 - Authenticated reads are restricted to admin/editor policies once the migration is applied.
-- UI controls for create task, approve, reject, defer, resolve, create source-change request, and create report candidate call server actions.
+- UI controls for create task, approve, reject, defer, resolve, create source-change request, create report candidate, save reviewed report, and publish approved report call server actions.
 - Each successful review mutation writes `admin_audit_events`.
-- Report candidate approval does not publish reports.
+- Report candidate approval does not publish reports by itself; a separate approved-candidate action creates or updates the `reports` row and audits the write.
 - Public `/ask` and `/write` access remains unchanged.
 
 ## Known Limitations
@@ -123,11 +123,11 @@ Do not run live DeepSeek, scheduled jobs, source-health writes, or generic Supab
 - Admin review actions execute only through role-protected server actions.
 - Admin tables intentionally preserve dense columns with horizontal scroll on mobile.
 - Ask and Write default UI actions use mock generation.
-- Report drafts can be generated deterministically, synthesized with explicit live DeepSeek, and persisted as `report_candidates` through a write-gated CLI. Publication remains a future controlled workflow.
+- Report drafts can be generated deterministically, synthesized with explicit live DeepSeek, persisted as `report_candidates` through a write-gated CLI, and manually saved or published from approved candidates through the admin review workflow.
 - Local understanding output may be metadata-level and mostly `needs_review`, which limits synthesis quality.
 - The app does not claim autonomous production monitoring, scheduled ingestion, or live provider usage.
 - Browser plugin QA was unavailable in this environment because the Node REPL runtime resolved Node 20.19.1 and requires Node 22.22.0 or newer; Playwright/Chrome checks were used instead.
 
 ## Next Recommended Phase
 
-The next phase can focus on report candidate persistence from previews, report publication workflow design, richer manual admin smoke coverage, scheduled job design, and source-health review boundaries while preserving the Phase 8/10 evidence-first public surfaces and the dry-run/write-gated separation for non-review writes.
+The next phase can focus on richer signed-in admin smoke coverage, scheduled job design, source-health review boundaries, and deeper report history/detail navigation while preserving the Phase 8/10 evidence-first public surfaces and the dry-run/write-gated separation for non-review writes.

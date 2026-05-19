@@ -8,11 +8,13 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { sanitizeAdminError } from "@/lib/admin/audit";
 import {
   type CreateAdminAuditEventInput,
+  type ReportPublicationStatus,
   type ReviewTaskStatus,
   validateCreateAdminAuditEventInput,
   validateCreateReportCandidateInput,
   validateCreateReviewTaskInput,
   validateCreateSourceChangeRequestInput,
+  validatePublishReportCandidateInput,
   validateUpdateReportCandidateStatusInput,
   validateUpdateReviewTaskStatusInput,
   validateUpdateSourceChangeRequestStatusInput
@@ -42,6 +44,7 @@ type AuditInsertResult = {
 };
 
 const reviewPath = "/admin/review";
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function createReviewTask(input: unknown): Promise<AdminActionResult<{ id: string } & AuditInsertResult>> {
   const validation = validateCreateReviewTaskInput(input);
@@ -298,7 +301,12 @@ export async function updateReportCandidateStatus(
   const validation = validateUpdateReportCandidateStatusInput(idOrInput, status, reviewNote);
 
   return runAdminMutation(validation, "Report candidate status could not be updated.", async (supabase, context, value) => {
-    const existing = await readExistingRow(supabase, "report_candidates", value.id, "id, title, report_type, metadata");
+    const existing = await readExistingRow(supabase, "report_candidates", value.id, "id, title, report_type, status, metadata");
+    const currentStatus = text(existing.status);
+    if (currentStatus !== "draft" && currentStatus !== "needs_review") {
+      throw new SafeActionError("Only draft or needs-review report candidates can be approved, deferred, or rejected.");
+    }
+
     const now = new Date().toISOString();
     const metadata = mergeMetadata(existing.metadata, {
       last_admin_action: `status:${value.status}`,
@@ -339,6 +347,122 @@ export async function updateReportCandidateStatus(
   });
 }
 
+export async function publishReportCandidate(
+  idOrInput: unknown,
+  reportStatus?: unknown,
+  publicationNote?: unknown
+): Promise<AdminActionResult<{
+  candidateId: string;
+  reportId: string;
+  reportStatus: ReportPublicationStatus;
+  write: "created" | "updated";
+} & AuditInsertResult>> {
+  const validation = validatePublishReportCandidateInput(idOrInput, reportStatus, publicationNote);
+
+  return runAdminMutation(validation, "Approved report candidate could not be saved as a report.", async (supabase, context, value) => {
+    const existing = await readExistingRow(
+      supabase,
+      "report_candidates",
+      value.id,
+      "id, title, summary, report_type, time_window_start, time_window_end, source_item_ids, status, created_at, metadata"
+    );
+    const currentStatus = text(existing.status);
+    if (currentStatus !== "approved") {
+      throw new SafeActionError("Only approved report candidates can become report records.");
+    }
+
+    const reportType = reportTypeForReportsTable(existing.report_type);
+    if (!reportType) {
+      throw new SafeActionError("Only daily, weekly, or topic candidates can become report records.");
+    }
+
+    const now = new Date().toISOString();
+    const candidateMetadata = isRecord(existing.metadata) ? existing.metadata : {};
+    const draft = reportDraftRecord(candidateMetadata);
+    const timeWindow = resolveReportTimeWindow(existing, draft, now);
+    const title = text(existing.title) || "Untitled report";
+    const summary = text(existing.summary) || title;
+    const reportMetadata = buildReportRecordMetadata({
+      candidateId: value.id,
+      draft,
+      generatedAt: now,
+      reportStatus: value.reportStatus,
+      reportType,
+      sourceItemIds: stringArray(existing.source_item_ids),
+      summary,
+      timeWindow,
+      title
+    });
+    const reportPatch = {
+      body: reportBody(draft, summary),
+      created_by: context.profileId,
+      language: reportLanguage(draft),
+      metadata: reportMetadata,
+      published_at: value.reportStatus === "published" ? now : null,
+      status: value.reportStatus,
+      time_window_end: timeWindow.end,
+      time_window_start: timeWindow.start,
+      title,
+      type: reportType
+    };
+    const existingReportId = reportRecordId(candidateMetadata);
+    const reportWrite = existingReportId
+      ? await updateReportRecord(supabase, existingReportId, reportPatch)
+      : await insertReportRecord(supabase, reportPatch);
+    const report = reportWrite ?? (await insertReportRecord(supabase, reportPatch));
+    const updatedCandidateMetadata = mergeReportCandidatePublicationMetadata(candidateMetadata, {
+      note: value.publicationNote,
+      reportId: report.id,
+      reportStatus: value.reportStatus,
+      write: report.write
+    });
+    const candidatePatch: Record<string, unknown> = {
+      metadata: updatedCandidateMetadata,
+      reviewed_at: now,
+      reviewed_by: context.profileId,
+      updated_at: now
+    };
+
+    if (value.reportStatus === "published") {
+      candidatePatch.status = "published";
+    }
+
+    const { error: candidateError } = await supabase
+      .from("report_candidates")
+      .update(candidatePatch)
+      .eq("id", value.id);
+
+    if (candidateError) {
+      throw new SafeActionError("Report record was saved, but candidate publication metadata could not be updated.");
+    }
+
+    const auditEventId = await writeAdminAuditEvent(supabase, context, {
+      action: value.reportStatus === "published" ? "report_candidate.published" : "report_candidate.report_saved",
+      metadata: {
+        report_id: report.id,
+        report_status: value.reportStatus,
+        report_type: reportType,
+        write: report.write
+      },
+      summary:
+        value.reportStatus === "published"
+          ? `Published report from approved candidate: ${title}`
+          : `Saved reviewed report from approved candidate: ${title}`,
+      targetId: value.id,
+      targetLocalId: report.id,
+      targetType: "report_candidate"
+    });
+
+    return {
+      auditEventId,
+      candidateId: value.id,
+      reportId: report.id,
+      reportStatus: value.reportStatus,
+      write: report.write
+    };
+  });
+}
+
 export async function createAdminAuditEvent(input: unknown): Promise<AdminActionResult<{ id: string }>> {
   const validation = validateCreateAdminAuditEventInput(input);
 
@@ -373,6 +497,10 @@ export async function submitCreateReportCandidate(formData: FormData): Promise<v
 
 export async function submitUpdateReportCandidateStatus(formData: FormData): Promise<void> {
   await updateReportCandidateStatus(formData);
+}
+
+export async function submitPublishReportCandidate(formData: FormData): Promise<void> {
+  await publishReportCandidate(formData);
 }
 
 async function runAdminMutation<TInput, TOutput>(
@@ -482,6 +610,217 @@ async function readExistingRow(
   }
 
   return data as unknown as Record<string, unknown>;
+}
+
+type ReportRecordPatch = {
+  body: string;
+  created_by: string;
+  language: "en" | "zh" | "bilingual";
+  metadata: Record<string, unknown>;
+  published_at: string | null;
+  status: ReportPublicationStatus;
+  time_window_end: string;
+  time_window_start: string;
+  title: string;
+  type: "daily" | "weekly" | "topic";
+};
+
+type ReportRecordWrite = {
+  id: string;
+  write: "created" | "updated";
+};
+
+async function updateReportRecord(
+  supabase: SupabaseClient,
+  reportId: string,
+  patch: ReportRecordPatch
+): Promise<ReportRecordWrite | null> {
+  const { data, error } = await supabase
+    .from("reports")
+    .update(patch)
+    .eq("id", reportId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    throw new SafeActionError("Existing report record could not be updated.");
+  }
+
+  if (!hasTextId(data)) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    write: "updated"
+  };
+}
+
+async function insertReportRecord(
+  supabase: SupabaseClient,
+  patch: ReportRecordPatch
+): Promise<ReportRecordWrite> {
+  const { data, error } = await supabase
+    .from("reports")
+    .insert(patch)
+    .select("id")
+    .single();
+
+  if (error || !hasTextId(data)) {
+    throw new SafeActionError("Report record could not be created.");
+  }
+
+  return {
+    id: data.id,
+    write: "created"
+  };
+}
+
+function buildReportRecordMetadata({
+  candidateId,
+  draft,
+  generatedAt,
+  reportStatus,
+  reportType,
+  sourceItemIds,
+  summary,
+  timeWindow,
+  title
+}: {
+  candidateId: string;
+  draft: Record<string, unknown>;
+  generatedAt: string;
+  reportStatus: ReportPublicationStatus;
+  reportType: "daily" | "weekly" | "topic";
+  sourceItemIds: string[];
+  summary: string;
+  timeWindow: { start: string; end: string };
+  title: string;
+}) {
+  const modelMetadata = isRecord(draft.model_metadata) ? draft.model_metadata : {};
+  const reportDraft = {
+    ...draft,
+    executive_summary: text(draft.executive_summary) || summary,
+    generated_at: text(draft.generated_at) || generatedAt,
+    language: reportLanguage(draft),
+    mode: "saved_report",
+    model_metadata: {
+      ...modelMetadata,
+      mode: "saved_report"
+    },
+    one_sentence_summary: text(draft.one_sentence_summary) || summary,
+    report_type: reportType,
+    source_item_ids: sourceItemIds,
+    status: reportStatus,
+    time_window: {
+      end: timeWindow.end,
+      explanation: "Saved report record produced from an approved report candidate.",
+      matched_phrase: "approved report candidate",
+      start: timeWindow.start
+    },
+    title
+  };
+
+  return {
+    report_draft: reportDraft,
+    source_report_candidate_id: candidateId
+  };
+}
+
+function mergeReportCandidatePublicationMetadata(
+  existing: Record<string, unknown>,
+  publication: {
+    note?: string;
+    reportId: string;
+    reportStatus: ReportPublicationStatus;
+    write: "created" | "updated";
+  }
+) {
+  return {
+    ...existing,
+    last_admin_action: `report:${publication.reportStatus}`,
+    publication: {
+      note: publication.note,
+      report_id: publication.reportId,
+      report_status: publication.reportStatus,
+      updated_at: new Date().toISOString(),
+      write: publication.write
+    },
+    report_record_id: publication.reportId
+  };
+}
+
+function resolveReportTimeWindow(
+  candidate: Record<string, unknown>,
+  draft: Record<string, unknown>,
+  now: string
+) {
+  const draftWindow = isRecord(draft.time_window) ? draft.time_window : {};
+  const start = isoDate(candidate.time_window_start) ?? isoDate(draftWindow.start) ?? isoDate(candidate.created_at) ?? now;
+  let end = isoDate(candidate.time_window_end) ?? isoDate(draftWindow.end) ?? now;
+
+  if (Date.parse(start) > Date.parse(end)) {
+    end = start;
+  }
+
+  return { end, start };
+}
+
+function reportDraftRecord(metadata: Record<string, unknown>) {
+  return isRecord(metadata.report_draft) ? metadata.report_draft : {};
+}
+
+function reportRecordId(metadata: Record<string, unknown>) {
+  const id = text(metadata.report_record_id);
+  return uuidPattern.test(id) ? id : undefined;
+}
+
+function reportTypeForReportsTable(value: unknown): "daily" | "weekly" | "topic" | null {
+  const normalized = text(value);
+  if (normalized === "daily" || normalized === "weekly" || normalized === "topic") {
+    return normalized;
+  }
+
+  return null;
+}
+
+function reportLanguage(draft: Record<string, unknown>): "en" | "zh" | "bilingual" {
+  const language = text(draft.language);
+  if (language === "en") {
+    return "en";
+  }
+
+  if (language === "bilingual" || language === "mixed") {
+    return "bilingual";
+  }
+
+  return "zh";
+}
+
+function reportBody(draft: Record<string, unknown>, summary: string) {
+  return text(draft.markdown) || text(draft.executive_summary) || text(draft.one_sentence_summary) || summary;
+}
+
+function stringArray(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(new Set(value.map(text).filter(Boolean))).slice(0, 48);
+}
+
+function isoDate(value: unknown) {
+  const normalized = text(value);
+  if (!normalized) {
+    return undefined;
+  }
+
+  const timestamp = Date.parse(normalized);
+  if (!Number.isFinite(timestamp)) {
+    return undefined;
+  }
+
+  return new Date(timestamp).toISOString();
 }
 
 function isTerminalReviewTaskStatus(status: ReviewTaskStatus) {

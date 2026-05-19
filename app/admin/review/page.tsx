@@ -8,6 +8,7 @@ import {
   submitCreateReportCandidate,
   submitCreateReviewTask,
   submitCreateSourceChangeRequest,
+  submitPublishReportCandidate,
   submitUpdateReportCandidateStatus,
   submitUpdateReviewTaskStatus,
   submitUpdateSourceChangeRequestStatus
@@ -125,7 +126,7 @@ export default async function AdminReviewPage() {
           />
           <AdminCommandBlock
             command="lib/admin/actions.ts"
-            detail="Server actions require admin role, sanitize inputs, use service role only after authorization, and write audit events."
+            detail="Server actions require admin role, sanitize inputs, use service role only after authorization, write audit events, and can publish approved report candidates."
             label="server-only"
             title="Workflow actions"
             tone="success"
@@ -219,7 +220,7 @@ export default async function AdminReviewPage() {
       <ReviewTable
         ariaLabel="Report candidates"
         columns={reportCandidateColumns}
-        description="Candidate report seeds for daily, weekly, topic, or observation reports. Publish remains a future controlled write action."
+        description="Candidate report seeds for daily, weekly, topic, or observation reports. Approved daily, weekly, and topic candidates can be saved as reviewed reports or published as public reports."
         emptyLabel="No report candidates"
         minWidth="1080px"
         result={data.reportCandidates}
@@ -563,7 +564,39 @@ function ReportCandidateActions({ row }: { row: ReportCandidateRow }) {
     return <StatusChip label="Persisted row required" tone="neutral" />;
   }
 
-  if (row.status === "approved" || row.status === "deferred" || row.status === "rejected" || row.status === "published") {
+  if (row.status === "published") {
+    return <StatusChip label="Published report" tone="success" />;
+  }
+
+  if (row.status === "approved") {
+    if (!canBecomeReportRecord(row.reportType)) {
+      return <StatusChip label="Report record unsupported" tone="neutral" />;
+    }
+
+    return (
+      <div className="grid gap-2">
+        <p className="text-xs leading-5 text-radar-muted">
+          Approved candidates can become reviewed or published report records.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <ReportPublicationForm
+            buttonLabel="Save report"
+            id={row.id}
+            reportStatus="reviewed"
+            tone="admin"
+          />
+          <ReportPublicationForm
+            buttonLabel="Publish report"
+            id={row.id}
+            reportStatus="published"
+            tone="success"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (row.status === "deferred" || row.status === "rejected") {
     return <StatusChip label="Reviewed status" tone={reportStatusTone(row.status)} />;
   }
 
@@ -599,6 +632,29 @@ function ReportCandidateActions({ row }: { row: ReportCandidateRow }) {
         />
       </div>
     </div>
+  );
+}
+
+function ReportPublicationForm({
+  buttonLabel,
+  id,
+  reportStatus,
+  tone
+}: {
+  buttonLabel: string;
+  id: string;
+  reportStatus: "reviewed" | "published";
+  tone: StatusTone;
+}) {
+  return (
+    <form action={submitPublishReportCandidate}>
+      <input name="id" type="hidden" value={id} />
+      <input name="reportStatus" type="hidden" value={reportStatus} />
+      <input name="publicationNote" type="hidden" value={`${buttonLabel} from approved report candidate.`} />
+      <button className={buttonClassName(tone)} type="submit">
+        {buttonLabel}
+      </button>
+    </form>
   );
 }
 
@@ -1052,6 +1108,10 @@ function reportStatusTone(status: ReportCandidateRow["status"]): StatusTone {
   }
 
   return "neutral";
+}
+
+function canBecomeReportRecord(reportType: ReportCandidateRow["reportType"]) {
+  return reportType === "daily" || reportType === "weekly" || reportType === "topic";
 }
 
 function dataSourceForRetrieval(source: RetrievalDataSource) {

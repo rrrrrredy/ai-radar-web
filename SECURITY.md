@@ -37,7 +37,9 @@ Admin review mutations are a separate server-side path. They must run only throu
 
 The `/admin/review` route is protected by the admin layout. It may read local/mock data and authenticated Supabase rows from `review_tasks`, `source_change_requests`, `report_candidates`, and `admin_audit_events` after the Phase 9.4 migration is manually applied.
 
-The Phase 9.4 migration grants no anon access and no authenticated browser insert, update, or delete access for review workflow tables. Approve, reject, defer, resolve, create task, create source-change, create report-candidate, and audit writes are implemented as server actions that re-check admin role and write audit events. The service role must remain server-only and must not enter client components, shared browser utilities, public route bundles, or logs.
+The Phase 9.4 migration grants no anon access and no authenticated browser insert, update, or delete access for review workflow tables. Approve, reject, defer, resolve, create task, create source-change, create report-candidate, save reviewed report, publish approved report, and audit writes are implemented as server actions that re-check admin role and write audit events. The service role must remain server-only and must not enter client components, shared browser utilities, public route bundles, or logs.
+
+Approved report-candidate publication writes only `reports`, the source `report_candidates` metadata/status, and `admin_audit_events`. It is a manual admin action, not a scheduled job, crawler, or live model call.
 
 `/ask` and `/write` remain public. Adding review surfaces must not change public access or existing API response shapes.
 

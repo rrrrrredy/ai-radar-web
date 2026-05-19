@@ -259,7 +259,7 @@ export function buildReviewTaskPreview({
       title: `${sourceChangeRequestCount} source change requests visible`
     },
     {
-      description: "Derived count for report candidates. Approval and rejection are controlled admin actions; publication is not enabled.",
+      description: "Derived count for report candidates. Approval, rejection, deferral, and approved-candidate report publication are controlled admin actions.",
       id: "preview-task-report-candidates",
       priority: reportCandidateCount > 0 ? "normal" : "low",
       reason: "report_candidates migration not applied or empty",
