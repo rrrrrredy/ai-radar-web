@@ -8,9 +8,10 @@ Last updated: 2026-05-19
 - Branch: `main`
 - Vercel project: `luosongred-5507s-projects/ai-radar-web`
 - Vercel CLI: `54.1.0`
-- Latest immutable Preview deployment: `https://ai-radar-kfsss5ys8-luosongred-5507s-projects.vercel.app`
-- Latest Preview deployment id: `dpl_8fHgyTHjFHSCx2dbdVuK3BHWc6uY`
+- Latest immutable Preview deployment: `https://ai-radar-ckagj2lti-luosongred-5507s-projects.vercel.app`
+- Latest Preview deployment id: `dpl_6VL8h2N8rAyFtQaQpggUMMVW8UGZ`
 - Active Preview alias: `https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`
+- Vercel Authentication: disabled for the project Preview path (`ssoProtection: null`).
 - Production deployment: no completed Production deployment. The required docs push to `main` triggered Git-connected Production build `dpl_CSm4jBoY8uQCfNXehHVeM8Zak2EJ`, which was canceled while building.
 
 Use the active Preview alias for deployed callback configuration because it is assigned to the latest Preview deployment without changing on each immutable deployment URL.
@@ -78,18 +79,18 @@ Passed:
 
 ## Preview Smoke
 
-Smoke was attempted from this runner after the final Preview redeploy, but every request to `*.vercel.app:443` failed at TCP/request timeout. Do not mark preview smoke as passed until it is verified from a browser or network that can reach Vercel preview hosts.
-
-User-side checklist against:
+Smoke passed against:
 
 ```text
 https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app
 ```
 
-Expected GET results:
+The local resolver returned non-Vercel IPs for `*.vercel.app`, so curl checks pinned the preview host to Vercel anycast IP `76.76.21.21`.
+
+GET results:
 
 - `/` -> 200
-- `/radar` -> 200, data source label includes `supabase_radar_items`
+- `/radar` -> 200, data source label rendered as Supabase (`supabase_radar_items`)
 - `/reports` -> 200, saved candidate mode is visible
 - `/reports/c2ea6cb1-324c-4f20-9ae2-92d26b7f0fa5` -> 200
 - `/reports/71e96d51-c942-48b9-a677-632ccfbd8d30` -> 200
@@ -101,9 +102,9 @@ Expected GET results:
 - `/en/admin/review` -> canonicalizes or redirects without a 404
 - `/en/auth/login` -> canonicalizes or loads without a 404
 
-Expected POST results:
+POST results:
 
-- `POST /api/ask` with `{"question":"Which AI radar signals are ready for review?","generationMode":"mock","language":"en"}` -> 200
-- `POST /api/writing-assistant` with `{"query":"Find newsletter topics from current radar items.","generationMode":"mock","outputType":"topic_candidates","language":"en"}` -> 200
+- `POST /api/ask` with mock generation -> 200, `data_source=supabase_radar_items`, provider `local`
+- `POST /api/writing-assistant` with mock generation -> 200, `data_source=supabase_radar_items`, provider `local`
 
 No `vercel --prod` command was run. The Git-triggered Production build noted above was canceled while building. No Supabase writes, scheduled jobs, or live DeepSeek calls were run for this preview.

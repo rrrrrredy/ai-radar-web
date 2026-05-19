@@ -15,8 +15,9 @@ Evaluate Cloudflare Pages later only if a Cloudflare-specific edge, routing, or 
 - Vercel CLI is available via `npx vercel --version`.
 - A Preview deployment now exists. Use active alias `https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`.
 - Project-wide Preview environment variables are configured through Vercel API/CLI using values sourced from local `.env.local` without printing them.
+- Vercel Authentication is disabled for the project Preview path.
+- Remote Preview smoke passed for public routes, admin redirects, and mock API requests.
 - Supabase Auth still needs the active Preview callback URL added manually.
-- Remote smoke is not confirmed because this runner cannot connect to `*.vercel.app:443`.
 - Keep write and scheduler flags disabled as documented below and in [deployment-preview-milestone-d.md](./deployment-preview-milestone-d.md).
 
 ## Environment Variable Matrix
