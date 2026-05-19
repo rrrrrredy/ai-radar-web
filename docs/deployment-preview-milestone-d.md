@@ -8,7 +8,8 @@ Last updated: 2026-05-19
 - Branch: `main`
 - Vercel project: `luosongred-5507s-projects/ai-radar-web`
 - Vercel CLI: `54.1.0`
-- Latest immutable Preview deployment: `https://ai-radar-q5k10fvr3-luosongred-5507s-projects.vercel.app`
+- Latest immutable Preview deployment: `https://ai-radar-kfsss5ys8-luosongred-5507s-projects.vercel.app`
+- Latest Preview deployment id: `dpl_8fHgyTHjFHSCx2dbdVuK3BHWc6uY`
 - Active Preview alias: `https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`
 - Production deployment: no completed Production deployment. The required docs push to `main` triggered Git-connected Production build `dpl_CSm4jBoY8uQCfNXehHVeM8Zak2EJ`, which was canceled while building.
 
@@ -16,7 +17,7 @@ Use the active Preview alias for deployed callback configuration because it is a
 
 ## Vercel Environment Status
 
-Project-wide Preview env vars are configured for all Preview branches. Older Preview vars scoped to `codex/milestone-b-reports-product` still exist and can be removed later after this preview path is accepted.
+Project-wide Preview env vars are configured for the active Preview deployment path. Older Preview vars scoped to `codex/milestone-b-reports-product` were removed to avoid stale branch-scoped overrides.
 
 Configured Preview names:
 
@@ -77,7 +78,7 @@ Passed:
 
 ## Preview Smoke
 
-Smoke was attempted from this runner, but every request to `*.vercel.app:443` failed at TCP connect timeout. Do not mark preview smoke as passed until it is verified from a browser or network that can reach Vercel preview hosts.
+Smoke was attempted from this runner after the final Preview redeploy, but every request to `*.vercel.app:443` failed at TCP/request timeout. Do not mark preview smoke as passed until it is verified from a browser or network that can reach Vercel preview hosts.
 
 User-side checklist against:
 
