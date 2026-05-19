@@ -54,3 +54,4 @@ data/reports/tmp/
 data/scheduled/latest/*.json
 data/scheduled/runs/*.json
 data/scheduled/tmp/
+.vercel

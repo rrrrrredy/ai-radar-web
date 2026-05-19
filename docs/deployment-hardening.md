@@ -13,9 +13,10 @@ Evaluate Cloudflare Pages later only if a Cloudflare-specific edge, routing, or 
 ## Current Milestone D Status
 
 - Vercel CLI is available via `npx vercel --version`.
-- A Preview deployment now exists at `https://ai-radar-cgj84x959-luosongred-5507s-projects.vercel.app`.
-- Vercel CLI preview environment-variable operations are still blocked until the GitHub repo `rrrrrredy/ai-radar-web` is linked to the Vercel project.
-- If Vercel CLI is blocked, use Vercel Dashboard manual steps to link GitHub and set Preview environment variables before retry.
+- A Preview deployment now exists. Use active alias `https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`.
+- Project-wide Preview environment variables are configured through Vercel API/CLI using values sourced from local `.env.local` without printing them.
+- Supabase Auth still needs the active Preview callback URL added manually.
+- Remote smoke is not confirmed because this runner cannot connect to `*.vercel.app:443`.
 - Keep write and scheduler flags disabled as documented below and in [deployment-preview-milestone-d.md](./deployment-preview-milestone-d.md).
 
 ## Environment Variable Matrix
