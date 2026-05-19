@@ -7,8 +7,8 @@ export const sourceChangeRequestTypes = ["add", "update_url", "trial", "approve"
 export const sourceChangeRequestStatuses = ["open", "approved", "rejected", "deferred"] as const;
 export const sourceChangeReviewStatuses = ["approved", "rejected", "deferred"] as const;
 export const reportCandidateTypes = ["daily", "weekly", "topic", "observation"] as const;
-export const reportCandidateStatuses = ["draft", "needs_review", "approved", "rejected", "published"] as const;
-export const reportCandidateReviewStatuses = ["approved", "rejected"] as const;
+export const reportCandidateStatuses = ["draft", "needs_review", "approved", "deferred", "rejected", "published"] as const;
+export const reportCandidateReviewStatuses = ["approved", "deferred", "rejected"] as const;
 export const sourceStatuses = ["active", "trial", "paused", "rejected", "needs_public_url", "deferred", "monitor"] as const;
 export const sourceTiers = ["T1", "T1.5", "T2", "T3", "unreviewed"] as const;
 export const auditTargetTypes = [
@@ -329,7 +329,7 @@ export function validateUpdateReportCandidateStatusInput(
   }
 
   if (!normalizedStatus) {
-    return failure("Select approve or reject for the report candidate.");
+    return failure("Select approve, defer, or reject for the report candidate.");
   }
 
   return {

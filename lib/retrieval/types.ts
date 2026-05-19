@@ -11,6 +11,7 @@ export type RetrievalOutputStyle = "concise" | "detailed" | "outline" | "topic_l
 
 export type RetrievalRadarItem = {
   id: string;
+  database_id?: string;
   raw_item_id: string;
   source_id: string;
   source_name: string;

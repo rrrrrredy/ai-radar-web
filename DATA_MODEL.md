@@ -140,7 +140,9 @@ Candidate daily, weekly, topic, and observation report seeds.
 
 Fields: `id`, `report_type`, `title`, `summary`, `time_window_start`, `time_window_end`, `source_item_ids`, `status`, `confidence`, `created_by`, `reviewed_by`, `created_at`, `updated_at`, `reviewed_at`, `metadata`.
 
-Statuses: `draft`, `needs_review`, `approved`, `rejected`, `published`. Phase 9.4b can create, approve, and reject candidates; it does not publish reports.
+Statuses: `draft`, `needs_review`, `approved`, `deferred`, `rejected`, `published`. Phase 9.4b can create, approve, defer, and reject candidates; it does not publish reports.
+
+Milestone B stores generated report draft payloads in `metadata.report_draft` for report candidates. The public-safe report workflow migration exposes only display fields and `metadata.report_draft` through `public_report_candidates` and `public_reports`; it does not grant browser writes or expose admin review notes.
 
 ### admin_audit_events
 

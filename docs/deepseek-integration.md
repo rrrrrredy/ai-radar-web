@@ -79,6 +79,21 @@ wording to reduce weak `other` categorization for arXiv papers, GitHub releases,
 official model/product updates, interviews, opinion/newsletter items,
 infrastructure posts, benchmarks, safety, and regulation.
 
+## Milestone B Report Synthesis
+
+Report generation is deterministic by default and live only when explicitly requested:
+
+```bash
+npm run report:generate:daily
+npm run report:generate:weekly
+npm run report:generate:daily:live
+npm run report:generate:weekly:live
+```
+
+Live report synthesis uses retrieved Supabase/local/mock radar evidence as the only source context, asks for strict JSON, validates citations against supplied radar item citation IDs, and stores only safe model metadata: provider, model name, prompt version, mode, token usage, API-call count, and sanitized fallback reason. It does not print or store API keys, raw provider bodies, or environment values.
+
+Report candidate persistence remains a separate write-gated CLI path. Default candidate scripts are dry-run and deterministic; `scripts/persist-report-candidate.ts --live --write` is available for an explicit bounded live synthesis plus candidate write when the operator chooses that path.
+
 ## Phase 5 Understanding
 
 The Phase 5 layer reads Phase 4 raw items from:

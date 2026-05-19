@@ -173,6 +173,7 @@ function normalizeSupabaseRow(value: SupabaseRadarRow): RetrievalRadarItem | nul
 
   return {
     id,
+    database_id: text(value.id) || undefined,
     raw_item_id: text(value.raw_item_id) || id,
     source_id: text(value.source_id) || "unknown",
     source_name: sourceName,

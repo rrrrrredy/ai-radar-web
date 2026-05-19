@@ -563,7 +563,7 @@ function ReportCandidateActions({ row }: { row: ReportCandidateRow }) {
     return <StatusChip label="Persisted row required" tone="neutral" />;
   }
 
-  if (row.status === "approved" || row.status === "rejected" || row.status === "published") {
+  if (row.status === "approved" || row.status === "deferred" || row.status === "rejected" || row.status === "published") {
     return <StatusChip label="Reviewed status" tone={reportStatusTone(row.status)} />;
   }
 
@@ -588,6 +588,14 @@ function ReportCandidateActions({ row }: { row: ReportCandidateRow }) {
           noteName="reviewNote"
           status="rejected"
           tone="risk"
+        />
+        <StatusActionForm
+          action={submitUpdateReportCandidateStatus}
+          buttonLabel="Defer"
+          id={row.id}
+          noteName="reviewNote"
+          status="deferred"
+          tone="caution"
         />
       </div>
     </div>
@@ -896,6 +904,22 @@ const reportCandidateColumns: AdminDataTableColumn<ReportCandidateRow>[] = [
         ) : (
           <EvidenceBadge detail="unset" kind="uncertainty" label="confidence" />
         )}
+        <EvidenceBadge detail={String(row.citationsCount)} kind="citation" label="citations" />
+        <EvidenceBadge detail={String(row.caveats.length)} kind="uncertainty" label="caveats" />
+        <EvidenceBadge detail={String(row.missingEvidence.length)} kind="needs_review" label="gaps" />
+      </div>
+    )
+  },
+  {
+    header: "Caveats / missing evidence",
+    render: (row) => (
+      <div className="grid max-w-md gap-1 text-sm leading-6 text-radar-muted">
+        {[...row.caveats, ...row.missingEvidence].slice(0, 3).map((item) => (
+          <p key={item}>{item}</p>
+        ))}
+        {row.caveats.length === 0 && row.missingEvidence.length === 0 ? (
+          <p>No report caveats or missing-evidence notes recorded.</p>
+        ) : null}
       </div>
     )
   },
@@ -1023,7 +1047,7 @@ function reportStatusTone(status: ReportCandidateRow["status"]): StatusTone {
     return "risk";
   }
 
-  if (status === "needs_review" || status === "draft") {
+  if (status === "needs_review" || status === "draft" || status === "deferred") {
     return "caution";
   }
 

@@ -143,6 +143,7 @@ function buildSection(
 function mapPreviewItem(item: RetrievalRadarItem): ReportPreviewItem {
   return {
     id: item.id,
+    database_id: item.database_id,
     title: item.title,
     source_name: item.source_name,
     url: item.url,

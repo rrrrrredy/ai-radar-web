@@ -54,6 +54,7 @@ Rules:
   - `202605140003_public_retrieval_view.sql`
   - `202605140004_auth_admin_rls.sql`
   - `202605140005_admin_review_workflows.sql`
+  - `202605190001_reports_workflow.sql`
 - A controlled admin review action smoke has been completed through `/admin/review`, or manual steps are documented if browser session automation is unavailable.
 - Read-only Supabase retrieval smoke passed against `public.public_radar_items`.
 - Supabase Email magic links are configured before relying on admin sign-in.
@@ -106,4 +107,5 @@ Do not deploy when any of these are true:
 - The auth/admin RLS migration has not been reviewed and applied before admin role checks are expected to work.
 - The admin review workflow migration has not been reviewed and applied before persistent review queues are expected to work.
 - `public.public_radar_items` is missing.
+- `public.public_report_candidates` or `public.public_reports` is missing when saved report display is expected.
 - A scheduled write job is enabled without explicit approval.

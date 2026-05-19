@@ -1,5 +1,3 @@
-import "server-only";
-
 import { citationFromItem } from "@/lib/retrieval/citations";
 import { loadRadarItems } from "@/lib/retrieval/load-radar-items";
 import type {

@@ -48,6 +48,9 @@ data/ingestion/tmp/
 data/understanding/latest/*.json
 data/understanding/runs/*.json
 data/understanding/tmp/
+data/reports/latest/*.json
+data/reports/runs/*.json
+data/reports/tmp/
 data/scheduled/latest/*.json
 data/scheduled/runs/*.json
 data/scheduled/tmp/

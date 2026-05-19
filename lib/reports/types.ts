@@ -16,6 +16,7 @@ export type ReportPreviewSectionId =
 
 export type ReportPreviewItem = {
   id: string;
+  database_id?: string;
   title: string;
   source_name: string;
   url: string;
@@ -54,4 +55,86 @@ export type ReportPreview = {
   generated_at: string;
   retrieved_item_count: number;
   usable_item_count: number;
+};
+
+export type ReportLanguage = "zh" | "en" | "mixed";
+
+export type GeneratedReportStatus =
+  | "preview"
+  | "draft"
+  | "needs_review"
+  | "approved"
+  | "deferred"
+  | "rejected"
+  | "reviewed"
+  | "published"
+  | "archived";
+
+export type GeneratedReportMode =
+  | "deterministic_preview"
+  | "live_deepseek"
+  | "saved_candidate"
+  | "saved_report";
+
+export type GeneratedReportSectionId = ReportPreviewSectionId;
+
+export type GeneratedReportSection = {
+  id: GeneratedReportSectionId;
+  title: string;
+  summary: string;
+  bullets: string[];
+  citations: string[];
+  caveats: string[];
+  missing_evidence: string[];
+};
+
+export type SafeReportModelMetadata = {
+  provider: "deterministic" | "deepseek" | "supabase";
+  model?: string;
+  prompt_version?: string;
+  mode: GeneratedReportMode;
+  live_requested?: boolean;
+  api_call_count: number;
+  token_usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+  error?: string;
+};
+
+export type GeneratedReportDraft = {
+  id?: string;
+  report_type: ReportPreviewType;
+  status: GeneratedReportStatus;
+  mode: GeneratedReportMode;
+  title: string;
+  one_sentence_summary: string;
+  executive_summary: string;
+  sections: GeneratedReportSection[];
+  citations: RetrievalCitation[];
+  caveats: string[];
+  missing_evidence: string[];
+  data_source: RetrievalDataSource;
+  time_window: ResolvedTimeWindow;
+  generated_at: string;
+  language: ReportLanguage;
+  audience?: string;
+  model_metadata: SafeReportModelMetadata;
+  markdown: string;
+  source_item_ids: string[];
+  retrieved_item_count: number;
+  usable_item_count: number;
+};
+
+export type ReportWorkflowReadSource = "supabase" | "generated_preview";
+
+export type ReportWorkflowDocument = GeneratedReportDraft & {
+  read_source: ReportWorkflowReadSource;
+  saved_at?: string;
+};
+
+export type ReportWorkflowData = {
+  reports: ReportWorkflowDocument[];
+  warnings: string[];
 };

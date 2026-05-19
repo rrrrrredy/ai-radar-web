@@ -1,5 +1,3 @@
-import "server-only";
-
 import { createClient, type SupabaseClient, type WebSocketLikeConstructor } from "@supabase/supabase-js";
 import WebSocket from "ws";
 

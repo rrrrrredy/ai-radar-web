@@ -76,10 +76,13 @@ export type ReportCandidateRow = {
   reportType: "daily" | "weekly" | "topic" | "observation";
   title: string;
   summary: string;
-  status: "draft" | "needs_review" | "approved" | "rejected" | "published";
+  status: "draft" | "needs_review" | "approved" | "deferred" | "rejected" | "published";
   confidence?: number;
   timeWindowStart?: string;
   timeWindowEnd?: string;
+  caveats: string[];
+  citationsCount: number;
+  missingEvidence: string[];
   sourceItemCount: number;
   createdAt?: string;
   source: "supabase" | "local_preview";
@@ -404,7 +407,7 @@ async function listReportCandidatesInternal(): Promise<AdminReviewReadResult<Rep
     try {
       const { data, error } = await supabase
         .from("report_candidates")
-        .select("id, report_type, title, summary, time_window_start, time_window_end, source_item_ids, status, confidence, created_at")
+        .select("id, report_type, title, summary, time_window_start, time_window_end, source_item_ids, status, confidence, created_at, metadata")
         .order("created_at", { ascending: false, nullsFirst: false })
         .limit(24);
 
@@ -501,9 +504,12 @@ function normalizeReportCandidate(value: Record<string, unknown>): ReportCandida
   }
 
   return {
+    caveats: reportDraftStringArray(value.metadata, "caveats"),
+    citationsCount: reportDraftArrayCount(value.metadata, "citations"),
     confidence: optionalScore(value.confidence),
     createdAt: optionalText(value.created_at),
     id,
+    missingEvidence: reportDraftStringArray(value.metadata, "missing_evidence"),
     reportType,
     source: "supabase",
     sourceItemCount: Array.isArray(value.source_item_ids) ? value.source_item_ids.length : 0,
@@ -615,7 +621,7 @@ function normalizeReportType(value: unknown): ReportCandidateRow["reportType"] |
 }
 
 function normalizeReportCandidateStatus(value: unknown): ReportCandidateRow["status"] {
-  return isOneOf(value, ["draft", "needs_review", "approved", "rejected", "published"]) ?? "draft";
+  return isOneOf(value, ["draft", "needs_review", "approved", "deferred", "rejected", "published"]) ?? "draft";
 }
 
 function isOneOf<const T extends readonly string[]>(value: unknown, options: T): T[number] | null {
@@ -634,6 +640,37 @@ function optionalScore(value: unknown) {
   }
 
   return Math.max(0, Math.min(1, numberValue));
+}
+
+function reportDraftArrayCount(metadata: unknown, key: string) {
+  const reportDraft = reportDraftRecord(metadata);
+  const value = reportDraft?.[key];
+
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function reportDraftStringArray(metadata: unknown, key: string) {
+  const reportDraft = reportDraftRecord(metadata);
+  const value = reportDraft?.[key];
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map(text).filter(Boolean).slice(0, 4);
+}
+
+function reportDraftRecord(metadata: unknown) {
+  if (!isRecord(metadata)) {
+    return null;
+  }
+
+  const reportDraft = metadata.report_draft;
+  return isRecord(reportDraft) ? reportDraft : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function text(value: unknown) {

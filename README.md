@@ -22,7 +22,7 @@ The project uses public information only. Secrets, API keys, service tokens, coo
 
 This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes, the Phase 8.4 production-safe admin console redesign, Phase 9.2 scheduled dry-run job foundation, Phase 9.4 admin review workflow tables, Phase 9.4b controlled admin review actions, Phase 9.5 Supabase Auth/admin route protection foundations, Phase 10 radar/report product surfaces, and a Phase 10.5 one-shot radar data activation workflow.
 
-The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, scheduled GitHub Actions dry-runs, answer questions against Supabase/local/mock radar evidence, generate writing seeds with caveats, render a filterable public radar list, generate deterministic daily/weekly report previews from retrieved radar items, protect `/admin` routes with server-side Supabase user plus `user_roles` checks, and run controlled server-side admin review actions for review tasks, source change requests, report candidates, and audit events. It does not run scheduled persistence, source-health writes, live DeepSeek by default, or daily/weekly report publication yet.
+The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, scheduled GitHub Actions dry-runs, answer questions against Supabase/local/mock radar evidence, generate writing seeds with caveats, render a filterable public radar list, generate deterministic or explicit-live daily/weekly report drafts from retrieved radar items, persist report candidates through a write-gated CLI, protect `/admin` routes with server-side Supabase user plus `user_roles` checks, and run controlled server-side admin review actions for review tasks, source change requests, report candidates, and audit events. It does not run scheduled persistence, source-health writes, live DeepSeek by default, or automatic report publication.
 
 ## Design System
 
@@ -67,6 +67,12 @@ npm run supabase:import:sources
 npm run supabase:persist:ingestion
 npm run supabase:persist:understanding
 npm run source-health:dry-run
+npm run report:generate:daily
+npm run report:generate:weekly
+npm run report:generate:daily:live
+npm run report:generate:weekly:live
+npm run report:candidate:daily
+npm run report:candidate:weekly
 npm run scheduled:hourly:dry-run
 npm run scheduled:daily:dry-run
 npm run scheduled:weekly:dry-run
@@ -221,6 +227,14 @@ supabase/migrations/202605140005_admin_review_workflows.sql
 
 Apply it manually only after the auth/admin RLS migration has been reviewed and applied. It creates `review_tasks`, `source_change_requests`, `report_candidates`, and `admin_audit_events` with RLS, no anon access, authenticated admin/editor read policies, and no authenticated browser write grants. Do not apply it from validation.
 
+Milestone B adds a reviewable report workflow migration:
+
+```bash
+supabase/migrations/202605190001_reports_workflow.sql
+```
+
+Apply it manually after the Phase 9.4 review workflow migration. It adds report-candidate `deferred` status plus public-safe `public_report_candidates` and `public_reports` views for `/reports`. It grants read access to display fields only and does not grant browser writes.
+
 Retrieval is server-side and read-only. It uses the public Supabase anon key against the `public_radar_items` view when `ENABLE_SUPABASE_RETRIEVAL=true`; service-role access remains server-only. Ingestion, understanding, source import, and bootstrap scripts remain gated by `--write` plus `ENABLE_SUPABASE_WRITES=true`. Admin review mutations use server actions in `lib/admin/actions.ts`, require the signed-in admin role first, sanitize inputs, and write `admin_audit_events`. The anon key can read only public-safe radar item fields from the view, not raw tables, raw text, model metadata, operational logs, or write surfaces.
 
 Retrieval order for `/ask`, `/write`, `/api/ask`, and `/api/writing-assistant` is:
@@ -298,9 +312,29 @@ Phase 10 turns `/radar` and `/reports` into public product surfaces backed by th
 
 `/radar` now loads a reusable server-side radar feed from read-only Supabase retrieval when enabled, local understanding output when present, or mock data as a disclosed fallback. The page shows data source, freshness, caveats, status counts, category counts, source-tier counts, server-side query filters, dense evidence rows, `needs_review` warnings, excluded/failed transparency, and visible citations.
 
-`/reports` now generates deterministic daily and weekly report previews from available radar items without model calls. The previews include time window, data source, top items, sections for model/product/company updates, research/open-source, agents/products, business/ecosystem, weak signals / `needs_review`, caveats, citations, missing evidence, and a link to `/write` for editorial expansion.
+`/reports` now prefers saved daily/weekly report candidates or reports from public-safe Supabase report views, then falls back to deterministic generated drafts from available radar items. The drafts include time window, data source, report status, sections for model/product/company updates, research/open-source, agents/products, business/ecosystem, weak signals / `needs_review`, caveats, citations, missing evidence, Markdown copy/export, and a link to `/write` for editorial expansion.
 
-These previews are not published reports. They do not call live DeepSeek, do not write to Supabase, do not run scheduled persistence, and do not claim complete current AI industry coverage.
+Generated drafts are not published reports unless their status is `published`. Default report generation does not call live DeepSeek, does not write to Supabase, does not run scheduled persistence, and does not claim complete current AI industry coverage.
+
+Report generation and candidate persistence commands:
+
+```bash
+npm run report:generate:daily
+npm run report:generate:weekly
+npm run report:generate:daily:live
+npm run report:generate:weekly:live
+npm run report:candidate:daily
+npm run report:candidate:weekly
+```
+
+Controlled report-candidate writes require a temporary write gate and insert only `report_candidates` plus an admin audit event:
+
+```powershell
+$env:ENABLE_SUPABASE_WRITES="true"
+npm run report:candidate:daily:write
+npm run report:candidate:weekly:write
+Remove-Item Env:ENABLE_SUPABASE_WRITES
+```
 
 `npm run data:activate:*` can refresh bounded ingestion and understanding output, optionally persist it through the existing Supabase write gates, and report the current radar data source for `/radar` and `/reports`.
 
@@ -362,7 +396,7 @@ After the key is present, use `npm run data:activate:live` for a bounded live un
 - `/radar` - filterable public radar list over Supabase/local/mock retrieval evidence with counts, caveats, freshness, review state, and citations
 - `/clusters` - synthetic event clusters
 - `/entities` - synthetic entity cards
-- `/reports` - deterministic daily/weekly report preview surface generated from available radar items with sections, caveats, missing evidence, and citations
+- `/reports` - saved report candidate/report or generated daily/weekly draft surface with status, sections, caveats, missing evidence, citations, and Markdown export
 - `/ask` - retrieval-backed Q&A over Supabase/local/mock radar-item evidence with evidence rail, uncertainty, and citation surfaces
 - `/write` - evidence-bound writing assistant seeds, counterpoints, missing evidence, and citations over Supabase/local/mock evidence
 - `/api/ask` - structured Q&A JSON API, mock/local by default
@@ -382,7 +416,7 @@ After the key is present, use `npm run data:activate:live` for a bounded live un
 
 Use `supabase/schema.sql` to create the initial tables and `supabase/seed.sql` for safe synthetic demo rows. See `supabase/README.md`.
 
-The schema covers `users_profile`, `user_roles`, `sources`, source health checks, raw/radar items, event clusters, entities, scores, reports, saved items, annotations, ingestion runs, API usage logs, and system settings. Phase 7 schema changes live in `supabase/migrations/202605140001_phase7_persistence.sql`, `supabase/migrations/202605140002_phase7_upsert_constraints.sql`, and `supabase/migrations/202605140003_public_retrieval_view.sql`. Phase 9.5 auth/admin RLS lives in `supabase/migrations/202605140004_auth_admin_rls.sql`. Phase 9.4 review workflow tables live in `supabase/migrations/202605140005_admin_review_workflows.sql`.
+The schema covers `users_profile`, `user_roles`, `sources`, source health checks, raw/radar items, event clusters, entities, scores, reports, saved items, annotations, ingestion runs, API usage logs, and system settings. Phase 7 schema changes live in `supabase/migrations/202605140001_phase7_persistence.sql`, `supabase/migrations/202605140002_phase7_upsert_constraints.sql`, and `supabase/migrations/202605140003_public_retrieval_view.sql`. Phase 9.5 auth/admin RLS lives in `supabase/migrations/202605140004_auth_admin_rls.sql`. Phase 9.4 review workflow tables live in `supabase/migrations/202605140005_admin_review_workflows.sql`. Milestone B public-safe report workflow views and candidate deferral live in `supabase/migrations/202605190001_reports_workflow.sql`.
 
 ## Auth Setup
 
@@ -435,7 +469,7 @@ npm run build
 - Admin role bootstrap write mode still requires a manual operator approval step and explicit write gates.
 - No working WeChat login.
 - No scheduled production persistence or report publication jobs yet.
-- No published daily/weekly report workflow; `/reports` renders deterministic previews only.
+- Report candidate generation and persistence are manual/write-gated; publication remains a future controlled workflow.
 - Admin review workflow tables require the Phase 9.4 migration before actions can persist rows; review actions are server-side/admin-only and audited.
 - Mock radar data is synthetic and does not describe current real-world events; local understanding output may also be metadata-only and should not be treated as complete industry coverage.
 - Many useful source names still need manual public URL completion before ingestion.
