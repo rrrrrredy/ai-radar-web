@@ -89,7 +89,7 @@ npm run build
 Milestone D tracks Vercel preview readiness and smoke verification.
 
 - Local validation and deployment-readiness checks are passing (`npm run check:deployment`).
-- Preview deployment is blocked in this environment because Vercel CLI is unauthenticated.
+- Preview deployment is now created at `https://ai-radar-cgj84x959-luosongred-5507s-projects.vercel.app`, but GitHub repo linking in Vercel is still required before preview env vars can be managed, and this runner cannot currently access `.vercel.app` hosts for live smoke checks.
 - Use [Deployment Preview — Milestone D](./docs/deployment-preview-milestone-d.md) for exact blocker details, required env matrix, and manual continuation steps.
 - No public launch claim is made until preview checks are completed.
 
