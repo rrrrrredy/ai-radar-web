@@ -84,6 +84,15 @@ npm run sensitive:scan
 npm run build
 ```
 
+## Deployment Milestone D (Preview + Operating Loop)
+
+Milestone D tracks Vercel preview readiness and smoke verification.
+
+- Local validation and deployment-readiness checks are passing (`npm run check:deployment`).
+- Preview deployment is blocked in this environment because Vercel CLI is unauthenticated.
+- Use [Deployment Preview — Milestone D](./docs/deployment-preview-milestone-d.md) for exact blocker details, required env matrix, and manual continuation steps.
+- No public launch claim is made until preview checks are completed.
+
 ## Source Registry
 
 Phase 3 imports the user's AI learning/resource list from a local-only markdown file into `data/seed/sources/ai-learning-resources.cleaned.json`. Milestone A adds `data/seed/sources/official-ai-sources.json` as a hand-curated public official/high-signal extension that is loaded and imported with the cleaned registry.

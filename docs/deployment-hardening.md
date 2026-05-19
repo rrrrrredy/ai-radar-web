@@ -10,6 +10,13 @@ Use Supabase as the managed Postgres and Auth platform. Supabase remains the sou
 
 Evaluate Cloudflare Pages later only if a Cloudflare-specific edge, routing, or platform requirement appears. Do not split deployment targets before auth, admin protection, and scheduled persistence are implemented.
 
+## Current Milestone D Status
+
+- Vercel CLI is available via `npx vercel --version`.
+- Preview deployment has not been created in this environment because the session is not authenticated (`npx vercel whoami --non-interactive` reports missing credentials and an OAuth device flow prompt).
+- If Vercel CLI is blocked, use Vercel Dashboard manual steps to import `rrrrrredy/ai-radar-web`, link GitHub, and set Preview environment variables before retry.
+- Keep write and scheduler flags disabled as documented below and in [deployment-preview-milestone-d.md](./deployment-preview-milestone-d.md).
+
 ## Environment Variable Matrix
 
 Keep `.env.example` values blank or set to safe defaults. Store real values only in `.env.local` for local work or in the deployment platform environment manager for preview and production.

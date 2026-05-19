@@ -6,6 +6,8 @@ Use Vercel first for the Next.js App Router application and Supabase for managed
 
 Use the detailed readiness checklist in [deployment-hardening.md](./deployment-hardening.md) before any preview or production deployment.
 
+Milestone D status: see [deployment-preview-milestone-d.md](./deployment-preview-milestone-d.md).
+
 ## Environment Variables
 
 Configure deployed values only in the platform environment manager. Keep `.env.example` blank or set to safe defaults, and never paste secrets into task text, deployment notes, GitHub issues, commits, docs, or logs.
