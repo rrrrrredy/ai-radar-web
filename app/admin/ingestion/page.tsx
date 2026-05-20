@@ -191,6 +191,20 @@ const operatingLoopCommands: Array<{
     label: "candidate generation",
     title: "Report candidates",
     tone: "evidence"
+  },
+  {
+    command: "npm run ops:full:dry-run",
+    detail: "Runs the full operating loop in dry-run mode without Supabase writes, scheduled jobs, X/WeChat crawl, or live DeepSeek by default.",
+    label: "full dry-run",
+    title: "Full loop dry-run",
+    tone: "success"
+  },
+  {
+    command: "$env:ENABLE_SUPABASE_WRITES=\"true\"\nnpm run ops:full:live:persist -- --limit 10 --max-items-per-source 3\nRemove-Item Env:ENABLE_SUPABASE_WRITES",
+    detail: "Runs the combined live refresh plus report-candidate persist path only with the temporary write gate, Supabase credentials, and live DeepSeek readiness.",
+    label: "full write-gated",
+    title: "Full loop live + persist",
+    tone: "risk"
   }
 ];
 
