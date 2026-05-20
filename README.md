@@ -103,7 +103,7 @@ The short path is `npm run ops:dry-run`, `npm run ops:reports`, optional bounded
 
 Milestone G moved the production-ready code from `codex/milestone-e-operating-loop` to `main`, configured Vercel Production env with values redacted, and deployed a stable Production alias:
 
-`https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`
+`https://ai-radar-web-luosongred-5507s-projects.vercel.app`
 
 See [Milestone G Production Launch Candidate](./docs/production-launch-milestone-g.md) for the final callback URL, smoke results, DNS note, rollback plan, and launch limitations. Production keeps `ENABLE_SUPABASE_WRITES=false`, scheduler flags disabled, X/WeChat automation disabled, and live DeepSeek disabled for scheduled jobs.
 

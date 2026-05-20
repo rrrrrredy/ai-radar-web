@@ -22,7 +22,7 @@ Evaluate Cloudflare Pages later only if a Cloudflare-specific edge, routing, or 
 
 ## Current Milestone G Status
 
-- Production deployment is active at `https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`.
+- Production deployment is active at `https://ai-radar-web-luosongred-5507s-projects.vercel.app`.
 - Production env names are configured in Vercel with values redacted in docs and logs.
 - `APP_BASE_URL` is set to the stable Production alias above.
 - `ENABLE_SUPABASE_RETRIEVAL=true`.

@@ -4,9 +4,9 @@ Last updated: 2026-05-20
 
 ## Summary
 
-- Final Production URL: `https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`
+- Final Production URL: `https://ai-radar-web-luosongred-5507s-projects.vercel.app`
 - Vercel project: `luosongred-5507s-projects/ai-radar-web`
-- Production deployment smoke target: `dpl_45sEAUN4x1imYj3ZpckQYTxXZVS5`
+- Production smoke target: stable Production alias. Deployment IDs rotate on `main` pushes.
 - Deployment status: Ready
 - Source branch merged to `main`: `codex/milestone-e-operating-loop`
 - Production deploy method: `git push origin main` followed by explicit `npx vercel --prod --yes` after Production env setup and one report-detail fix
@@ -50,7 +50,7 @@ Expected Production flag state:
 Required Production redirect URL:
 
 ```text
-https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app/auth/callback
+https://ai-radar-web-luosongred-5507s-projects.vercel.app/auth/callback
 ```
 
 Status: user action needed.
@@ -58,7 +58,7 @@ Status: user action needed.
 The Supabase MCP tools available in this session could list/query the project but did not expose Auth URL configuration. The Supabase CLI was not installed or logged in on this Windows machine, and no local Supabase access token was available. Add the URL above in Supabase Dashboard -> Authentication -> URL Configuration -> Redirect URLs, then run the admin login smoke:
 
 ```text
-https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app/auth/login?next=%2Fadmin%2Freview
+https://ai-radar-web-luosongred-5507s-projects.vercel.app/auth/login?next=%2Fadmin%2Freview
 ```
 
 Do not inspect or print magic links, cookies, or tokens.
@@ -68,7 +68,7 @@ Do not inspect or print magic links, cookies, or tokens.
 Network note: local DNS resolved the final `.vercel.app` host to non-Vercel IPs and normal curl timed out. Smoke checks used reversible request-level pinning only:
 
 ```bash
-curl --resolve ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app:443:76.76.21.21 ...
+curl --resolve ai-radar-web-luosongred-5507s-projects.vercel.app:443:76.76.21.21 ...
 ```
 
 No hosts file entry was changed. If a hosts entry is later needed on this machine, add only the final Production host mapped to `76.76.21.21`, and roll it back by deleting that single line.
