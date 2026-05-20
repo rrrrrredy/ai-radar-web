@@ -28,7 +28,7 @@ export function getAppConfig(): AppConfig {
   const deepSeekApiKey = process.env.DEEPSEEK_API_KEY?.trim();
 
   return {
-    appBaseUrl: process.env.APP_BASE_URL || "http://127.0.0.1:3001",
+    appBaseUrl: resolveAppBaseUrl(),
     adminEmail: process.env.ADMIN_EMAIL || "",
     featureFlags: {
       enableXApi: isEnabled(process.env.ENABLE_X_API),
@@ -61,4 +61,53 @@ export function getSupabasePublicConfig() {
     url: supabase.url,
     anonKey: supabase.anonKey
   };
+}
+
+function resolveAppBaseUrl() {
+  const configuredBaseUrl = normalizeAppBaseUrl(process.env.APP_BASE_URL);
+  const vercelBaseUrl = normalizeAppBaseUrl(
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null
+  );
+
+  if (process.env.VERCEL_ENV === "preview" && vercelBaseUrl) {
+    return vercelBaseUrl;
+  }
+
+  if (process.env.VERCEL && configuredBaseUrl && isLoopbackOrigin(configuredBaseUrl)) {
+    return vercelBaseUrl ?? configuredBaseUrl;
+  }
+
+  return configuredBaseUrl ?? vercelBaseUrl ?? localAppBaseUrl();
+}
+
+function normalizeAppBaseUrl(value: string | null | undefined) {
+  const candidate = value?.trim();
+
+  if (!candidate) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(candidate);
+
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
+function localAppBaseUrl() {
+  const port = process.env.PORT?.trim() || "3000";
+
+  return `http://localhost:${port}`;
+}
+
+function isLoopbackOrigin(value: string) {
+  const hostname = new URL(value).hostname;
+
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }

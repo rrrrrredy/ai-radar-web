@@ -175,19 +175,39 @@ async function authCallbackUrl(next: string) {
 
 async function currentRequestOrigin() {
   const requestHeaders = await headers();
-  const origin = normalizeHttpOrigin(requestHeaders.get("origin"));
+  const appBaseUrl = getAppConfig().appBaseUrl;
+  const candidateOrigins = [
+    normalizeHttpOrigin(requestHeaders.get("origin")),
+    normalizeHttpOrigin(requestHeaders.get("referer")),
+    forwardedRequestOrigin(requestHeaders),
+    hostRequestOrigin(requestHeaders)
+  ];
 
-  if (origin) {
-    return origin;
-  }
+  return (
+    candidateOrigins.find((candidate): candidate is string => {
+      if (!candidate) {
+        return false;
+      }
 
+      return !shouldIgnoreLoopbackOrigin(candidate, appBaseUrl);
+    }) ?? appBaseUrl
+  );
+}
+
+function forwardedRequestOrigin(requestHeaders: Headers) {
   const forwardedProto = requestHeaders.get("x-forwarded-proto")?.split(",")[0]?.trim();
   const forwardedHost = requestHeaders.get("x-forwarded-host")?.split(",")[0]?.trim();
-  const host = forwardedHost || requestHeaders.get("host");
   const protocol = forwardedProto || "http";
-  const headerOrigin = host ? normalizeHttpOrigin(`${protocol}://${host}`) : null;
 
-  return headerOrigin || getAppConfig().appBaseUrl;
+  return forwardedHost ? normalizeHttpOrigin(`${protocol}://${forwardedHost}`) : null;
+}
+
+function hostRequestOrigin(requestHeaders: Headers) {
+  const forwardedProto = requestHeaders.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const host = requestHeaders.get("host");
+  const protocol = forwardedProto || "http";
+
+  return host ? normalizeHttpOrigin(`${protocol}://${host}`) : null;
 }
 
 function normalizeHttpOrigin(value: string | null | undefined) {
@@ -206,6 +226,16 @@ function normalizeHttpOrigin(value: string | null | undefined) {
   } catch {
     return null;
   }
+}
+
+function shouldIgnoreLoopbackOrigin(candidate: string, fallback: string) {
+  return isLoopbackOrigin(candidate) && !isLoopbackOrigin(fallback);
+}
+
+function isLoopbackOrigin(value: string) {
+  const hostname = new URL(value).hostname;
+
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }
 
 function loginPath(status: string, next: string) {
