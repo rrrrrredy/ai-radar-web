@@ -1,6 +1,6 @@
 # Deployment Preview - Milestone D
 
-Last updated: 2026-05-19
+Last updated: 2026-05-20
 
 ## Snapshot
 
@@ -54,19 +54,18 @@ Do not print or commit env values.
 
 ## Supabase Auth Callback
 
-Required Redirect URL:
+Configured Redirect URLs:
 
 ```text
 https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app/auth/callback
+https://*-luosongred-5507s-projects.vercel.app/**
 ```
 
-Codex did not add this in Supabase. Add it manually:
-
-Supabase -> Authentication -> URL Configuration -> Redirect URLs -> add the URL above.
+The project owner confirmed these are configured in Supabase Auth Redirect URLs before the final Milestone D preview smoke.
 
 ## Validation
 
-The stale Next typegen discrepancy was addressed by removing generated `.next` output before validation.
+The final validation pass was run from a temporary clean clone without `.env.local` present, so local secrets were not read by Next build-time environment loading.
 
 Passed:
 
@@ -79,7 +78,7 @@ Passed:
 
 ## Preview Smoke
 
-Smoke passed against:
+Final smoke after Supabase callback configuration passed against:
 
 ```text
 https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app

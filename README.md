@@ -89,9 +89,9 @@ npm run build
 Milestone D tracks Vercel preview readiness and smoke verification.
 
 - Local validation and deployment-readiness checks are passing (`npm run check:deployment`).
-- Preview deployment is now created. Use active alias `https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`; project-wide Preview env vars are configured, and this runner still cannot access `.vercel.app` hosts for live smoke checks.
-- Use [Deployment Preview — Milestone D](./docs/deployment-preview-milestone-d.md) for exact callback URL, env status, and user-side smoke checklist.
-- No public launch claim is made until preview checks are completed.
+- Preview deployment is now created. Use active alias `https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`; project-wide Preview env vars and Supabase Auth Redirect URLs are configured.
+- Final Preview smoke passed by pinning the host to Vercel edge IP `76.76.21.21`; the local resolver still returns non-Vercel IPs for this hostname.
+- Use [Deployment Preview — Milestone D](./docs/deployment-preview-milestone-d.md) for exact callback URLs, env status, and smoke results.
 
 ## Source Registry
 

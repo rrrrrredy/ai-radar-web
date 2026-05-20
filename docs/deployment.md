@@ -2,7 +2,7 @@
 
 Phase 9.1 is deployment hardening documentation only. Phase 9.2 adds GitHub Actions scheduled dry-runs only.
 
-Milestone D: Preview is deployed and publicly accessible after disabling Vercel Authentication. Use the active Preview alias `ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`; the latest immutable deployment URL and smoke results are recorded in [deployment-preview-milestone-d.md](./deployment-preview-milestone-d.md). Project-wide Preview environment variables are configured.
+Milestone D: Preview is deployed and publicly accessible after disabling Vercel Authentication. Use the active Preview alias `ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`; the latest immutable deployment URL and smoke results are recorded in [deployment-preview-milestone-d.md](./deployment-preview-milestone-d.md). Project-wide Preview environment variables and Supabase Auth Redirect URLs are configured.
 
 Use Vercel first for the Next.js App Router application and Supabase for managed Postgres/Auth. Cloudflare Pages can be evaluated later only if a platform-specific requirement appears.
 
