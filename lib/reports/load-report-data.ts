@@ -27,6 +27,10 @@ type SupabaseReadError = {
 };
 
 const reportTypes: ReportPreviewType[] = ["daily", "weekly"];
+const publicReportCandidateSelect =
+  "id, report_type, title, summary, time_window_start, time_window_end, source_item_ids, status, confidence, created_at, updated_at, report_draft";
+const publicReportSelect =
+  "id, type, title, language, time_window_start, time_window_end, body, status, created_at, published_at, report_draft";
 
 export async function loadReportWorkflowData(): Promise<ReportWorkflowData> {
   const [feed, saved] = await Promise.all([loadRadarFeed(), loadSavedReportDocuments()]);
@@ -48,6 +52,26 @@ export async function loadReportWorkflowData(): Promise<ReportWorkflowData> {
     reports,
     warnings: [...saved.warnings]
   };
+}
+
+export async function loadReportWorkflowDocumentById(
+  id: string
+): Promise<ReportWorkflowDocument | null> {
+  const targetId = id.trim();
+
+  if (!targetId) {
+    return null;
+  }
+
+  const savedDocument = await loadSavedReportDocumentById(targetId);
+
+  if (savedDocument) {
+    return savedDocument;
+  }
+
+  const data = await loadReportWorkflowData();
+
+  return data.reports.find((report) => report.id === targetId) ?? null;
 }
 
 function buildDeterministicReportDraftFromFeed(
@@ -84,11 +108,26 @@ async function loadSavedReportDocuments(): Promise<{
   };
 }
 
+async function loadSavedReportDocumentById(id: string) {
+  const supabase = getSupabaseServerReadClient();
+
+  if (!supabase) {
+    return null;
+  }
+
+  const [candidate, report] = await Promise.all([
+    readPublicReportCandidateById(supabase, id),
+    readPublicReportById(supabase, id)
+  ]);
+
+  return candidate ?? report;
+}
+
 async function readPublicReportCandidates(supabase: NonNullable<ReturnType<typeof getSupabaseServerReadClient>>) {
   try {
     const { data, error } = await supabase
       .from("public_report_candidates")
-      .select("id, report_type, title, summary, time_window_start, time_window_end, source_item_ids, status, confidence, created_at, updated_at, report_draft")
+      .select(publicReportCandidateSelect)
       .order("created_at", { ascending: false, nullsFirst: false })
       .limit(12);
 
@@ -113,11 +152,32 @@ async function readPublicReportCandidates(supabase: NonNullable<ReturnType<typeo
   }
 }
 
+async function readPublicReportCandidateById(
+  supabase: NonNullable<ReturnType<typeof getSupabaseServerReadClient>>,
+  id: string
+) {
+  try {
+    const { data, error } = await supabase
+      .from("public_report_candidates")
+      .select(publicReportCandidateSelect)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error || !data) {
+      return null;
+    }
+
+    return normalizeCandidateRow(data as PublicCandidateRow);
+  } catch {
+    return null;
+  }
+}
+
 async function readPublicReports(supabase: NonNullable<ReturnType<typeof getSupabaseServerReadClient>>) {
   try {
     const { data, error } = await supabase
       .from("public_reports")
-      .select("id, type, title, language, time_window_start, time_window_end, body, status, created_at, published_at, report_draft")
+      .select(publicReportSelect)
       .order("published_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false, nullsFirst: false })
       .limit(12);
@@ -140,6 +200,27 @@ async function readPublicReports(supabase: NonNullable<ReturnType<typeof getSupa
       documents: [],
       warnings: [`public_reports read failed: ${sanitizeReadError(error)}`]
     };
+  }
+}
+
+async function readPublicReportById(
+  supabase: NonNullable<ReturnType<typeof getSupabaseServerReadClient>>,
+  id: string
+) {
+  try {
+    const { data, error } = await supabase
+      .from("public_reports")
+      .select(publicReportSelect)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error || !data) {
+      return null;
+    }
+
+    return normalizeReportRow(data as PublicReportRow);
+  } catch {
+    return null;
   }
 }
 

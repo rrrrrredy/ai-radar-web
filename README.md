@@ -20,7 +20,7 @@ The project uses public information only. Secrets, API keys, service tokens, coo
 
 ## Current Scope
 
-This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes, the Phase 8.4 production-safe admin console redesign, Phase 9.2 scheduled dry-run job foundation, Phase 9.4 admin review workflow tables, Phase 9.4b controlled admin review actions, Phase 9.5 Supabase Auth/admin route protection foundations, Phase 10 radar/report product surfaces, a Phase 10.5 one-shot radar data activation workflow, and the Milestone E Preview-aware operating loop runbook.
+This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes, the Phase 8.4 production-safe admin console redesign, Phase 9.2 scheduled dry-run job foundation, Phase 9.4 admin review workflow tables, Phase 9.4b controlled admin review actions, Phase 9.5 Supabase Auth/admin route protection foundations, Phase 10 radar/report product surfaces, a Phase 10.5 one-shot radar data activation workflow, the Milestone E Preview-aware operating loop runbook, and the Milestone G Vercel Production launch candidate record.
 
 The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, scheduled GitHub Actions dry-runs, answer questions against Supabase/local/mock radar evidence, generate writing seeds with caveats, render a filterable public radar list, generate deterministic or explicit-live daily/weekly report drafts from retrieved radar items, persist report candidates through a write-gated CLI, protect `/admin` routes with server-side Supabase user plus `user_roles` checks, run controlled server-side admin review actions for review tasks, source change requests, report candidates, and audit events, and save or publish approved report candidates through audited admin server actions. It does not run scheduled persistence, source-health writes, live DeepSeek by default, or scheduled/automatic report publication.
 
@@ -98,6 +98,14 @@ Milestone D tracks Vercel preview readiness and smoke verification.
 Milestone E documents the operator-run loop for Preview refreshes, controlled persistence, report candidates, admin review, and Preview smoke checks. Use [Milestone E Operating Loop Runbook](./docs/operating-loop-milestone-e.md) as the command sequence.
 
 The short path is `npm run ops:dry-run`, `npm run ops:reports`, optional bounded `npm run ops:refresh:live`, temporary-gated `npm run ops:full:live:persist`, `/admin/review`, then Preview smoke. Milestone E does not enable Production deploys, scheduled writes, X/WeChat auto-crawl, or source-health writes.
+
+## Milestone G Production Launch Candidate
+
+Milestone G moved the production-ready code from `codex/milestone-e-operating-loop` to `main`, configured Vercel Production env with values redacted, and deployed a stable Production alias:
+
+`https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`
+
+See [Milestone G Production Launch Candidate](./docs/production-launch-milestone-g.md) for the final callback URL, smoke results, DNS note, rollback plan, and launch limitations. Production keeps `ENABLE_SUPABASE_WRITES=false`, scheduler flags disabled, X/WeChat automation disabled, and live DeepSeek disabled for scheduled jobs.
 
 ## Source Registry
 
@@ -379,6 +387,7 @@ ENABLE_X_API=false
 ENABLE_WECHAT_AUTH=false
 ENABLE_SUPABASE_RETRIEVAL=false
 ENABLE_SUPABASE_WRITES=false
+ENABLE_SCHEDULED_INGESTION=false
 ENABLE_SCHEDULED_PERSISTENCE=false
 ENABLE_LIVE_DEEPSEEK_IN_JOBS=false
 ```
@@ -498,4 +507,4 @@ npm run build
 
 ## Next Phases
 
-- Production deployment decision, controlled scheduled persistence design, source-health write approval, and stronger signed-in admin smoke coverage
+- Supabase Production callback confirmation, signed-in admin smoke coverage, controlled scheduled persistence design, source-health write approval, and public announcement readiness

@@ -1,14 +1,18 @@
 # Deployment
 
-Phase 9.1 is deployment hardening documentation only. Phase 9.2 adds GitHub Actions scheduled dry-runs only.
+Phase 9.1 is deployment hardening documentation only. Phase 9.2 adds GitHub Actions scheduled dry-runs only. Milestone G is the first approved Vercel Production launch candidate.
 
 Milestone D: Preview is deployed and publicly accessible after disabling Vercel Authentication. Use the active Preview alias `ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`; the latest immutable deployment URL and smoke results are recorded in [deployment-preview-milestone-d.md](./deployment-preview-milestone-d.md). Project-wide Preview environment variables are configured.
+
+Milestone G: Production is deployed at `https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`. See [production-launch-milestone-g.md](./production-launch-milestone-g.md) for env names, callback URL, smoke results, DNS caveat, and rollback plan.
 
 Use Vercel first for the Next.js App Router application and Supabase for managed Postgres/Auth. Cloudflare Pages can be evaluated later only if a platform-specific requirement appears.
 
 Use the detailed readiness checklist in [deployment-hardening.md](./deployment-hardening.md) before any preview or production deployment.
 
 Milestone D status: see [deployment-preview-milestone-d.md](./deployment-preview-milestone-d.md).
+
+Milestone G status: see [production-launch-milestone-g.md](./production-launch-milestone-g.md).
 
 ## Environment Variables
 
@@ -22,6 +26,11 @@ Required Supabase variables for deployed Supabase behavior:
 - `ADMIN_EMAIL`
 - `ENABLE_SUPABASE_RETRIEVAL`
 - `ENABLE_SUPABASE_WRITES=false` by default
+- `ENABLE_SCHEDULED_INGESTION=false`
+- `ENABLE_SCHEDULED_PERSISTENCE=false`
+- `ENABLE_LIVE_DEEPSEEK_IN_JOBS=false`
+- `ENABLE_X_API=false`
+- `ENABLE_WECHAT_AUTH=false`
 
 ## Supabase
 

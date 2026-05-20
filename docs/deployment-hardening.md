@@ -1,6 +1,6 @@
 # Deployment Hardening
 
-Phase 9.1 documents deployment readiness only. Phase 9.2 adds GitHub Actions scheduled dry-runs only. These phases do not approve a deployment, enable scheduled persistence, run Supabase writes, or run live DeepSeek.
+Phase 9.1 documents deployment readiness only. Phase 9.2 adds GitHub Actions scheduled dry-runs only. Milestone G approves a Vercel Production launch candidate, but does not approve scheduled persistence, Supabase writes during smoke, source-health writes, X/WeChat automation, or scheduled live DeepSeek.
 
 ## Deployment Target Recommendation
 
@@ -19,6 +19,19 @@ Evaluate Cloudflare Pages later only if a Cloudflare-specific edge, routing, or 
 - Remote Preview smoke passed for public routes, admin redirects, and mock API requests.
 - Supabase Auth still needs the active Preview callback URL added manually.
 - Keep write and scheduler flags disabled as documented below and in [deployment-preview-milestone-d.md](./deployment-preview-milestone-d.md).
+
+## Current Milestone G Status
+
+- Production deployment is active at `https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`.
+- Production env names are configured in Vercel with values redacted in docs and logs.
+- `APP_BASE_URL` is set to the stable Production alias above.
+- `ENABLE_SUPABASE_RETRIEVAL=true`.
+- `ENABLE_SUPABASE_WRITES=false`.
+- `ENABLE_SCHEDULED_INGESTION=false`, `ENABLE_SCHEDULED_PERSISTENCE=false`, and `ENABLE_LIVE_DEEPSEEK_IN_JOBS=false`.
+- `ENABLE_X_API=false` and `ENABLE_WECHAT_AUTH=false`.
+- Public route and mock API smoke passed through pinned Vercel edge resolution because the local resolver returned non-Vercel IPs for the `.vercel.app` host.
+- Supabase Auth Production callback still needs dashboard confirmation before admin login smoke can run.
+- See [production-launch-milestone-g.md](./production-launch-milestone-g.md) for exact smoke results and rollback steps.
 
 ## Environment Variable Matrix
 
@@ -79,7 +92,7 @@ Rules:
 
 ## Deployment Smoke Checks
 
-Run these after a preview deployment is created in a future phase. Keep generation in mock mode unless live provider use is explicitly approved.
+Run these after a preview or production deployment is created. Keep generation in mock mode unless live provider use is explicitly approved.
 
 - Homepage loads.
 - `/ask` loads.

@@ -4,6 +4,8 @@ Last updated: 2026-05-20
 
 This is the Preview-aware operating loop for refreshing radar data, preparing report candidates, and manually reviewing/publishing reports. It is an operator-run loop, not an autonomous production system.
 
+Milestone G supersedes the earlier "no Production deploy" boundary only for the approved Vercel Production launch candidate. Keep using this runbook for operator-controlled refresh/review work; see [production-launch-milestone-g.md](./production-launch-milestone-g.md) for the stable Production URL and launch smoke record.
+
 Use the active Preview alias:
 
 ```text

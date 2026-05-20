@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/empty-state";
 import { EvidenceBadge } from "@/components/evidence-badge";
 import { ReportMarkdownExport } from "@/components/report-markdown-export";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
-import { loadReportWorkflowData } from "@/lib/reports/load-report-data";
+import { loadReportWorkflowDocumentById } from "@/lib/reports/load-report-data";
 import type { GeneratedReportSection, ReportWorkflowDocument } from "@/lib/reports/types";
 
 export default async function ReportDetailPage({
@@ -15,8 +15,7 @@ export default async function ReportDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const data = await loadReportWorkflowData();
-  const report = data.reports.find((candidate) => candidate.id === decodeURIComponent(id));
+  const report = await loadReportWorkflowDocumentById(decodeURIComponent(id));
 
   if (!report) {
     notFound();

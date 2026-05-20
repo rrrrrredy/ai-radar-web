@@ -2,6 +2,8 @@
 
 Last updated: 2026-05-20
 
+Milestone D is the historical Preview deployment record. Milestone G is now the approved Production launch candidate; use [production-launch-milestone-g.md](./production-launch-milestone-g.md) for the stable Production URL, Production env status, and Production smoke results.
+
 ## Snapshot
 
 - Repository: `D:\Codex\AI Radar Web`
