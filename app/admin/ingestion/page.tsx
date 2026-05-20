@@ -7,7 +7,11 @@ import { DataSourceChip } from "@/components/data-source-chip";
 import { EvidenceBadge } from "@/components/evidence-badge";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { getAppConfig } from "@/lib/config";
+import { loadRadarItems } from "@/lib/retrieval/load-radar-items";
+import type { UnderstandingStatus } from "@/lib/understanding/types";
 import { formatDate } from "@/lib/utils";
+
+export const dynamic = "force-dynamic";
 
 const supportedMethods = ["rss", "html", "api", "podcast_feed", "youtube_feed"];
 
@@ -153,8 +157,46 @@ const writeGatedCommands = [
   }
 ];
 
-export default function AdminIngestionPage() {
+const operatingLoopCommands: Array<{
+  command: string;
+  detail: string;
+  label: string;
+  title: string;
+  tone: StatusTone;
+}> = [
+  {
+    command: "npm run ops:dry-run",
+    detail: "Runs the full mock operating loop summary without Supabase writes, scheduled jobs, X/WeChat crawl, or live DeepSeek by default.",
+    label: "dry-run",
+    title: "Operating loop dry-run",
+    tone: "success"
+  },
+  {
+    command: "npm run ops:refresh:live -- --limit 10 --max-items-per-source 3",
+    detail: "Runs bounded public ingestion plus live understanding only when DeepSeek is available; output remains local artifacts unless persist is requested.",
+    label: "live opt-in",
+    title: "Live refresh",
+    tone: "caution"
+  },
+  {
+    command: "$env:ENABLE_SUPABASE_WRITES=\"true\"\nnpm run ops:refresh:live:persist -- --limit 10 --max-items-per-source 3\nRemove-Item Env:ENABLE_SUPABASE_WRITES",
+    detail: "Requires the temporary write gate, Supabase public config, service role credentials, and live DeepSeek readiness in the CLI process.",
+    label: "write-gated",
+    title: "Live refresh + persist",
+    tone: "risk"
+  },
+  {
+    command: "npm run ops:reports",
+    detail: "Generates daily and weekly candidate previews from current radar evidence. Add -- --persist with the temporary write gate to save needs_review candidates.",
+    label: "candidate generation",
+    title: "Report candidates",
+    tone: "evidence"
+  }
+];
+
+export default async function AdminIngestionPage() {
   const config = getAppConfig();
+  const activationState = await getLatestActivationState();
 
   return (
     <div className="space-y-8">
@@ -188,6 +230,109 @@ export default function AdminIngestionPage() {
             value={stage.label === "Supabase persistence" ? "gated" : "visible"}
           />
         ))}
+      </section>
+
+      <section
+        aria-labelledby="operating-loop-title"
+        className="rounded-lg border border-radar-line bg-white p-4 shadow-soft"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2
+              className="text-lg font-semibold text-radar-ink"
+              id="operating-loop-title"
+            >
+              Operating loop
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
+              Current data state and safe CLI sequence for manual activation.
+              Commands are documentation only; this page does not execute them.
+            </p>
+          </div>
+          <DataSourceChip detail="latest known" source={activationState.dataSource} />
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-[0.8fr_1.2fr]">
+          <div className="rounded-md border border-radar-line bg-radar-panel p-3">
+            <div className="flex flex-wrap gap-2">
+              <EvidenceBadge
+                detail={String(activationState.total)}
+                kind="evidence"
+                label="Items"
+              />
+              <EvidenceBadge
+                detail={String(activationState.citations)}
+                kind="citation"
+                label="Citations"
+              />
+              <StatusChip
+                label="Latest"
+                tone={activationState.latestTimestamp ? "freshness" : "neutral"}
+                value={activationState.latestTimestamp ?? "not available"}
+              />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <StatusChip label="included" tone="evidence" value={activationState.counts.included} />
+              <StatusChip label="needs_review" tone="caution" value={activationState.counts.needs_review} />
+              <StatusChip label="excluded" tone="risk" value={activationState.counts.excluded} />
+              <StatusChip label="failed" tone="risk" value={activationState.counts.failed} />
+            </div>
+            {activationState.warnings.length > 0 ? (
+              <p className="mt-3 text-sm leading-6 text-radar-muted">
+                Caveat: {activationState.warnings[0]}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <BoundaryItem
+              detail="No Vercel Cron, GitHub Actions schedule, or background persistence job is enabled from this page."
+              label="Scheduled jobs"
+              tone="caution"
+              value="disabled"
+            />
+            <BoundaryItem
+              detail="Supabase writes require an explicit CLI write path plus ENABLE_SUPABASE_WRITES=true and service credentials."
+              label="Writes"
+              tone="risk"
+              value="CLI gate"
+            />
+            <BoundaryItem
+              detail="Live understanding is opt-in and falls back unless DEEPSEEK_API_KEY is available to the CLI process."
+              label="Live DeepSeek"
+              tone="caution"
+              value="opt-in"
+            />
+            <BoundaryItem
+              detail="X accounts and WeChat-style sources are review inputs only here; they are not automatically crawled."
+              label="X / WeChat"
+              tone="success"
+              value="not auto-crawled"
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+          {operatingLoopCommands.map((command) => (
+            <AdminCommandBlock
+              command={command.command}
+              detail={command.detail}
+              key={command.title}
+              label={command.label}
+              title={command.title}
+              tone={command.tone}
+            />
+          ))}
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-3 text-sm font-semibold">
+          <Link className="text-radar-admin hover:text-radar-evidence" href="/admin/review">
+            Open admin review
+          </Link>
+          <Link className="text-radar-admin hover:text-radar-evidence" href="/reports">
+            Open reports
+          </Link>
+        </div>
       </section>
 
       <section className="rounded-lg border border-radar-line bg-radar-panel p-4">
@@ -430,6 +575,33 @@ function RunRow({ label, value }: { label: string; value: string }) {
       <dd className="break-words text-radar-ink">{value}</dd>
     </div>
   );
+}
+
+async function getLatestActivationState() {
+  const loaded = await loadRadarItems();
+  const counts: Record<UnderstandingStatus, number> = {
+    excluded: 0,
+    failed: 0,
+    included: 0,
+    needs_review: 0
+  };
+
+  for (const item of loaded.items) {
+    counts[item.status] += 1;
+  }
+
+  return {
+    citations: loaded.items.filter(
+      (item) => item.url && (item.status === "included" || item.status === "needs_review")
+    ).length,
+    counts,
+    dataSource: loaded.dataSource,
+    latestTimestamp: loaded.freshness.latestTimestamp
+      ? formatDate(loaded.freshness.latestTimestamp)
+      : undefined,
+    total: loaded.items.length,
+    warnings: loaded.warnings
+  };
 }
 
 function BoundaryItem({

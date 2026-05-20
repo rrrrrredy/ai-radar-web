@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { AdminCommandBlock } from "@/components/admin-command-block";
 import { AdminDataTable, type AdminDataTableColumn } from "@/components/admin-data-table";
 import { AdminStatusCard } from "@/components/admin-status-card";
@@ -93,6 +95,34 @@ export default async function AdminReviewPage() {
           tone="admin"
           value={data.auditEvents.rows.length}
         />
+      </section>
+
+      <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-radar-ink">
+              Report candidate focus
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
+              Daily and weekly candidates are reviewed in the report candidate
+              table. Approve, reject, and defer actions are shown on persisted
+              rows; approval does not publish by itself.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <StatusChip label="daily" tone="evidence" />
+            <StatusChip label="weekly" tone="evidence" />
+            <StatusChip label="approve / reject / defer" tone="caution" />
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-3 text-sm font-semibold">
+          <a className="text-radar-admin hover:text-radar-evidence" href="#report-candidates">
+            Jump to report candidates
+          </a>
+          <Link className="text-radar-admin hover:text-radar-evidence" href="/reports">
+            Open reports
+          </Link>
+        </div>
       </section>
 
       <section
@@ -222,6 +252,7 @@ export default async function AdminReviewPage() {
         columns={reportCandidateColumns}
         description="Candidate report seeds for daily, weekly, topic, or observation reports. Approved daily, weekly, and topic candidates can be saved as reviewed reports or published as public reports."
         emptyLabel="No report candidates"
+        id="report-candidates"
         minWidth="1080px"
         result={data.reportCandidates}
         rowKey={(row) => row.id}
@@ -247,6 +278,7 @@ function ReviewTable<T>({
   columns,
   description,
   emptyLabel,
+  id,
   minWidth,
   result,
   rowKey,
@@ -256,13 +288,17 @@ function ReviewTable<T>({
   columns: AdminDataTableColumn<T>[];
   description: string;
   emptyLabel: string;
+  id?: string;
   minWidth: string;
   result: AdminReviewReadResult<T>;
   rowKey: (row: T) => string;
   title: string;
 }) {
   return (
-    <section className="min-w-0 rounded-lg border border-radar-line bg-white p-4 shadow-soft">
+    <section
+      className="min-w-0 rounded-lg border border-radar-line bg-white p-4 shadow-soft"
+      id={id}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-radar-ink">{title}</h2>

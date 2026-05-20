@@ -20,7 +20,7 @@ The project uses public information only. Secrets, API keys, service tokens, coo
 
 ## Current Scope
 
-This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes, the Phase 8.4 production-safe admin console redesign, Phase 9.2 scheduled dry-run job foundation, Phase 9.4 admin review workflow tables, Phase 9.4b controlled admin review actions, Phase 9.5 Supabase Auth/admin route protection foundations, Phase 10 radar/report product surfaces, and a Phase 10.5 one-shot radar data activation workflow.
+This repository now contains a Next.js App Router skeleton, Tailwind styling, Supabase database/auth helpers, a DeepSeek provider abstraction, synthetic demo data, validation scripts, a Phase 3 cleaned public source registry, a Phase 4 local public-source ingestion foundation, a Phase 5 local understanding layer, a Phase 6 retrieval-backed Q&A and writing assistant foundation, a Phase 7 dry-run-first Supabase persistence layer, Phase 8 public product shell, homepage, Ask, and Write evidence-surface design passes, the Phase 8.4 production-safe admin console redesign, Phase 9.2 scheduled dry-run job foundation, Phase 9.4 admin review workflow tables, Phase 9.4b controlled admin review actions, Phase 9.5 Supabase Auth/admin route protection foundations, Phase 10 radar/report product surfaces, a Phase 10.5 one-shot radar data activation workflow, and the Milestone E Preview-aware operating loop runbook.
 
 The implementation is intentionally an application foundation, not the full product. It can run limited local ingestion and understanding smoke tests, dry-run Supabase persistence plans, scheduled GitHub Actions dry-runs, answer questions against Supabase/local/mock radar evidence, generate writing seeds with caveats, render a filterable public radar list, generate deterministic or explicit-live daily/weekly report drafts from retrieved radar items, persist report candidates through a write-gated CLI, protect `/admin` routes with server-side Supabase user plus `user_roles` checks, run controlled server-side admin review actions for review tasks, source change requests, report candidates, and audit events, and save or publish approved report candidates through audited admin server actions. It does not run scheduled persistence, source-health writes, live DeepSeek by default, or scheduled/automatic report publication.
 
@@ -92,6 +92,12 @@ Milestone D tracks Vercel preview readiness and smoke verification.
 - Preview deployment is now created. Use active alias `https://ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`; project-wide Preview env vars are configured, and this runner still cannot access `.vercel.app` hosts for live smoke checks.
 - Use [Deployment Preview — Milestone D](./docs/deployment-preview-milestone-d.md) for exact callback URL, env status, and user-side smoke checklist.
 - No public launch claim is made until preview checks are completed.
+
+## Milestone E Operating Loop
+
+Milestone E documents the operator-run loop for Preview refreshes, controlled persistence, report candidates, admin review, and Preview smoke checks. Use [Milestone E Operating Loop Runbook](./docs/operating-loop-milestone-e.md) as the command sequence.
+
+The short path is `npm run ops:dry-run`, `npm run ops:reports`, optional bounded `npm run ops:refresh:live`, temporary-gated `npm run ops:full:live:persist`, `/admin/review`, then Preview smoke. Milestone E does not enable Production deploys, scheduled writes, X/WeChat auto-crawl, or source-health writes.
 
 ## Source Registry
 
@@ -262,6 +268,8 @@ npm run data:status
 npm run data:activate:live -- --limit 3 --max-items-per-source 3
 ```
 
+Milestone E wraps these lower-level commands with `npm run ops:*` operating-loop scripts. See [Milestone E Operating Loop Runbook](./docs/operating-loop-milestone-e.md) before persisting or reviewing report candidates.
+
 To persist a reviewed live run, enable Supabase writes only for that process:
 
 ```powershell
@@ -269,6 +277,8 @@ $env:ENABLE_SUPABASE_WRITES="true"
 npm run data:activate:live:persist -- --limit 3 --max-items-per-source 3
 Remove-Item Env:ENABLE_SUPABASE_WRITES
 ```
+
+To persist an already-reviewed latest local run without repeating fetch/model work, add `--skip-ingest --skip-understand`. For mock-only activation, use `npm run data:activate:persist` with the same temporary write gate.
 
 The activation script never edits `.env.local`, never prints API keys, does not run scheduled jobs, and does not crawl X or WeChat sources automatically. Regular local Supabase-first product pages require setting `ENABLE_SUPABASE_RETRIEVAL=true` in `.env.local` or in the temporary process environment after the public retrieval view has rows.
 
@@ -488,4 +498,4 @@ npm run build
 
 ## Next Phases
 
-- Phase 9.3: controlled scheduled persistence design with explicit approval, protected workflow gates, and observability
+- Production deployment decision, controlled scheduled persistence design, source-health write approval, and stronger signed-in admin smoke coverage

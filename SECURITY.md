@@ -33,6 +33,12 @@ The admin bootstrap path follows the same write boundary. `npm run auth:bootstra
 
 Admin review mutations are a separate server-side path. They must run only through `lib/admin/actions.ts`, require the signed-in admin role before service-role access, sanitize all mutation errors, and create `admin_audit_events` for successful mutations.
 
+## Milestone E Operating Loop Boundary
+
+The Milestone E runbook in [docs/operating-loop-milestone-e.md](./docs/operating-loop-milestone-e.md) is the approved Preview sequence for dry-run refresh, controlled persist, report candidates, admin review, and Preview smoke checks. Its write steps use the existing temporary `ENABLE_SUPABASE_WRITES=true` gate for one command process only.
+
+Milestone E does not approve Production deploys, scheduled writes, X/WeChat auto-crawl, or source-health writes.
+
 ## Admin Review Workflow Boundary
 
 The `/admin/review` route is protected by the admin layout. It may read local/mock data and authenticated Supabase rows from `review_tasks`, `source_change_requests`, `report_candidates`, and `admin_audit_events` after the Phase 9.4 migration is manually applied.

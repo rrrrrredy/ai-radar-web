@@ -11,7 +11,7 @@ Phase 4 builds on the Phase 3 cleaned source registry. It provides the first loc
 4. Deduplicate by canonical URL, external ID, and content hash.
 5. Log the ingestion run and write local artifacts.
 
-Phase 5 now classifies topics, summarizes, tags, extracts entities, and scores items into local radar-item artifacts. Phase 6 reads those artifacts for retrieval-backed Q&A and writing assistance. Phase 7 adds dry-run-first Supabase persistence for these local artifacts. Phase 9.2 adds GitHub Actions scheduled dry-runs while keeping scheduled persistence and production writes deferred. Phase 10.5 adds a one-shot activation script for bounded ingestion, optional live DeepSeek understanding, and explicit write-gated Supabase persistence. Milestone A adds an official/high-signal source extension and prioritizes eligible official sources during bounded activation.
+Phase 5 now classifies topics, summarizes, tags, extracts entities, and scores items into local radar-item artifacts. Phase 6 reads those artifacts for retrieval-backed Q&A and writing assistance. Phase 7 adds dry-run-first Supabase persistence for these local artifacts. Phase 9.2 adds GitHub Actions scheduled dry-runs while keeping scheduled persistence and production writes deferred. Phase 10.5 adds a one-shot activation script for bounded ingestion, optional live DeepSeek understanding, and explicit write-gated Supabase persistence. Milestone A adds an official/high-signal source extension and prioritizes eligible official sources during bounded activation. Milestone E documents the Preview operating loop in [operating-loop-milestone-e.md](./operating-loop-milestone-e.md).
 
 ## Phase 4 Commands
 
@@ -71,6 +71,8 @@ npm run data:status
 npm run data:activate:live -- --limit 3 --max-items-per-source 3
 ```
 
+Use the Milestone E runbook for the full Preview sequence through `npm run ops:dry-run`, optional `npm run ops:refresh:live`, controlled persist, report candidate generation, admin review, and Preview smoke.
+
 DeepSeek is configured once through `.env.local` locally or through the deployment environment manager:
 
 ```bash
@@ -91,6 +93,7 @@ Remove-Item Env:ENABLE_SUPABASE_WRITES
 If a successful live run already exists locally and only persistence is needed,
 use `--skip-ingest --skip-understand` with the same temporary write gate. This
 persists the latest ignored local artifacts without repeating DeepSeek calls.
+For mock-only activation, use `npm run data:activate:persist` with the same gate.
 
 For regular local product-page use after rows exist in `public.public_radar_items`, set `ENABLE_SUPABASE_RETRIEVAL=true` in `.env.local` or the process environment. The activation script does not edit `.env.local`.
 

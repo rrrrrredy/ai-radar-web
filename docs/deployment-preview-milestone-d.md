@@ -1,6 +1,6 @@
 # Deployment Preview - Milestone D
 
-Last updated: 2026-05-19
+Last updated: 2026-05-20
 
 ## Snapshot
 
@@ -15,6 +15,8 @@ Last updated: 2026-05-19
 - Production deployment: no completed Production deployment. The required docs push to `main` triggered Git-connected Production build `dpl_CSm4jBoY8uQCfNXehHVeM8Zak2EJ`, which was canceled while building.
 
 Use the active Preview alias for deployed callback configuration because it is assigned to the latest Preview deployment without changing on each immutable deployment URL.
+
+Milestone E uses the same Preview alias for the operator loop. See [Milestone E Operating Loop Runbook](./operating-loop-milestone-e.md) for dry-run refresh, controlled persist, report candidates, admin review, and Preview smoke sequencing.
 
 ## Vercel Environment Status
 
@@ -108,3 +110,5 @@ POST results:
 - `POST /api/writing-assistant` with mock generation -> 200, `data_source=supabase_radar_items`, provider `local`
 
 No `vercel --prod` command was run. The Git-triggered Production build noted above was canceled while building. No Supabase writes, scheduled jobs, or live DeepSeek calls were run for this preview.
+
+For Milestone E, keep Production deployment, scheduled writes, source-health writes, X/WeChat auto-crawl, and scheduled live DeepSeek disabled unless a later approved runbook changes that.

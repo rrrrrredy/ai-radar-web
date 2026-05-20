@@ -2,13 +2,14 @@
 
 ## Goal
 
-Document the Phase 8 redesigned UI surfaces, Phase 9 admin workflow boundaries, and Phase 10 radar/report product surfaces. This handoff preserves the product direction and the safety boundaries already established in `DESIGN.md`.
+Document the Phase 8 redesigned UI surfaces, Phase 9 admin workflow boundaries, Phase 10 radar/report product surfaces, and Milestone E Preview operating loop. This handoff preserves the product direction and the safety boundaries already established in `DESIGN.md`.
 
 ## Audience
 
 - Future implementers adding Phase 9 deployment, jobs, and admin workflows.
 - Reviewers checking that product surfaces stay evidence-first.
 - Operators validating that admin routes do not imply unguarded writes, live model calls, or scheduled execution.
+- Operators running the Milestone E loop in [operating-loop-milestone-e.md](./operating-loop-milestone-e.md).
 
 ## Redesigned Routes
 
@@ -98,6 +99,8 @@ npm run build
 git diff --check
 ```
 
+For Preview operations after validation, use the Milestone E sequence: `ops:dry-run`, `ops:reports`, optional bounded `ops:refresh:live`, temporary-gated `ops:full:live:persist`, `/admin/review`, then Preview smoke.
+
 For API smoke, keep mock mode:
 
 ```bash
@@ -130,4 +133,4 @@ Do not run live DeepSeek, scheduled jobs, source-health writes, or generic Supab
 
 ## Next Recommended Phase
 
-The next phase can focus on richer signed-in admin smoke coverage, scheduled job design, source-health review boundaries, and deeper report history/detail navigation while preserving the Phase 8/10 evidence-first public surfaces and the dry-run/write-gated separation for non-review writes.
+The next phase can focus on richer signed-in admin smoke coverage, production deployment decisions, scheduled persistence design, source-health write approval, and deeper report history/detail navigation while preserving the Phase 8/10 evidence-first public surfaces and the Milestone E operating loop.
