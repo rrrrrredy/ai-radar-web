@@ -43,6 +43,8 @@
     "auth:bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
     "validate:data": "tsx scripts/validate-schemas.ts",
     "sensitive:scan": "tsx scripts/sensitive-scan.ts",
+    "mirror:snapshot": "tsx scripts/export-public-snapshot.ts",
+    "mirror:build": "npm run mirror:snapshot && tsx scripts/build-github-pages-mirror.ts",
     "check:deployment": "npm run lint && npm run typecheck && npm run validate:data && npm run sensitive:scan && npm run build",
     "build": "next build"
   },

@@ -9,7 +9,7 @@ Date: 2026-05-21
 - `https://rrrrrredy.github.io/ai-knowledge-graph/browse.html`
 - `https://ai-query-hub-space.mynocode.host/`
 
-Browser tooling was used. The AI Knowledge Graph pages loaded and were inspected. The AI Query Hub URL redirected to a Meituan unified login page (`统一登录中心`) with no public product UI visible, so only the route/access blocker could be inspected directly.
+Browser tooling was used. The AI Knowledge Graph pages loaded and were inspected. The AI Query Hub URL redirected to a private SSO login page with no public product UI visible, so only the route/access blocker could be inspected directly.
 
 ## Useful Patterns From AI Knowledge Graph
 
