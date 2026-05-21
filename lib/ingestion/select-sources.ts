@@ -3,6 +3,7 @@ import fs from "node:fs";
 import {
   CLEANED_SOURCE_REGISTRY_PATH,
   DEFAULT_SELECTION_OPTIONS,
+  INGESTION_LATEST_DIR,
   SOURCE_REGISTRY_PATHS,
   canonicalizeUrl,
   hasUnsafeFragment,
@@ -18,6 +19,7 @@ import type {
 } from "@/lib/ingestion/types";
 
 const eligibleStatuses = new Set(["active", "trial"]);
+const sourceFamilyOrder = ["official_company", "arxiv_research", "github_open_source", "specialist_analysis", "podcast_video"];
 
 export function readCleanedSources(filePath = CLEANED_SOURCE_REGISTRY_PATH): CleanedSource[] {
   if (filePath === CLEANED_SOURCE_REGISTRY_PATH) {
@@ -99,7 +101,8 @@ export function selectSources(options: Partial<SourceSelectionOptions> = {}): So
   const normalizedOptions = normalizeSelectionOptions(options);
   const sources = readCleanedSources();
   const warnings: string[] = [];
-  const eligibleSources = sortEligibleSources(sources.filter(isEligibleSource));
+  const recentFailedSourceIds = readRecentFailedSourceIds();
+  const eligibleSources = sortEligibleSources(sources.filter(isEligibleSource), recentFailedSourceIds);
   let selected = eligibleSources;
 
   if (normalizedOptions.method !== "all") {
@@ -111,6 +114,10 @@ export function selectSources(options: Partial<SourceSelectionOptions> = {}): So
     if (selected.length === 0) {
       warnings.push(`No eligible source matched ${normalizedOptions.sourceId}.`);
     }
+  }
+
+  if (!normalizedOptions.sourceId && normalizedOptions.method === "all") {
+    selected = diversifySources(selected, normalizedOptions.limit);
   }
 
   return {
@@ -130,7 +137,8 @@ export function normalizeSelectionOptions(options: Partial<SourceSelectionOption
     limit,
     method,
     sourceId: options.sourceId,
-    maxItemsPerSource
+    maxItemsPerSource,
+    noCache: Boolean(options.noCache)
   };
 }
 
@@ -156,9 +164,9 @@ function isEligibleSource(source: CleanedSource): source is SelectedSource {
   );
 }
 
-function sortEligibleSources(sources: SelectedSource[]) {
+function sortEligibleSources(sources: SelectedSource[], recentFailedSourceIds: Set<string>) {
   return [...sources].sort((left, right) => {
-    const priorityDelta = sourcePriority(left) - sourcePriority(right);
+    const priorityDelta = sourcePriority(left, recentFailedSourceIds) - sourcePriority(right, recentFailedSourceIds);
     if (priorityDelta !== 0) {
       return priorityDelta;
     }
@@ -172,8 +180,85 @@ function sortEligibleSources(sources: SelectedSource[]) {
   });
 }
 
-function sourcePriority(source: SelectedSource) {
-  return originRank(source) * 100 + tierRank(source.tier) * 10 + methodRank(source.crawl_method);
+function diversifySources(sources: SelectedSource[], limit: number) {
+  const buckets = new Map<string, SelectedSource[]>();
+
+  for (const source of sources) {
+    const family = sourceFamily(source);
+    buckets.set(family, [...(buckets.get(family) ?? []), source]);
+  }
+
+  const familyOrder = [
+    ...sourceFamilyOrder.filter((family) => buckets.has(family)),
+    ...Array.from(buckets.keys())
+      .filter((family) => !sourceFamilyOrder.includes(family))
+      .sort()
+  ];
+  const selected: SelectedSource[] = [];
+  const counts = new Map<string, number>();
+  const maxPerFamily = Math.max(1, Math.ceil(limit * 0.35));
+
+  while (selected.length < limit) {
+    let progressed = false;
+
+    for (const family of familyOrder) {
+      if (selected.length >= limit) {
+        break;
+      }
+
+      if ((counts.get(family) ?? 0) >= maxPerFamily) {
+        continue;
+      }
+
+      const next = buckets.get(family)?.shift();
+      if (!next) {
+        continue;
+      }
+
+      selected.push(next);
+      counts.set(family, (counts.get(family) ?? 0) + 1);
+      progressed = true;
+    }
+
+    if (!progressed) {
+      break;
+    }
+  }
+
+  if (selected.length < limit) {
+    for (const family of familyOrder) {
+      const bucket = buckets.get(family) ?? [];
+      while (selected.length < limit && bucket.length > 0) {
+        selected.push(bucket.shift() as SelectedSource);
+      }
+    }
+  }
+
+  return selected;
+}
+
+export function sourceFamily(source: Pick<SelectedSource, "category" | "type" | "crawl_method">) {
+  if (source.category === "github" || source.type === "github" || source.crawl_method === "api") {
+    return "github_open_source";
+  }
+
+  if (source.category === "arxiv" || source.type === "arxiv") {
+    return "arxiv_research";
+  }
+
+  if (["official_company", "official_blog", "research_lab", "huggingface"].includes(source.category)) {
+    return "official_company";
+  }
+
+  if (source.category === "podcast" || source.type === "podcast" || source.crawl_method === "podcast_feed") {
+    return "podcast_video";
+  }
+
+  return "specialist_analysis";
+}
+
+function sourcePriority(source: SelectedSource, recentFailedSourceIds: Set<string>) {
+  return originRank(source) * 100 + tierRank(source.tier) * 10 + methodRank(source.crawl_method) + recentFailurePenalty(source, recentFailedSourceIds);
 }
 
 function originRank(source: SelectedSource) {
@@ -207,6 +292,28 @@ function methodRank(method: SelectedSource["crawl_method"]) {
       return 3;
     case "youtube_feed":
       return 4;
+  }
+}
+
+function recentFailurePenalty(source: SelectedSource, recentFailedSourceIds: Set<string>) {
+  return recentFailedSourceIds.has(source.id) ? 8 : 0;
+}
+
+function readRecentFailedSourceIds() {
+  const runPath = `${INGESTION_LATEST_DIR}/ingestion-run.json`;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(runPath, "utf8")) as {
+      source_results?: Array<{ source_id?: string; status?: string }>;
+    };
+
+    return new Set(
+      (parsed.source_results ?? [])
+        .filter((result) => result.status === "failed")
+        .map((result) => result.source_id)
+        .filter((sourceId): sourceId is string => Boolean(sourceId))
+    );
+  } catch {
+    return new Set<string>();
   }
 }
 

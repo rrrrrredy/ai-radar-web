@@ -45,6 +45,7 @@ export type SourceSelectionOptions = {
   method: CrawlMethodFilter;
   sourceId?: string;
   maxItemsPerSource: number;
+  noCache?: boolean;
 };
 
 export type SourceSelectionResult = {
@@ -54,9 +55,21 @@ export type SourceSelectionResult = {
   warnings: string[];
 };
 
+export type FetchCacheStats = {
+  hits: number;
+  misses: number;
+  bypasses: number;
+  writes: number;
+  errors: number;
+};
+
 export type FetcherContext = {
   maxItemsPerSource: number;
   collectedAt: string;
+  cache: {
+    noCache: boolean;
+    stats: FetchCacheStats;
+  };
 };
 
 export type FetcherItem = {
@@ -130,6 +143,7 @@ export type IngestionSourceSummary = {
   duration_ms: number;
   error_message?: string;
   warnings: string[];
+  metadata?: Record<string, unknown>;
 };
 
 export type IngestionRunSummary = {
@@ -146,6 +160,7 @@ export type IngestionRunSummary = {
   duration_ms: number;
   status: RunStatus;
   warnings: string[];
+  cache_stats: FetchCacheStats;
   output_files: {
     latest_raw_items: string;
     latest_run: string;
@@ -157,5 +172,6 @@ export type IngestionRunSummary = {
     method: CrawlMethodFilter;
     source_id?: string;
     max_items_per_source: number;
+    no_cache?: boolean;
   };
 };

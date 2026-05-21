@@ -44,6 +44,7 @@ exports/
 cache/
 data/ingestion/latest/*.json
 data/ingestion/runs/*.json
+data/ingestion/cache/
 data/ingestion/tmp/
 data/understanding/latest/*.json
 data/understanding/runs/*.json

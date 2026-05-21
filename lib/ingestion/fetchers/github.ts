@@ -1,4 +1,4 @@
-import { FETCH_CONFIG, fetchPublicText } from "@/lib/ingestion/config";
+import { FETCH_CONFIG, fetchPublicText, hourlyFetchCacheKeyParts } from "@/lib/ingestion/config";
 import type { FetcherContext, FetcherItem, SelectedSource, SourceFetchResult } from "@/lib/ingestion/types";
 
 type GitHubRepository = {
@@ -32,26 +32,35 @@ export async function fetchGithubSource(source: SelectedSource, context: Fetcher
   const started = Date.now();
   const warnings: string[] = [];
   const repo = parseGitHubRepo(source.github_url ?? source.url);
+  const tokenPresent = isGitHubTokenPresent();
+
+  if (!tokenPresent) {
+    warnings.push("GITHUB_TOKEN present: no; GitHub API requests are unauthenticated and may hit public rate limits.");
+  }
 
   if (!repo) {
     return result(source, "skipped", startedAt, started, [], "Source is not a GitHub repository URL.", warnings, {
-      url: source.github_url ?? source.url
+      url: source.github_url ?? source.url,
+      github_token_present: tokenPresent
     });
   }
 
   const repoApiUrl = `https://api.github.com/repos/${repo.owner}/${repo.name}`;
-  const repoResponse = await fetchJson<GitHubRepository>(repoApiUrl);
+  const repoResponse = await fetchJson<GitHubRepository>(repoApiUrl, source, context, "repo");
 
   if (!repoResponse.ok || !repoResponse.data) {
     return result(source, "failed", startedAt, started, [], repoResponse.errorMessage ?? "GitHub repository metadata fetch failed.", warnings, {
       api_url: repoApiUrl,
       http_status: repoResponse.status,
+      github_token_present: tokenPresent,
+      github_rate_limit: githubRateLimitSummary(repoResponse.headers),
+      cache_status: repoResponse.cached ? "hit" : context.cache.noCache ? "bypassed" : "miss",
       response_headers: repoResponse.headers
     });
   }
 
   const releasesUrl = `${repoApiUrl}/releases?per_page=${Math.min(context.maxItemsPerSource, 10)}`;
-  const releasesResponse = await fetchJson<GitHubRelease[]>(releasesUrl);
+  const releasesResponse = await fetchJson<GitHubRelease[]>(releasesUrl, source, context, "releases");
 
   if (!releasesResponse.ok) {
     warnings.push(releasesResponse.errorMessage ?? "GitHub releases fetch failed; repository metadata item was kept.");
@@ -67,6 +76,12 @@ export async function fetchGithubSource(source: SelectedSource, context: Fetcher
     releases_api_url: releasesUrl,
     repo_http_status: repoResponse.status,
     releases_http_status: releasesResponse.status,
+    github_token_present: tokenPresent,
+    github_rate_limit: mergeRateLimitSummaries(repoResponse.headers, releasesResponse.headers),
+    cache_status: {
+      repo: repoResponse.cached ? "hit" : context.cache.noCache ? "bypassed" : "miss",
+      releases: releasesResponse.cached ? "hit" : context.cache.noCache ? "bypassed" : "miss"
+    },
     response_headers: repoResponse.headers
   });
 }
@@ -113,22 +128,26 @@ function releaseItem(source: SelectedSource, release: GitHubRelease): FetcherIte
   };
 }
 
-async function fetchJson<T>(url: string) {
-  const response = await fetchPublicText(url, {
-    accept: "application/vnd.github+json, application/json;q=0.9",
-    maxBytes: FETCH_CONFIG.maxApiBytes
-  });
+async function fetchJson<T>(url: string, source: SelectedSource, context: FetcherContext, label: string) {
+  let response = await fetchGitHubText(url, source, context, label);
+
+  for (let attempt = 1; attempt <= 2 && shouldRetryGitHubResponse(response); attempt += 1) {
+    await delay(300 * attempt);
+    response = await fetchGitHubText(url, source, context, label);
+  }
 
   if (!response.ok) {
     const remaining = response.headers["x-ratelimit-remaining"];
     const reset = response.headers["x-ratelimit-reset"];
-    const rateLimitSuffix = remaining === "0" ? ` GitHub rate limit reset: ${reset ?? "unknown"}.` : "";
+    const resetText = reset ? new Date(Number(reset) * 1000).toISOString() : "unknown";
+    const rateLimitSuffix = remaining === "0" ? ` GitHub rate limit reset: ${resetText}.` : "";
 
     return {
       ok: false,
       status: response.status,
       headers: response.headers,
-      errorMessage: `${response.errorMessage ?? "GitHub API request failed."}${rateLimitSuffix}`
+      cached: response.cached,
+      errorMessage: sanitizeGitHubLogValue(`${response.errorMessage ?? "GitHub API request failed."}${rateLimitSuffix}`)
     };
   }
 
@@ -137,6 +156,7 @@ async function fetchJson<T>(url: string) {
       ok: true,
       status: response.status,
       headers: response.headers,
+      cached: response.cached,
       data: JSON.parse(response.text) as T
     };
   } catch (error) {
@@ -145,9 +165,78 @@ async function fetchJson<T>(url: string) {
       ok: false,
       status: response.status,
       headers: response.headers,
-      errorMessage: `GitHub API returned invalid JSON: ${message}`
+      cached: response.cached,
+      errorMessage: sanitizeGitHubLogValue(`GitHub API returned invalid JSON: ${message}`)
     };
   }
+}
+
+async function fetchGitHubText(url: string, source: SelectedSource, context: FetcherContext, label: string) {
+  return fetchPublicText(url, {
+    accept: "application/vnd.github+json, application/json;q=0.9",
+    maxBytes: FETCH_CONFIG.maxApiBytes,
+    headers: githubRequestHeaders(),
+    cache: {
+      keyParts: hourlyFetchCacheKeyParts(source.id, url, context.collectedAt, `github-${label}`),
+      bypass: context.cache.noCache,
+      stats: context.cache.stats
+    }
+  });
+}
+
+function githubRequestHeaders() {
+  const token = githubToken();
+  return {
+    "x-github-api-version": "2022-11-28",
+    ...(token ? { authorization: `Bearer ${token}` } : {})
+  };
+}
+
+export function isGitHubTokenPresent() {
+  return Boolean(githubToken());
+}
+
+function githubToken() {
+  return process.env.GITHUB_TOKEN?.trim() || "";
+}
+
+function shouldRetryGitHubResponse(response: { ok: boolean; status: number; headers: Record<string, string>; cached?: boolean }) {
+  if (response.ok || response.cached) {
+    return false;
+  }
+
+  if (response.status === 403 && response.headers["x-ratelimit-remaining"] === "0") {
+    return false;
+  }
+
+  return response.status === 0 || response.status === 408 || response.status === 429 || response.status >= 500;
+}
+
+function githubRateLimitSummary(headers: Record<string, string>) {
+  const reset = headers["x-ratelimit-reset"];
+  return {
+    limit: headers["x-ratelimit-limit"] ?? "unknown",
+    remaining: headers["x-ratelimit-remaining"] ?? "unknown",
+    used: headers["x-ratelimit-used"] ?? "unknown",
+    resource: headers["x-ratelimit-resource"] ?? "unknown",
+    reset_at: reset ? new Date(Number(reset) * 1000).toISOString() : "unknown"
+  };
+}
+
+function mergeRateLimitSummaries(...headerSets: Array<Record<string, string>>) {
+  const summaries = headerSets.filter((headers) => Object.keys(headers).length > 0).map(githubRateLimitSummary);
+  return summaries.length > 0 ? summaries[summaries.length - 1] : githubRateLimitSummary({});
+}
+
+function sanitizeGitHubLogValue(value: string) {
+  return value
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]+/g, "[github-token-redacted]")
+    .replace(/\bgithub_pat_[A-Za-z0-9_]+/gi, "[github-token-redacted]");
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function parseGitHubRepo(value: string | null) {

@@ -1,4 +1,4 @@
-import { FETCH_CONFIG, fetchPublicText } from "@/lib/ingestion/config";
+import { FETCH_CONFIG, fetchPublicText, hourlyFetchCacheKeyParts } from "@/lib/ingestion/config";
 import type { FetcherContext, FetcherItem, SelectedSource, SourceFetchResult } from "@/lib/ingestion/types";
 
 export async function fetchRssSource(source: SelectedSource, context: FetcherContext): Promise<SourceFetchResult> {
@@ -9,7 +9,12 @@ export async function fetchRssSource(source: SelectedSource, context: FetcherCon
 
   const response = await fetchPublicText(feedUrl, {
     accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
-    maxBytes: FETCH_CONFIG.maxFeedBytes
+    maxBytes: FETCH_CONFIG.maxFeedBytes,
+    cache: {
+      keyParts: hourlyFetchCacheKeyParts(source.id, feedUrl, context.collectedAt, "rss"),
+      bypass: context.cache.noCache,
+      stats: context.cache.stats
+    }
   });
 
   if (!response.ok) {
@@ -30,6 +35,7 @@ export async function fetchRssSource(source: SelectedSource, context: FetcherCon
     feed_url: feedUrl,
     final_url: response.url,
     http_status: response.status,
+    cache_status: response.cached ? "hit" : context.cache.noCache ? "bypassed" : "miss",
     response_headers: response.headers
   });
 }

@@ -21,6 +21,8 @@ npm run import:sources
 It is maintained by hand, loaded alongside the cleaned registry, and deduped by
 source slug and canonical public URLs.
 
+Milestone H added active official release/changelog coverage for Anthropic release notes, Google Gemini API changelog, and Cohere changelog. Important official pages that are not reliably crawlable should remain manual, trial, or lower-priority until source health proves they are stable.
+
 ## Source Categories
 
 Sources are categorized using `data/seed/source-taxonomy.json`. Categories include official company channels, research labs, arXiv, GitHub, Hugging Face, AI media, tech media, newsletters, podcasts, YouTube, X accounts, investors, researchers, builders, journalists, rumors or leaks, and manual imports.
@@ -76,6 +78,8 @@ The local ingestion runner selects only sources with:
 - no private, credentialed, attachment-only, or local-only URL fragments
 
 Manual, future API, non-crawl, unknown, missing-public-URL, X automatic, and WeChat automatic workflows remain outside Phase 4 automation.
+
+Milestone H selection balances eligible sources across official/company, arXiv/research, GitHub/open-source, specialist analysis, and podcast/video families. Recent local ingestion failures are penalized during ordering, but not permanently removed from the registry.
 
 ## Phase 5 Understanding Use
 

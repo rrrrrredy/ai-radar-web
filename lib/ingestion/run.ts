@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  createFetchCacheStats,
   DEFAULT_SELECTION_OPTIONS,
   INGESTION_LATEST_DIR,
   INGESTION_RUNS_DIR
@@ -34,12 +35,17 @@ export async function runIngestion(options: Partial<SourceSelectionOptions> = {}
   const started = Date.now();
   const runId = buildRunId(startedAt);
   const selection = selectSources(normalizedOptions);
+  const cacheStats = createFetchCacheStats();
   const fetchedItems: IngestionRawItem[] = [];
   const sourceResults: SourceFetchResult[] = [];
   const warnings = [...selection.warnings];
   const context: FetcherContext = {
     maxItemsPerSource: normalizedOptions.maxItemsPerSource,
-    collectedAt: startedAt
+    collectedAt: startedAt,
+    cache: {
+      noCache: Boolean(normalizedOptions.noCache),
+      stats: cacheStats
+    }
   };
 
   logger.info(`Selected ${selection.sources.length} sources from ${selection.eligibleSourceCount} eligible registry entries.`);
@@ -79,7 +85,8 @@ export async function runIngestion(options: Partial<SourceSelectionOptions> = {}
       item_count: result.itemCount,
       duration_ms: result.durationMs,
       error_message: result.errorMessage,
-      warnings: result.warnings
+      warnings: result.warnings,
+      metadata: result.metadata
     })),
     item_count: deduped.items.length,
     raw_item_count: deduped.items.filter((item) => item.status === "collected").length,
@@ -90,12 +97,14 @@ export async function runIngestion(options: Partial<SourceSelectionOptions> = {}
     duration_ms: Date.now() - started,
     status,
     warnings,
+    cache_stats: cacheStats,
     output_files: outputFiles.relative,
     options: {
       limit: normalizedOptions.limit,
       method: normalizedOptions.method,
       source_id: normalizedOptions.sourceId,
-      max_items_per_source: normalizedOptions.maxItemsPerSource
+      max_items_per_source: normalizedOptions.maxItemsPerSource,
+      no_cache: normalizedOptions.noCache
     }
   };
 
@@ -114,7 +123,7 @@ async function fetchSource(source: SelectedSource, context: FetcherContext): Pro
     case "rss":
       return fetchRssSource(source, context);
     case "html":
-      return fetchHtmlSource(source);
+      return fetchHtmlSource(source, context);
     case "api":
       return fetchGithubSource(source, context);
     case "podcast_feed":

@@ -28,14 +28,17 @@ CLI options:
 - `--source <source-id>` selects a single eligible source.
 - `--dry-run` lists selected sources without fetching.
 - `--max-items-per-source <number>` defaults to `10`.
+- `--no-cache` bypasses the local source-fetch cache for the current run.
 
 ## Phase 4 Fetchers
 
 - `rss`: fetches public RSS/Atom feeds and extracts basic item metadata.
 - `html`: fetches one public page, extracts title, canonical URL, meta description, and a small link sample.
-- `api`: uses unauthenticated public GitHub repository APIs for repository metadata or releases.
+- `api`: uses public GitHub repository APIs for repository metadata or releases. If `GITHUB_TOKEN` is configured in the process environment, requests include an authorization header; otherwise the fetcher falls back to unauthenticated requests and reports rate-limit status without printing secrets.
 - `podcast_feed`: parses a recorded public podcast feed.
 - `youtube_feed`: records a metadata placeholder and does not scrape videos.
+
+Milestone H adds a local source-fetch cache under ignored `data/ingestion/cache/`. Cache keys include source, URL, fetcher kind, and the collection hour. Run summaries report cache hits, misses, bypasses, writes, and cache errors.
 
 ## Local Outputs
 
@@ -63,7 +66,7 @@ be run after applying the Phase 7 Supabase migrations in order:
 
 ## Phase 10.5 Activation Commands
 
-The activation script reads the merged source registries, runs bounded public-source ingestion, runs mock understanding by default, and can persist the selected source rows, ingestion rows, and radar rows through the same Supabase write gate.
+The activation script reads the merged source registries, runs bounded public-source ingestion, runs mock understanding by default, and can persist the selected source rows, ingestion rows, and radar rows through the same Supabase write gate. Source selection is deterministic but balanced by source family so one family, such as GitHub or arXiv, does not dominate bounded live activations.
 
 ```bash
 npm run data:activate:mock

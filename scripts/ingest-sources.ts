@@ -30,6 +30,9 @@ async function main() {
   console.log(`Duplicates: ${run.duplicate_count}`);
   console.log(`Skipped: ${run.skipped_count}`);
   console.log(`Errors: ${run.error_count}`);
+  console.log(
+    `Fetch cache: hits=${run.cache_stats.hits} misses=${run.cache_stats.misses} bypasses=${run.cache_stats.bypasses} writes=${run.cache_stats.writes} errors=${run.cache_stats.errors}`
+  );
   console.log(`Latest raw items: ${run.output_files.latest_raw_items}`);
   console.log(`Latest run summary: ${run.output_files.latest_run}`);
 }
@@ -46,6 +49,9 @@ function parseArgs(args: string[]): CliOptions {
     switch (arg) {
       case "--dry-run":
         options.dryRun = true;
+        break;
+      case "--no-cache":
+        options.noCache = true;
         break;
       case "--limit":
         options.limit = readNumberArg(args, index);

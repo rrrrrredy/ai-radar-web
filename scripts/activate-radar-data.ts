@@ -7,10 +7,11 @@ import { createClient, type SupabaseClient, type WebSocketLikeConstructor } from
 import WebSocket from "ws";
 
 import { getSupabasePublicConfig } from "@/lib/config";
-import { DEFAULT_SELECTION_OPTIONS } from "@/lib/ingestion/config";
+import { DEFAULT_SELECTION_OPTIONS, isAllowedCrawlMethod } from "@/lib/ingestion/config";
+import { isGitHubTokenPresent } from "@/lib/ingestion/fetchers/github";
 import { runIngestion } from "@/lib/ingestion/run";
-import { readCleanedSources, selectSources } from "@/lib/ingestion/select-sources";
-import type { CleanedSource, IngestionRawItem, IngestionRunSummary } from "@/lib/ingestion/types";
+import { readCleanedSources, selectSources, sourceFamily } from "@/lib/ingestion/select-sources";
+import type { CleanedSource, IngestionRawItem, IngestionRunSummary, SelectedSource } from "@/lib/ingestion/types";
 import { mockRadarItems } from "@/lib/radar/mock-data";
 import {
   entityKey,
@@ -42,6 +43,7 @@ type CliOptions = {
   skipIngest: boolean;
   skipUnderstand: boolean;
   reportOnly: boolean;
+  noCache: boolean;
 };
 
 type StatusCounts = Record<UnderstandingStatus, number>;
@@ -111,7 +113,8 @@ async function main() {
     const ingestion = await runIngestion({
       limit: options.limit,
       method: DEFAULT_SELECTION_OPTIONS.method,
-      maxItemsPerSource: options.maxItemsPerSource
+      maxItemsPerSource: options.maxItemsPerSource,
+      noCache: options.noCache
     });
     rawItems = ingestion.rawItems;
     ingestionRun = ingestion.run;
@@ -144,7 +147,7 @@ async function main() {
 
   printActivationSummary({
     options,
-    selectionSources: selection.sources.map((source) => source.id),
+    selectionSources: selectedSourcesForRun(selection.sources, ingestionRun),
     rawItems,
     ingestionRun,
     radarItems,
@@ -165,7 +168,8 @@ function parseArgs(args: string[]): CliOptions {
     persist: false,
     skipIngest: false,
     skipUnderstand: false,
-    reportOnly: false
+    reportOnly: false,
+    noCache: false
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -196,6 +200,9 @@ function parseArgs(args: string[]): CliOptions {
         break;
       case "--report-only":
         options.reportOnly = true;
+        break;
+      case "--no-cache":
+        options.noCache = true;
         break;
       default:
         throw new Error(`Unknown argument: ${arg}`);
@@ -668,15 +675,29 @@ function printReportOnly(status: CurrentDataStatus) {
   console.log(`Failed: ${status.counts.failed}`);
   console.log(`Citations: ${status.citations}`);
   console.log(`DeepSeek key present: ${hasEnvValue("DEEPSEEK_API_KEY") ? "yes (redacted)" : "no"}`);
+  console.log(`GitHub token present: ${isGitHubTokenPresent() ? "yes (redacted)" : "no"}`);
   console.log(`Supabase public config present: ${getSupabaseServiceStatus().publicConfigConfigured ? "yes (redacted)" : "no"}`);
   console.log(`Supabase service key present: ${getSupabaseServiceStatus().serviceRoleConfigured ? "yes (redacted)" : "no"}`);
   console.log(`Supabase writes enabled: ${getSupabaseServiceStatus().writesEnabled ? "yes" : "no"}`);
   printWarnings(status.warnings);
 }
 
+function selectedSourcesForRun(fallbackSources: SelectedSource[], ingestionRun: IngestionRunSummary) {
+  const fallbackById = new Map(fallbackSources.map((source) => [source.id, source]));
+  const registryById = new Map(readCleanedSources().map((source) => [source.id, source]));
+
+  return ingestionRun.source_results
+    .map((result) => fallbackById.get(result.source_id) ?? registryById.get(result.source_id))
+    .filter(isSelectedSourceSummary);
+}
+
+function isSelectedSourceSummary(source: CleanedSource | SelectedSource | undefined): source is SelectedSource {
+  return Boolean(source?.url && isAllowedCrawlMethod(source.crawl_method));
+}
+
 function printActivationSummary(input: {
   options: CliOptions;
-  selectionSources: string[];
+  selectionSources: SelectedSource[];
   rawItems: IngestionRawItem[];
   ingestionRun: IngestionRunSummary;
   radarItems: UnderstandingRadarItem[];
@@ -689,10 +710,14 @@ function printActivationSummary(input: {
 }) {
   const counts = statusCounts(input.radarItems.map((item) => item.status));
   const liveAttempted = input.understandingRun.mode === "live" && input.understandingRun.api_call_count > 0;
+  const failedSources = input.ingestionRun.source_results.filter((result) => result.status === "failed");
 
   console.log("Radar data activation summary");
   console.log(`Ingestion selected sources: ${input.ingestionRun.selected_source_count}`);
-  console.log(`Selected source ids: ${input.selectionSources.join(", ") || "none"}`);
+  console.log(`Selected source ids: ${input.selectionSources.map((source) => source.id).join(", ") || "none"}`);
+  console.log(`Selected source families: ${formatCounts(countValues(input.selectionSources.map(sourceFamily)))}`);
+  console.log(`Selected source categories: ${formatCounts(countValues(input.selectionSources.map((source) => source.category)))}`);
+  console.log(`Selected source methods: ${formatCounts(countValues(input.selectionSources.map((source) => source.crawl_method)))}`);
   console.log(`Raw items collected: ${input.ingestionRun.raw_item_count}`);
   console.log(`Raw items written locally: ${input.rawItems.length}`);
   console.log(`Understanding mode: ${input.mode}`);
@@ -701,9 +726,18 @@ function printActivationSummary(input: {
   console.log(`Needs review: ${counts.needs_review}`);
   console.log(`Excluded: ${counts.excluded}`);
   console.log(`Failed: ${counts.failed}`);
+  console.log(`Radar categories: ${formatCounts(input.understandingRun.categories_count)}`);
   console.log(`Live DeepSeek attempted: ${liveAttempted ? "yes" : "no"}`);
   console.log(`DeepSeek key present: ${input.deepSeekConfigured ? "yes (redacted)" : "no"}`);
+  console.log(`GitHub token present: ${isGitHubTokenPresent() ? "yes (redacted)" : "no"}`);
+  console.log(
+    `Fetch cache: hits=${input.ingestionRun.cache_stats.hits} misses=${input.ingestionRun.cache_stats.misses} bypasses=${input.ingestionRun.cache_stats.bypasses} writes=${input.ingestionRun.cache_stats.writes} errors=${input.ingestionRun.cache_stats.errors}`
+  );
+  console.log(`GitHub rate limit: ${githubRateLimitStatus(input.ingestionRun)}`);
   console.log(`API call count: ${input.understandingRun.api_call_count}`);
+  console.log(
+    `Failing sources: ${failedSources.length > 0 ? failedSources.map((source) => `${source.source_id} (${source.error_message ?? "failed"})`).join("; ") : "none"}`
+  );
   console.log(`Supabase persist attempted: ${input.options.persist ? "yes" : "no"}`);
 
   if (input.persistCounts) {
@@ -812,6 +846,37 @@ function uniqueMessages(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
+function countValues(values: string[]) {
+  return values.reduce<Record<string, number>>((counts, value) => {
+    counts[value] = (counts[value] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
+function formatCounts(counts: Record<string, number>) {
+  const entries = Object.entries(counts).sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+  return entries.length > 0 ? entries.map(([key, value]) => `${key}=${value}`).join(", ") : "none";
+}
+
+function githubRateLimitStatus(run: IngestionRunSummary) {
+  const summaries = run.source_results
+    .map((result) => result.metadata?.github_rate_limit)
+    .filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value));
+  const latest = summaries[summaries.length - 1];
+
+  if (!latest) {
+    return "not observed";
+  }
+
+  return [
+    `remaining=${String(latest.remaining ?? "unknown")}`,
+    `limit=${String(latest.limit ?? "unknown")}`,
+    `used=${String(latest.used ?? "unknown")}`,
+    `resource=${String(latest.resource ?? "unknown")}`,
+    `reset_at=${String(latest.reset_at ?? "unknown")}`
+  ].join(" ");
+}
+
 function relative(filePath: string) {
   return path.relative(process.cwd(), filePath).replace(/\\/g, "/");
 }
@@ -827,8 +892,12 @@ function sanitizeLogValue(value: string) {
     .slice(0, 500);
 }
 
-main().catch((error) => {
-  const message = sanitizeLogValue(error instanceof Error ? error.message : String(error));
-  console.error(message);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    const message = sanitizeLogValue(error instanceof Error ? error.message : String(error));
+    console.error(message);
+    process.exit(1);
+  });

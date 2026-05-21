@@ -1,7 +1,7 @@
-import { FETCH_CONFIG, canonicalizeUrl, fetchPublicText } from "@/lib/ingestion/config";
-import type { FetcherItem, SelectedSource, SourceFetchResult } from "@/lib/ingestion/types";
+import { FETCH_CONFIG, canonicalizeUrl, fetchPublicText, hourlyFetchCacheKeyParts } from "@/lib/ingestion/config";
+import type { FetcherContext, FetcherItem, SelectedSource, SourceFetchResult } from "@/lib/ingestion/types";
 
-export async function fetchHtmlSource(source: SelectedSource): Promise<SourceFetchResult> {
+export async function fetchHtmlSource(source: SelectedSource, context: FetcherContext): Promise<SourceFetchResult> {
   const startedAt = new Date().toISOString();
   const started = Date.now();
   const warnings: string[] = [];
@@ -14,7 +14,12 @@ export async function fetchHtmlSource(source: SelectedSource): Promise<SourceFet
 
   const response = await fetchPublicText(source.url, {
     accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
-    maxBytes: FETCH_CONFIG.maxHtmlBytes
+    maxBytes: FETCH_CONFIG.maxHtmlBytes,
+    cache: {
+      keyParts: hourlyFetchCacheKeyParts(source.id, source.url, context.collectedAt, "html"),
+      bypass: context.cache.noCache,
+      stats: context.cache.stats
+    }
   });
 
   if (!response.ok) {
@@ -32,6 +37,7 @@ export async function fetchHtmlSource(source: SelectedSource): Promise<SourceFet
     return buildResult(source, "skipped", startedAt, started, [], "Fetched page appears to require sign-in.", warnings, {
       final_url: response.url,
       http_status: response.status,
+      cache_status: response.cached ? "hit" : context.cache.noCache ? "bypassed" : "miss",
       response_headers: response.headers
     });
   }
@@ -53,6 +59,7 @@ export async function fetchHtmlSource(source: SelectedSource): Promise<SourceFet
       item_kind: "raw_html_summary",
       source_homepage: source.url,
       http_status: response.status,
+      cache_status: response.cached ? "hit" : context.cache.noCache ? "bypassed" : "miss",
       response_headers: response.headers,
       links,
       link_count: links.length
@@ -62,6 +69,7 @@ export async function fetchHtmlSource(source: SelectedSource): Promise<SourceFet
   return buildResult(source, "success", startedAt, started, [item], undefined, warnings, {
     final_url: response.url,
     http_status: response.status,
+    cache_status: response.cached ? "hit" : context.cache.noCache ? "bypassed" : "miss",
     response_headers: response.headers
   });
 }
