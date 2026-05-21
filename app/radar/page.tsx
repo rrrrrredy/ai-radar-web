@@ -9,6 +9,7 @@ import {
   loadRadarFeed,
   type RadarFeed
 } from "@/lib/radar/feed";
+import { labelize, sourceFamily } from "@/lib/product/data-summary";
 import type { RetrievalLanguage, RetrievalRadarItem } from "@/lib/retrieval/types";
 import {
   RADAR_CATEGORIES,
@@ -23,9 +24,11 @@ type SearchParams = Record<string, string | string[] | undefined>;
 type RadarFilters = {
   status: "all" | UnderstandingStatus;
   category: "all" | RadarCategory;
+  sourceFamily: "all" | string;
   sourceTier: "all" | string;
   language: "all" | RetrievalLanguage;
   window: "all" | "24h" | "7d" | "30d";
+  query: string;
 };
 
 const languageOptions: RetrievalLanguage[] = ["zh", "en", "mixed", "unknown"];
@@ -77,6 +80,7 @@ export default async function RadarPage({
             Data source and freshness
           </h2>
           <dl className="mt-3 space-y-3 text-sm">
+            <RailRow label="Data source" value={feed.data_source} />
             <RailRow label="Freshness" value={feed.freshness_note} />
             <RailRow
               label="Latest processed"
@@ -95,6 +99,7 @@ export default async function RadarPage({
       </section>
 
       <CountRail feed={feed} filteredCount={filteredItems.length} />
+      <CategoryTabs feed={feed} filters={filters} />
 
       <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -112,7 +117,20 @@ export default async function RadarPage({
             Reset
           </a>
         </div>
-        <form className="mt-4 grid gap-3 md:grid-cols-5" method="get">
+        <form className="mt-4 grid gap-3 md:grid-cols-6" method="get">
+          <label className="block md:col-span-2" htmlFor="radar-filter-q">
+            <span className="text-xs font-semibold uppercase tracking-normal text-radar-muted">
+              Search
+            </span>
+            <input
+              className="mt-2 w-full rounded-md border border-radar-line bg-white px-3 py-2 text-sm text-radar-ink outline-none focus:border-radar-evidence"
+              defaultValue={filters.query}
+              id="radar-filter-q"
+              name="q"
+              placeholder="Search title, summary, source, tag"
+              type="search"
+            />
+          </label>
           <SelectField
             label="Status"
             name="status"
@@ -131,11 +149,23 @@ export default async function RadarPage({
             options={[
               { label: "All categories", value: "all" },
               ...RADAR_CATEGORIES.map((category) => ({
-                label: categoryLabel(category),
+                label: labelize(category),
                 value: category
               }))
             ]}
             value={filters.category}
+          />
+          <SelectField
+            label="Source family"
+            name="source_family"
+            options={[
+              { label: "All families", value: "all" },
+              ...sourceFamilyOptions(feed).map((family) => ({
+                label: family,
+                value: family
+              }))
+            ]}
+            value={filters.sourceFamily}
           />
           <SelectField
             label="Source tier"
@@ -166,7 +196,7 @@ export default async function RadarPage({
             options={windowOptions}
             value={filters.window}
           />
-          <div className="md:col-span-5">
+          <div className="md:col-span-6">
             <button
               className="rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black"
               type="submit"
@@ -249,16 +279,106 @@ function CountRail({
         <Metric label="Excluded" tone="risk" value={feed.counts.excluded} />
         <Metric label="Failed" tone="risk" value={feed.counts.failed} />
       </div>
-      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+      <div className="mt-4 grid gap-4 lg:grid-cols-4">
         <CountGroup
           counts={feed.counts.by_category}
           title="Categories"
-          valueLabel={categoryLabel}
+          valueLabel={labelize}
         />
+        <CountGroup counts={sourceFamilyCounts(feed.items)} title="Source families" />
         <CountGroup counts={feed.counts.by_source_tier} title="Source tiers" />
         <CountGroup counts={feed.counts.by_source} title="Sources" />
       </div>
     </section>
+  );
+}
+
+function CategoryTabs({ feed, filters }: { feed: RadarFeed; filters: RadarFilters }) {
+  const categories = Object.entries(feed.counts.by_category)
+    .filter((entry): entry is [RadarCategory, number] => Boolean(entry[0]) && Number(entry[1]) > 0)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 8);
+  const baseParams = new URLSearchParams();
+
+  if (filters.status !== "all") {
+    baseParams.set("status", filters.status);
+  }
+  if (filters.sourceFamily !== "all") {
+    baseParams.set("source_family", filters.sourceFamily);
+  }
+  if (filters.sourceTier !== "all") {
+    baseParams.set("source_tier", filters.sourceTier);
+  }
+  if (filters.language !== "all") {
+    baseParams.set("language", filters.language);
+  }
+  if (filters.window !== "all") {
+    baseParams.set("window", filters.window);
+  }
+  if (filters.query) {
+    baseParams.set("q", filters.query);
+  }
+
+  return (
+    <section className="rounded-lg border border-radar-line bg-radar-panel p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-radar-ink">Category tabs</h2>
+          <p className="mt-1 text-sm leading-6 text-radar-muted">
+            Browse the visible public retrieval set by signal family.
+          </p>
+        </div>
+        <StatusChip
+          label="Selected"
+          tone={filters.category === "all" ? "neutral" : "evidence"}
+          value={filters.category === "all" ? "all" : labelize(filters.category)}
+        />
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <CategoryTab
+          count={feed.counts.total}
+          href={`/radar${queryString(baseParams, "category", null)}`}
+          isSelected={filters.category === "all"}
+          label="All"
+        />
+        {categories.map(([category, count]) => (
+          <CategoryTab
+            count={count}
+            href={`/radar${queryString(baseParams, "category", category)}`}
+            isSelected={filters.category === category}
+            key={category}
+            label={labelize(category)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CategoryTab({
+  count,
+  href,
+  isSelected,
+  label
+}: {
+  count: number;
+  href: string;
+  isSelected: boolean;
+  label: string;
+}) {
+  return (
+    <a
+      aria-current={isSelected ? "page" : undefined}
+      className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold ${
+        isSelected
+          ? "border-radar-evidence bg-radar-evidence/10 text-radar-evidence"
+          : "border-radar-line bg-white text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
+      }`}
+      href={href}
+    >
+      <span>{label}</span>
+      <span className="font-mono text-xs opacity-75">{count}</span>
+    </a>
   );
 }
 
@@ -422,7 +542,7 @@ function RadarItemRow({
           <div className="mt-3 flex flex-wrap gap-1.5">
             {item.categories.map((category) => (
               <EvidenceBadge
-                detail={categoryLabel(category)}
+                detail={labelize(category)}
                 kind="evidence"
                 key={category}
                 label="Category"
@@ -493,6 +613,11 @@ function readFilters(params: SearchParams, feed: RadarFeed): RadarFilters {
   return {
     status: readOption(firstParam(params.status), ["all", ...UNDERSTANDING_STATUSES], "all"),
     category: readOption(firstParam(params.category), ["all", ...RADAR_CATEGORIES], "all"),
+    sourceFamily: readOption(
+      firstParam(params.source_family),
+      ["all", ...sourceFamilyOptions(feed)],
+      "all"
+    ),
     sourceTier: readOption(
       firstParam(params.source_tier),
       ["all", ...Object.keys(feed.counts.by_source_tier)],
@@ -503,7 +628,8 @@ function readFilters(params: SearchParams, feed: RadarFeed): RadarFilters {
       firstParam(params.window),
       windowOptions.map((option) => option.value),
       "all"
-    )
+    ),
+    query: normalizeSearch(firstParam(params.q))
   };
 }
 
@@ -528,6 +654,10 @@ function filterItems(
       return false;
     }
 
+    if (filters.sourceFamily !== "all" && sourceFamily(item) !== filters.sourceFamily) {
+      return false;
+    }
+
     if (filters.sourceTier !== "all" && item.source_tier !== filters.sourceTier) {
       return false;
     }
@@ -546,6 +676,10 @@ function filterItems(
       }
     }
 
+    if (filters.query && !matchesSearch(item, filters.query)) {
+      return false;
+    }
+
     return true;
   });
 }
@@ -560,6 +694,54 @@ function readOption<T extends string>(
   fallback: T
 ) {
   return options.includes(value as T) ? (value as T) : fallback;
+}
+
+function normalizeSearch(value: string | undefined) {
+  return (value ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
+function matchesSearch(item: RetrievalRadarItem, query: string) {
+  const needle = query.toLowerCase();
+  const haystack = [
+    item.title,
+    item.summary_en,
+    item.summary_zh,
+    item.source_name,
+    item.source_tier,
+    item.why_it_matters,
+    ...item.categories,
+    ...item.tags
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(needle);
+}
+
+function sourceFamilyOptions(feed: RadarFeed) {
+  return Object.keys(sourceFamilyCounts(feed.items)).sort();
+}
+
+function sourceFamilyCounts(items: RetrievalRadarItem[]) {
+  return items.reduce<Record<string, number>>((counts, item) => {
+    const family = sourceFamily(item);
+    counts[family] = (counts[family] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
+function queryString(baseParams: URLSearchParams, key: string, value: string | null) {
+  const params = new URLSearchParams(baseParams.toString());
+
+  if (value) {
+    params.set(key, value);
+  } else {
+    params.delete(key);
+  }
+
+  const valueString = params.toString();
+  return valueString ? `?${valueString}` : "";
 }
 
 function statusTone(status: UnderstandingStatus): StatusTone {
@@ -604,10 +786,6 @@ function metricToneClass(tone: StatusTone) {
   }
 
   return "text-radar-ink";
-}
-
-function categoryLabel(category: string) {
-  return category.replace(/_/g, " ");
 }
 
 function formatTimestamp(value: string) {

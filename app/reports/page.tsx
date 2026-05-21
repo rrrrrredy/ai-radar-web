@@ -72,6 +72,33 @@ export default async function ReportsPage({
         </section>
       ) : null}
 
+      <section className="rounded-lg border border-radar-line bg-radar-panel p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-semibold text-radar-ink">Latest saved candidates</h2>
+            <p className="mt-2 text-sm leading-6 text-radar-muted">
+              The daily and weekly workflow records are the primary report desk
+              entry points. Status, time window, citations, caveats, and export
+              readiness stay visible before the full draft.
+            </p>
+          </div>
+          <StatusChip
+            label="Saved candidate mode"
+            tone={data.reports.some((report) => report.read_source === "supabase") ? "success" : "caution"}
+            value={data.reports.filter((report) => report.read_source === "supabase").length}
+          />
+        </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          {data.reports.map((report) => (
+            <ReportOverviewCard
+              isSelected={report.report_type === selectedReport.report_type}
+              key={report.report_type}
+              report={report}
+            />
+          ))}
+        </div>
+      </section>
+
       <section className="grid gap-4 lg:grid-cols-2" aria-label="Report selector">
         {data.reports.map((report) => (
           <ReportTabCard
@@ -171,6 +198,55 @@ export default async function ReportsPage({
         </div>
       </section>
     </div>
+  );
+}
+
+function ReportOverviewCard({
+  isSelected,
+  report
+}: {
+  isSelected: boolean;
+  report: ReportWorkflowDocument;
+}) {
+  return (
+    <article
+      className={`rounded-lg border p-5 shadow-soft ${
+        isSelected ? "border-radar-evidence bg-white" : "border-radar-line bg-white"
+      }`}
+    >
+      <div className="flex flex-wrap gap-2">
+        <StatusChip label={report.report_type} tone="evidence" />
+        <StatusChip label={report.status} tone={statusTone(report.status)} />
+        <StatusChip label={readSourceLabel(report)} tone={report.read_source === "supabase" ? "success" : "caution"} />
+        <EvidenceBadge detail={String(report.usable_item_count)} kind="evidence" label="Usable" />
+        <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="Citations" />
+        <EvidenceBadge detail={String(report.caveats.length)} kind="uncertainty" label="Caveats" />
+      </div>
+      <h3 className="mt-4 text-xl font-semibold leading-7 text-radar-ink">{report.title}</h3>
+      <p className="mt-3 text-sm leading-6 text-radar-muted">{report.one_sentence_summary}</p>
+      <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+        <RailRow label="Generated" value={report.generated_at} />
+        <RailRow label="Time window" value={`${report.time_window.start} to ${report.time_window.end}`} />
+        <RailRow label="Missing evidence" value={String(report.missing_evidence.length)} />
+        <RailRow label="Markdown bytes" value={String(report.markdown.length)} />
+      </dl>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <a
+          className="rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black"
+          href={`/reports?type=${report.report_type}`}
+        >
+          Review {report.report_type}
+        </a>
+        {report.id ? (
+          <a
+            className="rounded-md border border-radar-line px-4 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
+            href={`/reports/${report.id}`}
+          >
+            Open saved row
+          </a>
+        ) : null}
+      </div>
+    </article>
   );
 }
 
