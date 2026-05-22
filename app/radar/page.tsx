@@ -5,6 +5,10 @@ import { EvidenceBadge } from "@/components/evidence-badge";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { citationFromItem } from "@/lib/retrieval/citations";
 import {
+  loadPublicDataCompletenessSummary,
+  type PublicDataCompletenessSummary
+} from "@/lib/data-completeness/public-summary";
+import {
   itemEvidenceTimestamp,
   loadRadarFeed,
   type RadarFeed
@@ -45,7 +49,10 @@ export default async function RadarPage({
   searchParams?: Promise<SearchParams>;
 }) {
   const params = searchParams ? await searchParams : {};
-  const feed = await loadRadarFeed();
+  const [feed, coverage] = await Promise.all([
+    loadRadarFeed(),
+    loadPublicDataCompletenessSummary()
+  ]);
   const filters = readFilters(params, feed);
   const filteredItems = filterItems(feed.items, filters, feed);
   const filteredCitations = filteredItems
@@ -98,7 +105,7 @@ export default async function RadarPage({
         </aside>
       </section>
 
-      <CountRail feed={feed} filteredCount={filteredItems.length} />
+      <CountRail coverage={coverage} feed={feed} filteredCount={filteredItems.length} />
       <CategoryTabs feed={feed} filters={filters} />
 
       <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
@@ -263,21 +270,31 @@ export default async function RadarPage({
 }
 
 function CountRail({
+  coverage,
   feed,
   filteredCount
 }: {
+  coverage: PublicDataCompletenessSummary;
   feed: RadarFeed;
   filteredCount: number;
 }) {
   return (
     <section className="rounded-lg border border-radar-line bg-radar-panel p-4">
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Metric label="Total retrieved items" value={feed.counts.total} />
+        <Metric label="Public radar items" value={feed.counts.total} />
         <Metric label="Visible after filters" value={filteredCount} />
         <Metric label="Included" tone="evidence" value={feed.counts.included} />
-        <Metric label="needs_review" tone="caution" value={feed.counts.needs_review} />
+        <Metric label="Needs review" tone="caution" value={feed.counts.needs_review} />
         <Metric label="Excluded" tone="risk" value={feed.counts.excluded} />
         <Metric label="Failed" tone="risk" value={feed.counts.failed} />
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <Metric label="Sources total" value={coverage.sourcesTotal} />
+        <Metric label="Automated eligible" value={coverage.automatedEligibleSources} />
+        <Metric label="Attempted sources" tone="evidence" value={coverage.attemptedSources} />
+        <Metric label="Sources public" tone="evidence" value={coverage.sourcesWithPublicItems ?? 0} />
+        <Metric label="Source coverage" value={coverage.rates.sourcePublicVisibility === null ? "n/a" : formatPercent(coverage.rates.sourcePublicVisibility)} />
+        <Metric label="Failed/skipped sources" tone="risk" value={coverage.failedSources + coverage.skippedSources} />
       </div>
       <div className="mt-4 grid gap-4 lg:grid-cols-4">
         <CountGroup
@@ -389,7 +406,7 @@ function Metric({
 }: {
   label: string;
   tone?: StatusTone;
-  value: number;
+  value: number | string;
 }) {
   return (
     <div className="rounded-md border border-radar-line bg-white p-3">

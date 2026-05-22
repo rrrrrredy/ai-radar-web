@@ -71,11 +71,13 @@ export default async function HomePage() {
 }
 
 function ProductionStatusPanel({ summary }: { summary: ProductDataSummary }) {
+  const coverage = summary.coverage;
   const metrics = [
-    { label: "Sources", value: formatCount(summary.counts.sources), tone: "evidence" as const },
-    { label: "Raw items", value: formatCount(summary.counts.rawItems), tone: "freshness" as const },
-    { label: "Radar items", value: formatCount(summary.counts.radarItems), tone: "evidence" as const },
-    { label: "Visible rows", value: summary.counts.visibleRadarItems, tone: "success" as const },
+    { label: "Sources total", value: coverage.sourcesTotal, tone: "evidence" as const },
+    { label: "Attempted", value: coverage.attemptedSources, tone: "freshness" as const },
+    { label: "Sources public", value: formatCount(coverage.sourcesWithPublicItems), tone: "success" as const },
+    { label: "Public rows", value: formatCount(coverage.publicRadarItems), tone: "success" as const },
+    { label: "Failed/skipped", value: coverage.failedSources + coverage.skippedSources, tone: "risk" as const },
     { label: "Report candidates", value: formatCount(summary.counts.reportCandidates), tone: "admin" as const },
     { label: "Citations", value: summary.counts.citations, tone: "neutral" as const }
   ];
@@ -102,10 +104,12 @@ function ProductionStatusPanel({ summary }: { summary: ProductDataSummary }) {
       </dl>
       <div className="mt-4 grid gap-2 text-sm">
         <RailRow label="Data source" value={summary.dataSource} />
+        <RailRow label="Automated eligible sources" value={String(coverage.automatedEligibleSources)} />
         <RailRow label="Included / needs_review / excluded" value={`${summary.counts.included} / ${summary.counts.needsReview} / ${summary.counts.excluded}`} />
-        <RailRow label="Latest ingestion" value={formatTimestamp(summary.latest.ingestion)} />
-        <RailRow label="Latest understanding" value={formatTimestamp(summary.latest.understanding)} />
-        <RailRow label="Latest visible radar time" value={formatTimestamp(summary.latest.radar)} />
+        <RailRow label="Latest refresh" value={formatTimestamp(coverage.latestRefresh ?? summary.latest.radar)} />
+        <RailRow label="Latest ingestion" value={formatTimestamp(coverage.latestIngestion ?? summary.latest.ingestion)} />
+        <RailRow label="Latest understanding" value={formatTimestamp(coverage.latestUnderstanding ?? summary.latest.understanding)} />
+        <RailRow label="Source to raw coverage" value={formatRate(coverage.rates.sourceRawCoverage)} />
       </div>
     </aside>
   );
@@ -450,6 +454,10 @@ function formatTimestamp(value: string | null | undefined) {
   }).format(date)} UTC`;
 }
 
+function formatRate(value: number | null) {
+  return value === null ? "not available" : `${Math.round(value * 1000) / 10}%`;
+}
+
 function statusTone(status: string): StatusTone {
   if (status === "included" || status === "approved" || status === "published" || status === "reviewed") {
     return "success";
@@ -481,6 +489,14 @@ function metricToneClass(tone: StatusTone) {
 
   if (tone === "admin") {
     return "text-radar-admin";
+  }
+
+  if (tone === "risk") {
+    return "text-radar-risk";
+  }
+
+  if (tone === "caution") {
+    return "text-radar-caution";
   }
 
   return "text-radar-ink";

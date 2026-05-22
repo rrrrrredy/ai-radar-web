@@ -24,8 +24,10 @@ export default async function WritePage({
   return (
     <WriteRadarClient
       dataSummary={{
+        attemptedSources: summary.coverage.attemptedSources,
         dataSource: summary.dataSource,
         latestRadarTime: formatTimestamp(summary.latest.radar),
+        sourcesWithPublicItems: summary.coverage.sourcesWithPublicItems ?? 0,
         topCategories: summary.topCategories.slice(0, 4),
         visibleRows: summary.counts.visibleRadarItems
       }}

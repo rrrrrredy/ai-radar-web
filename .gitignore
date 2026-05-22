@@ -21,6 +21,7 @@ coverage/
 npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
+tmp/
 
 # Environment and secrets
 .env
@@ -55,6 +56,7 @@ data/activation/tmp/
 data/reports/latest/*.json
 data/reports/runs/*.json
 data/reports/tmp/
+data/reports/*.json
 data/scheduled/latest/*.json
 data/scheduled/runs/*.json
 data/scheduled/tmp/

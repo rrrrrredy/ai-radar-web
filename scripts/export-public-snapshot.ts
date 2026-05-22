@@ -5,6 +5,10 @@ import path from "node:path";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import {
+  loadPublicDataCompletenessSummary,
+  type PublicDataCompletenessSummary
+} from "@/lib/data-completeness/public-summary";
 import { buildRadarFeed } from "@/lib/radar/feed";
 import { loadRadarItems } from "@/lib/retrieval/load-radar-items";
 import type {
@@ -157,6 +161,24 @@ export type PublicMirrorSnapshot = {
     item_entities: number | null;
     scores: number | null;
   };
+  coverage: {
+    label: "public snapshot";
+    sources_total: number;
+    automated_eligible_sources: number;
+    attempted_sources: number;
+    fetched_sources: number;
+    failed_sources: number;
+    skipped_sources: number;
+    sources_with_public_items: number | null;
+    public_radar_items: number | null;
+    latest_refresh: string | null;
+    source_to_raw_coverage: number | null;
+    raw_to_radar_conversion: number | null;
+    radar_to_public_visibility: number | null;
+    source_public_visibility: number | null;
+    failed_source_reasons: Record<string, number>;
+    skipped_source_reasons: Record<string, number>;
+  };
   top_categories: CountEntry[];
   top_sources: CountEntry[];
   top_source_tiers: CountEntry[];
@@ -251,6 +273,7 @@ async function readSupabaseSnapshot(
       generatedAt,
       items: radar.items,
       operationalCounts,
+      publicCoverage: await loadPublicDataCompletenessSummary(),
       reports: reports.reports,
       sourceKind: "supabase_public_views",
       warnings
@@ -425,6 +448,7 @@ async function readLocalFallbackSnapshot(
     generatedAt,
     items: feed.items.map(mapRetrievalItem),
     operationalCounts: await readOperationalCounts(feed.counts.total, 0),
+    publicCoverage: await loadPublicDataCompletenessSummary(),
     reports: [],
     sourceKind: "local_files",
     warnings: [...warnings, ...loaded.warnings]
@@ -439,6 +463,7 @@ function buildSnapshot(input: {
   generatedAt: string;
   items: PublicRadarSnapshotItem[];
   operationalCounts: OperationalCounts;
+  publicCoverage: PublicDataCompletenessSummary;
   reports: PublicReportSnapshot[];
   sourceKind: SnapshotSourceKind;
   warnings: string[];
@@ -492,6 +517,24 @@ function buildSnapshot(input: {
       snapshot_radar_items: input.items.length,
       understanding_runs: input.operationalCounts.understanding_runs,
       visible_radar_items: input.exactVisibleRows
+    },
+    coverage: {
+      attempted_sources: input.publicCoverage.attemptedSources,
+      automated_eligible_sources: input.publicCoverage.automatedEligibleSources,
+      failed_source_reasons: input.publicCoverage.failedSourceReasons,
+      failed_sources: input.publicCoverage.failedSources,
+      fetched_sources: input.publicCoverage.fetchedSources,
+      label: "public snapshot",
+      latest_refresh: input.publicCoverage.latestRefresh,
+      public_radar_items: input.publicCoverage.publicRadarItems,
+      radar_to_public_visibility: input.publicCoverage.rates.radarPublicVisibility,
+      raw_to_radar_conversion: input.publicCoverage.rates.rawRadarConversion,
+      skipped_source_reasons: input.publicCoverage.skippedSourceReasons,
+      skipped_sources: input.publicCoverage.skippedSources,
+      source_public_visibility: input.publicCoverage.rates.sourcePublicVisibility,
+      source_to_raw_coverage: input.publicCoverage.rates.sourceRawCoverage,
+      sources_total: input.publicCoverage.sourcesTotal,
+      sources_with_public_items: input.publicCoverage.sourcesWithPublicItems
     },
     top_categories: countEntries(input.items.flatMap((item) => item.categories.map(labelize))),
     top_source_tiers: countEntries(input.items.map((item) => item.source_tier)),

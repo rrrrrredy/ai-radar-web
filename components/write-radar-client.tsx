@@ -17,8 +17,10 @@ const WRITING_OUTPUT_TYPE = "topic_candidates";
 
 export type WriteRadarClientProps = {
   dataSummary: {
+    attemptedSources: number;
     dataSource: RetrievalDataSource;
     latestRadarTime: string;
+    sourcesWithPublicItems: number;
     topCategories: Array<{ label: string; count: number }>;
     visibleRows: number;
   };
@@ -77,6 +79,8 @@ export function WriteRadarClient({
             <DataSourceChip detail="current retrieval surface" source={dataSummary.dataSource} />
             <EvidenceBadge detail={`${dataSummary.visibleRows} rows`} kind="evidence" label="Radar rows" />
             <EvidenceBadge detail={dataSummary.latestRadarTime} kind="freshness" label="Latest" />
+            <StatusChip label="Attempted sources" tone="evidence" value={dataSummary.attemptedSources} />
+            <StatusChip label="Public sources" tone="success" value={dataSummary.sourcesWithPublicItems} />
             <StatusChip label="Generation" tone="caution" value="mock API mode" />
           </div>
           <h1 className="mt-4 text-3xl font-semibold text-radar-ink">Write</h1>

@@ -4,6 +4,10 @@ import { EmptyState } from "@/components/empty-state";
 import { EvidenceBadge } from "@/components/evidence-badge";
 import { ReportMarkdownExport } from "@/components/report-markdown-export";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
+import {
+  loadPublicDataCompletenessSummary,
+  type PublicDataCompletenessSummary
+} from "@/lib/data-completeness/public-summary";
 import { loadReportWorkflowData } from "@/lib/reports/load-report-data";
 import type {
   GeneratedReportSection,
@@ -21,7 +25,10 @@ export default async function ReportsPage({
 }) {
   const params = searchParams ? await searchParams : {};
   const selectedType = readReportType(firstParam(params.type));
-  const data = await loadReportWorkflowData();
+  const [data, coverage] = await Promise.all([
+    loadReportWorkflowData(),
+    loadPublicDataCompletenessSummary()
+  ]);
   const selectedReport =
     data.reports.find((report) => report.report_type === selectedType) ?? data.reports[0];
 
@@ -49,6 +56,7 @@ export default async function ReportsPage({
           </h2>
           <dl className="mt-3 space-y-3 text-sm">
             <RailRow label="Selected type" value={selectedReport.report_type} />
+            <RailRow label="Candidate count" value={String(coverage.reportCandidates ?? data.reports.length)} />
             <RailRow label="Saved/generated" value={readSourceLabel(selectedReport)} />
             <RailRow label="Generated at" value={selectedReport.generated_at} />
             <RailRow label="Time window" value={`${selectedReport.time_window.start} to ${selectedReport.time_window.end}`} />
@@ -71,6 +79,8 @@ export default async function ReportsPage({
           </ul>
         </section>
       ) : null}
+
+      <ReportCoveragePanel coverage={coverage} reports={data.reports} />
 
       <section className="rounded-lg border border-radar-line bg-radar-panel p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -197,6 +207,57 @@ export default async function ReportsPage({
           <ReportMarkdownExport markdown={selectedReport.markdown} />
         </div>
       </section>
+    </div>
+  );
+}
+
+function ReportCoveragePanel({
+  coverage,
+  reports
+}: {
+  coverage: PublicDataCompletenessSummary;
+  reports: ReportWorkflowDocument[];
+}) {
+  const daily = reports.find((report) => report.report_type === "daily");
+  const weekly = reports.find((report) => report.report_type === "weekly");
+
+  return (
+    <section className="rounded-lg border border-radar-line bg-radar-panel p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-lg font-semibold text-radar-ink">Report data coverage</h2>
+        <StatusChip label="Report candidates" tone="admin" value={coverage.reportCandidates ?? reports.length} />
+        <StatusChip label="Public radar items" tone="evidence" value={coverage.publicRadarItems ?? 0} />
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <ReportCoverageRow label="Daily latest candidate" report={daily} />
+        <ReportCoverageRow label="Weekly latest candidate" report={weekly} />
+      </div>
+    </section>
+  );
+}
+
+function ReportCoverageRow({
+  label,
+  report
+}: {
+  label: string;
+  report: ReportWorkflowDocument | undefined;
+}) {
+  return (
+    <div className="rounded-md border border-radar-line bg-white p-3">
+      <p className="text-xs font-semibold uppercase tracking-normal text-radar-muted">{label}</p>
+      {report ? (
+        <>
+          <h3 className="mt-2 text-sm font-semibold leading-6 text-radar-ink">{report.title}</h3>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <EvidenceBadge detail={String(report.usable_item_count)} kind="evidence" label="Item count" />
+            <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="Citation count" />
+            <StatusChip label={report.status} tone={statusTone(report.status)} />
+          </div>
+        </>
+      ) : (
+        <p className="mt-2 text-sm leading-6 text-radar-muted">No candidate is available.</p>
+      )}
     </div>
   );
 }

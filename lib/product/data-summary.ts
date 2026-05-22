@@ -1,5 +1,9 @@
 import "server-only";
 
+import {
+  loadPublicDataCompletenessSummary,
+  type PublicDataCompletenessSummary
+} from "@/lib/data-completeness/public-summary";
 import { loadRadarFeed, type RadarFeed, itemEvidenceTimestamp } from "@/lib/radar/feed";
 import { loadReportWorkflowData } from "@/lib/reports/load-report-data";
 import type { ReportWorkflowDocument } from "@/lib/reports/types";
@@ -52,6 +56,7 @@ export type ProductDataSummary = {
   };
   caveats: string[];
   warnings: string[];
+  coverage: PublicDataCompletenessSummary;
 };
 
 type OperationalSummary = {
@@ -82,10 +87,11 @@ const emptyOperationalSummary: OperationalSummary = {
 };
 
 export async function loadProductDataSummary(): Promise<ProductDataSummary> {
-  const [feed, reportData, operational] = await Promise.all([
+  const [feed, reportData, operational, coverage] = await Promise.all([
     loadRadarFeed(),
     loadReportWorkflowData(),
-    loadOperationalSummary()
+    loadOperationalSummary(),
+    loadPublicDataCompletenessSummary()
   ]);
   const reportsByType = new Map(reportData.reports.map((report) => [report.report_type, report]));
   const caveats = Array.from(new Set([...feed.caveats, ...reportData.warnings]));
@@ -132,7 +138,8 @@ export async function loadProductDataSummary(): Promise<ProductDataSummary> {
       savedCount: reportData.reports.filter((report) => report.read_source === "supabase").length
     },
     caveats,
-    warnings
+    warnings,
+    coverage
   };
 }
 

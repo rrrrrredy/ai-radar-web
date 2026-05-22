@@ -111,6 +111,24 @@ type Snapshot = {
     item_entities: number | null;
     scores: number | null;
   };
+  coverage: {
+    label: "public snapshot";
+    sources_total: number;
+    automated_eligible_sources: number;
+    attempted_sources: number;
+    fetched_sources: number;
+    failed_sources: number;
+    skipped_sources: number;
+    sources_with_public_items: number | null;
+    public_radar_items: number | null;
+    latest_refresh: string | null;
+    source_to_raw_coverage: number | null;
+    raw_to_radar_conversion: number | null;
+    radar_to_public_visibility: number | null;
+    source_public_visibility: number | null;
+    failed_source_reasons: Record<string, number>;
+    skipped_source_reasons: Record<string, number>;
+  };
   top_categories: Array<{ label: string; count: number }>;
   top_sources: Array<{ label: string; count: number }>;
   top_source_tiers: Array<{ label: string; count: number }>;
@@ -179,7 +197,7 @@ function renderHome(snapshot: Snapshot) {
       <aside class="panel">
         <h2>Production Data Status</h2>
         <dl class="metric-grid">
-          ${metric("Sources", snapshot.counts.sources)}
+          ${metric("Sources total", snapshot.coverage.sources_total)}
           ${metric("Raw items", snapshot.counts.raw_items)}
           ${metric("Radar items", snapshot.counts.radar_items)}
           ${metric("Public rows", snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)}
@@ -187,6 +205,7 @@ function renderHome(snapshot: Snapshot) {
           ${metric("Citations", snapshot.counts.citations)}
         </dl>
         <dl class="rail">
+          ${coverageRailRows(snapshot)}
           ${rail("Included / needs_review / excluded", `${snapshot.counts.included} / ${snapshot.counts.needs_review} / ${snapshot.counts.excluded}`)}
           ${rail("Latest ingestion", formatDate(snapshot.freshness.latest_ingestion))}
           ${rail("Latest understanding", formatDate(snapshot.freshness.latest_understanding))}
@@ -235,12 +254,15 @@ function renderRadar(snapshot: Snapshot) {
         <div class="pill-row">
           ${pill(`${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} public rows`, "success")}
           ${pill(`${snapshot.counts.snapshot_radar_items} rows in snapshot`, "evidence")}
+          ${pill(`${snapshot.coverage.attempted_sources} attempted sources`, "neutral")}
           ${pill(snapshot.source.data_source, "neutral")}
         </div>
         <h1>Radar</h1>
         <p class="lead">Public-safe rows with source, status, category, source family, freshness, confidence, and citation links.</p>
       </div>
     </section>
+
+    ${coveragePanel(snapshot)}
 
     <section class="panel">
       <div class="controls" role="search">
@@ -258,6 +280,14 @@ function renderRadar(snapshot: Snapshot) {
         ])}
         ${distribution("Category", snapshot.top_categories.slice(0, 8).map((entry) => [entry.label, entry.count]))}
         ${distribution("Source family", Object.entries(families))}
+        ${distribution("Source coverage", [
+          ["total", snapshot.coverage.sources_total],
+          ["eligible", snapshot.coverage.automated_eligible_sources],
+          ["attempted", snapshot.coverage.attempted_sources],
+          ["public sources", snapshot.coverage.sources_with_public_items ?? 0],
+          ["failed", snapshot.coverage.failed_sources],
+          ["skipped", snapshot.coverage.skipped_sources]
+        ])}
         ${distribution("Freshness", freshnessBuckets(snapshot.radar_items))}
       </div>
     </section>
@@ -285,12 +315,15 @@ function renderReports(snapshot: Snapshot) {
         <div class="pill-row">
           ${pill(`${snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates} candidates`, "success")}
           ${pill(`${snapshot.counts.report_snapshots} public snapshots`, "evidence")}
+          ${pill(`${snapshot.counts.citations} citations`, "neutral")}
           ${pill(snapshot.source.data_source, "neutral")}
         </div>
         <h1>Reports</h1>
         <p class="lead">Latest daily and weekly candidates with status, time window, usable item counts, citations, caveats, missing evidence, and Markdown export.</p>
       </div>
     </section>
+    ${coveragePanel(snapshot)}
+    ${reportCoveragePanel(snapshot, reports)}
     <section class="report-list">
       ${reports.map(renderReport).join("") || empty("No public report candidates were found.")}
     </section>
@@ -321,7 +354,7 @@ function renderAsk(snapshot: Snapshot) {
         <dl class="rail">
           ${rail("Data source", snapshot.source.data_source)}
           ${rail("Latest radar", formatDate(snapshot.freshness.latest_timestamp))}
-          ${rail("Public rows", String(snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items))}
+          ${coverageRailRows(snapshot)}
           ${rail("Needs review", String(snapshot.counts.needs_review))}
         </dl>
       </div>
@@ -365,7 +398,7 @@ function renderWrite(snapshot: Snapshot) {
         <dl class="rail">
           ${rail("Data source", snapshot.source.data_source)}
           ${rail("Latest radar", formatDate(snapshot.freshness.latest_timestamp))}
-          ${rail("Public rows", String(snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items))}
+          ${coverageRailRows(snapshot)}
           ${rail("Report candidates", String(snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates))}
         </dl>
       </div>
@@ -452,13 +485,13 @@ function renderCitation(item: SnapshotItem) {
 function renderCompactReport(report: SnapshotReport) {
   return `<article class="compact-row">
     <div>${pill(report.report_type, "evidence")}${pill(report.status, statusTone(report.status))}${pill(report.mode, "neutral")}<h3>${escapeHtml(report.title)}</h3><p>${escapeHtml(report.summary)}</p></div>
-    <dl>${rail("Items", String(report.source_item_count))}${rail("Citations", String(report.citations.length))}${rail("Saved", formatDate(report.saved_at ?? report.generated_at))}</dl>
+    <dl>${rail("Item count", String(report.source_item_count))}${rail("Citation count", String(report.citations.length))}${rail("Saved", formatDate(report.saved_at ?? report.generated_at))}</dl>
   </article>`;
 }
 
 function renderReport(report: SnapshotReport) {
   return `<article class="report-card">
-    <div class="section-heading"><div><div class="pill-row">${pill(report.report_type, "evidence")}${pill(report.status, statusTone(report.status))}${pill(report.mode, "success")}${pill(`${report.source_item_count} items`, "neutral")}${pill(`${report.citations.length} citations`, "neutral")}</div><h2>${escapeHtml(report.title)}</h2></div><span>${escapeHtml(formatDate(report.saved_at ?? report.generated_at))}</span></div>
+    <div class="section-heading"><div><div class="pill-row">${pill(report.report_type, "evidence")}${pill(report.status, statusTone(report.status))}${pill(report.mode, "success")}${pill(`Item count ${report.source_item_count}`, "neutral")}${pill(`Citation count ${report.citations.length}`, "neutral")}</div><h2>${escapeHtml(report.title)}</h2></div><span>${escapeHtml(formatDate(report.saved_at ?? report.generated_at))}</span></div>
     <p class="report-summary">${escapeHtml(report.summary)}</p>
     ${report.executive_summary ? `<p>${escapeHtml(report.executive_summary)}</p>` : ""}
     <dl class="inline-defs">${rail("Window", `${formatDate(report.time_window.start)} to ${formatDate(report.time_window.end)}`)}${rail("Data source", report.data_source)}${rail("Missing evidence", String(report.missing_evidence.length))}</dl>
@@ -553,6 +586,56 @@ function countTags(entries: Array<{ label: string; count: number }>, tone: "evid
   return entries.map((entry) => pill(`${labelize(entry.label)} ${entry.count}`, tone)).join("");
 }
 
+function coveragePanel(snapshot: Snapshot) {
+  return `
+    <section class="panel">
+      <div class="section-heading">
+        <h2>Public Snapshot Coverage</h2>
+      </div>
+      <dl class="rail">
+        ${coverageRailRows(snapshot)}
+      </dl>
+    </section>
+  `;
+}
+
+function reportCoveragePanel(snapshot: Snapshot, reports: SnapshotReport[]) {
+  const daily = reports.find((report) => report.report_type === "daily");
+  const weekly = reports.find((report) => report.report_type === "weekly");
+
+  return `
+    <section class="panel">
+      <div class="section-heading">
+        <h2>Report Candidate Coverage</h2>
+      </div>
+      <dl class="rail">
+        ${rail("Report candidates", String(snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates))}
+        ${rail("Candidate count", String(snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates))}
+        ${rail("Daily latest candidate", daily?.title ?? "not available")}
+        ${rail("Item count", String(daily?.source_item_count ?? 0))}
+        ${rail("Citation count", String(daily?.citations.length ?? 0))}
+        ${rail("Weekly latest candidate", weekly?.title ?? "not available")}
+        ${rail("Weekly item count", String(weekly?.source_item_count ?? 0))}
+        ${rail("Weekly citation count", String(weekly?.citations.length ?? 0))}
+      </dl>
+    </section>
+  `;
+}
+
+function coverageRailRows(snapshot: Snapshot) {
+  return [
+    rail("Public snapshot", snapshot.coverage.label),
+    rail("Sources total", String(snapshot.coverage.sources_total)),
+    rail("Automated eligible sources", String(snapshot.coverage.automated_eligible_sources)),
+    rail("Attempted sources", String(snapshot.coverage.attempted_sources)),
+    rail("Sources public", String(snapshot.coverage.sources_with_public_items ?? "not available")),
+    rail("Public rows", String(snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)),
+    rail("Failed/skipped sources", String(snapshot.coverage.failed_sources + snapshot.coverage.skipped_sources)),
+    rail("Source to raw coverage", formatNullablePercent(snapshot.coverage.source_to_raw_coverage)),
+    rail("Latest refresh", formatDate(snapshot.coverage.latest_refresh))
+  ].join("");
+}
+
 function metric(label: string, value: number | null) {
   return `<div><dt>${escapeHtml(label)}</dt><dd>${value === null ? "n/a" : value.toLocaleString("en-US")}</dd></div>`;
 }
@@ -589,6 +672,10 @@ function labelize(value: string) {
 
 function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
+}
+
+function formatNullablePercent(value: number | null) {
+  return value === null ? "not available" : formatPercent(value);
 }
 
 function formatDate(value: string | null | undefined) {
