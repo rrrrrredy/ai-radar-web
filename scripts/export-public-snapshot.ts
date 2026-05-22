@@ -14,15 +14,17 @@ import type {
 } from "@/lib/retrieval/types";
 import type { ReportPreviewType } from "@/lib/reports/types";
 import { getSupabaseServerReadClient } from "@/lib/supabase/server-read";
+import { getSupabaseServiceClient, getSupabaseServiceStatus } from "@/lib/supabase/service";
 import { RADAR_CATEGORIES, type RadarCategory, type UnderstandingStatus } from "@/lib/understanding/types";
 
-const productionUrl = "https://ai-radar-web-luosongred-5507s-projects.vercel.app";
-const outputPath = path.join(process.cwd(), "dist", "github-pages", "data", "radar-snapshot.json");
+const cloudflareUrl = "https://ai-industry-radar.pages.dev";
+const referenceAppUrl = "https://ai-radar-web-luosongred-5507s-projects.vercel.app";
+const outputPath = path.join(process.cwd(), "dist", "cloudflare-pages", "data", "radar-snapshot.json");
 const radarLimit = 500;
 const reportLimit = 24;
 
-type SnapshotSourceKind = "supabase_public_views" | "local_fallback";
-type ReportMode = "saved_candidate" | "saved_report" | "local_fallback";
+type SnapshotSourceKind = "supabase_public_views" | "local_files";
+type ReportMode = "saved_candidate" | "saved_report" | "local_preview";
 
 export type PublicRadarSnapshotItem = {
   id: string;
@@ -95,37 +97,65 @@ type CountEntry = {
   count: number;
 };
 
+type OperationalCounts = {
+  sources: number | null;
+  raw_items: number | null;
+  radar_items: number | null;
+  public_radar_items: number | null;
+  report_candidates: number | null;
+  ingestion_runs: number | null;
+  understanding_runs: number | null;
+  entities: number | null;
+  item_entities: number | null;
+  scores: number | null;
+  latest_ingestion: string | null;
+  latest_understanding: string | null;
+  warnings: string[];
+};
+
 export type PublicMirrorSnapshot = {
   schema_version: 1;
   generated_at: string;
-  production_url: string;
-  mirror: {
+  reference_app_url: string;
+  public_site: {
     purpose: string;
-    pages_url: string;
-    dynamic_app_url: string;
+    cloudflare_url: string;
+    reference_app_url: string;
     read_only: true;
   };
   source: {
     kind: SnapshotSourceKind;
     data_source: RetrievalDataSource;
-    fallback_used: boolean;
+    local_data_used: boolean;
     warnings: string[];
   };
   freshness: {
     latest_timestamp: string | null;
     latest_timestamp_source: string | null;
+    latest_ingestion: string | null;
+    latest_understanding: string | null;
     note: string;
   };
   counts: {
+    sources: number | null;
+    raw_items: number | null;
+    radar_items: number | null;
+    public_radar_items: number | null;
     visible_radar_items: number;
     snapshot_radar_items: number;
     included: number;
     needs_review: number;
     excluded: number;
     failed: number;
+    report_candidates: number | null;
     report_snapshots: number;
     saved_report_candidates: number;
     citations: number;
+    ingestion_runs: number | null;
+    understanding_runs: number | null;
+    entities: number | null;
+    item_entities: number | null;
+    scores: number | null;
   };
   top_categories: CountEntry[];
   top_sources: CountEntry[];
@@ -163,7 +193,7 @@ async function main() {
 
   console.log(
     [
-      "Public mirror snapshot written:",
+      "Cloudflare public snapshot written:",
       path.relative(process.cwd(), outputPath),
       `source=${snapshot.source.data_source}`,
       `visibleRows=${snapshot.counts.visible_radar_items}`,
@@ -187,7 +217,7 @@ async function createPublicSnapshot(): Promise<PublicMirrorSnapshot> {
   }
 
   return readLocalFallbackSnapshot(generatedAt, [
-    "Supabase public URL and anon key are not configured for this process; local radar fallback was used."
+    "Supabase public URL and anon key are not configured for this process; local generated radar data was used."
   ]);
 }
 
@@ -199,14 +229,15 @@ async function readSupabaseSnapshot(
     readSupabaseRadarItems(supabase),
     readSupabaseReports(supabase)
   ]);
-  const warnings = [...radar.warnings, ...reports.warnings];
+  const operationalCounts = await readOperationalCounts(radar.count, reports.reports.length);
+  const warnings = [...radar.warnings, ...reports.warnings, ...operationalCounts.warnings];
 
   if (radar.items.length === 0) {
     return {
       snapshot: null,
       warnings: [
         ...warnings,
-        "Supabase public radar view returned no public-safe rows; local fallback was used."
+        "Supabase public radar view returned no public-safe rows; local generated radar data was used."
       ]
     };
   }
@@ -219,6 +250,7 @@ async function readSupabaseSnapshot(
       fallbackUsed: false,
       generatedAt,
       items: radar.items,
+      operationalCounts,
       reports: reports.reports,
       sourceKind: "supabase_public_views",
       warnings
@@ -392,8 +424,9 @@ async function readLocalFallbackSnapshot(
     fallbackUsed: true,
     generatedAt,
     items: feed.items.map(mapRetrievalItem),
+    operationalCounts: await readOperationalCounts(feed.counts.total, 0),
     reports: [],
-    sourceKind: "local_fallback",
+    sourceKind: "local_files",
     warnings: [...warnings, ...loaded.warnings]
   });
 }
@@ -405,6 +438,7 @@ function buildSnapshot(input: {
   fallbackUsed: boolean;
   generatedAt: string;
   items: PublicRadarSnapshotItem[];
+  operationalCounts: OperationalCounts;
   reports: PublicReportSnapshot[];
   sourceKind: SnapshotSourceKind;
   warnings: string[];
@@ -416,35 +450,47 @@ function buildSnapshot(input: {
   return {
     schema_version: 1,
     generated_at: input.generatedAt,
-    production_url: productionUrl,
-    mirror: {
-      dynamic_app_url: productionUrl,
-      pages_url: "https://rrrrrredy.github.io/ai-radar-web/",
-      purpose: "Public read-only fallback mirror for AI Industry Radar data surfaces.",
+    reference_app_url: referenceAppUrl,
+    public_site: {
+      cloudflare_url: cloudflareUrl,
+      reference_app_url: referenceAppUrl,
+      purpose: "Primary Cloudflare public read surface for AI Industry Radar data.",
       read_only: true
     },
     source: {
       data_source: input.dataSource,
-      fallback_used: input.fallbackUsed,
       kind: input.sourceKind,
+      local_data_used: input.fallbackUsed,
       warnings: dedupe(input.warnings)
     },
     freshness: {
+      latest_ingestion: input.operationalCounts.latest_ingestion,
       latest_timestamp: latest?.value ?? null,
       latest_timestamp_source: latest?.source ?? null,
+      latest_understanding: input.operationalCounts.latest_understanding,
       note: latest
         ? `Latest public radar timestamp is ${latest.value} (${latest.source}).`
         : "No public radar freshness timestamp is available."
     },
     counts: {
       citations: input.items.length + reportCitationCount,
+      entities: input.operationalCounts.entities,
       excluded: statusCounts.excluded,
       failed: statusCounts.failed,
       included: statusCounts.included,
+      ingestion_runs: input.operationalCounts.ingestion_runs,
+      item_entities: input.operationalCounts.item_entities,
       needs_review: statusCounts.needs_review,
+      public_radar_items: input.operationalCounts.public_radar_items,
+      radar_items: input.operationalCounts.radar_items,
+      raw_items: input.operationalCounts.raw_items,
+      report_candidates: input.operationalCounts.report_candidates,
       report_snapshots: input.reports.length,
       saved_report_candidates: input.reports.filter((report) => report.mode === "saved_candidate").length,
+      scores: input.operationalCounts.scores,
+      sources: input.operationalCounts.sources,
       snapshot_radar_items: input.items.length,
+      understanding_runs: input.operationalCounts.understanding_runs,
       visible_radar_items: input.exactVisibleRows
     },
     top_categories: countEntries(input.items.flatMap((item) => item.categories.map(labelize))),
@@ -453,14 +499,111 @@ function buildSnapshot(input: {
     radar_items: input.items,
     reports: input.reports,
     caveats: dedupe([
-      "GitHub Pages is a static read-only mirror. Auth, Admin, Ask, Write, APIs, and server actions remain on Vercel Production.",
-      "Only public-safe radar and report fields are included. raw_text, raw_metadata, model_metadata, private notes, service-role access, and secrets are excluded.",
+      "Cloudflare Pages is the primary public read surface. Auth, Admin, server actions, and write workflows remain outside this public Cloudflare surface.",
+      "Only public-safe radar and report fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
       input.fallbackUsed
-        ? "This snapshot used a fallback source because Supabase public reads were unavailable to the export process."
+        ? "This snapshot used local generated data because Supabase public reads were unavailable to the export process."
         : "Snapshot data came from Supabase public-safe read views using anon read access.",
       ...input.caveats,
-      ...input.warnings
+      ...input.warnings,
+      ...input.operationalCounts.warnings
     ])
+  };
+}
+
+async function readOperationalCounts(publicRadarFallback: number, reportCandidatesFallback: number): Promise<OperationalCounts> {
+  const empty: OperationalCounts = {
+    sources: null,
+    raw_items: null,
+    radar_items: null,
+    public_radar_items: publicRadarFallback,
+    report_candidates: reportCandidatesFallback,
+    ingestion_runs: null,
+    understanding_runs: null,
+    entities: null,
+    item_entities: null,
+    scores: null,
+    latest_ingestion: null,
+    latest_understanding: null,
+    warnings: []
+  };
+  const serviceStatus = getSupabaseServiceStatus();
+
+  if (!serviceStatus.publicConfigConfigured || !serviceStatus.serviceRoleConfigured) {
+    return {
+      ...empty,
+      warnings: ["Supabase service count access is unavailable; public snapshot counts are limited to public views."]
+    };
+  }
+
+  try {
+    const supabase = getSupabaseServiceClient();
+    const tableNames = [
+      "sources",
+      "raw_items",
+      "radar_items",
+      "public_radar_items",
+      "report_candidates",
+      "ingestion_runs",
+      "understanding_runs",
+      "entities",
+      "item_entities",
+      "scores"
+    ] as const;
+    const results = await Promise.all(tableNames.map((table) => exactCount(supabase, table)));
+    const counts = Object.fromEntries(results.map((result) => [result.table, result.count]));
+    const [ingestionRun, understandingRun] = await Promise.all([
+      supabase
+        .from("ingestion_runs")
+        .select("finished_at,started_at")
+        .order("started_at", { ascending: false, nullsFirst: false })
+        .limit(1),
+      supabase
+        .from("understanding_runs")
+        .select("ended_at,started_at")
+        .order("started_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+    ]);
+
+    return {
+      ...empty,
+      ...counts,
+      latest_ingestion: latestRunTimestamp((ingestionRun.data ?? [])[0] as Record<string, unknown> | undefined, "finished_at"),
+      latest_understanding: latestRunTimestamp((understandingRun.data ?? [])[0] as Record<string, unknown> | undefined, "ended_at"),
+      warnings: [
+        ...results.map((result) => result.warning ?? ""),
+        ingestionRun.error ? `ingestion_runs latest timestamp failed: ${sanitizeError(ingestionRun.error.message)}` : "",
+        understandingRun.error ? `understanding_runs latest timestamp failed: ${sanitizeError(understandingRun.error.message)}` : ""
+      ].filter(Boolean)
+    };
+  } catch (error) {
+    return {
+      ...empty,
+      warnings: [`Supabase operational counts unavailable: ${sanitizeError(error)}`]
+    };
+  }
+}
+
+function latestRunTimestamp(row: Record<string, unknown> | undefined, endField: "ended_at" | "finished_at") {
+  const ended = text(row?.[endField]);
+  const started = text(row?.started_at);
+  return ended || started || null;
+}
+
+async function exactCount(supabase: SupabaseClient, table: string) {
+  const { count, error } = await supabase.from(table).select("id", { count: "exact", head: true });
+
+  if (error) {
+    return {
+      table,
+      count: null,
+      warning: `${table} count failed: ${sanitizeError(error.message)}`
+    };
+  }
+
+  return {
+    table,
+    count: count ?? 0
   };
 }
 
@@ -683,7 +826,7 @@ function normalizeReportCitations(value: unknown): PublicReportSnapshot["citatio
 
 function readErrorMessage(tableName: string, error: SupabaseReadError) {
   if (isMissingPublicViewError(tableName, error)) {
-    return `${tableName} is not available to anon reads; fallback data was used.`;
+    return `${tableName} is not available to anon reads; local generated data was used.`;
   }
 
   return `${tableName} read failed: ${sanitizeError(error.message)}`;
@@ -873,6 +1016,6 @@ function sanitizeError(error: unknown) {
 }
 
 main().catch((error: unknown) => {
-  console.error(`Public mirror snapshot failed: ${sanitizeError(error)}`);
+  console.error(`Cloudflare public snapshot failed: ${sanitizeError(error)}`);
   process.exitCode = 1;
 });
