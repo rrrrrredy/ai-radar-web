@@ -17,10 +17,10 @@ export function EvidenceRail({
   freshnessNote,
   generationMode,
   itemCount,
-  itemCountLabel = "Retrieved items",
+  itemCountLabel = "已检索条目",
   modelMetadata,
   timeWindow,
-  title = "Evidence rail"
+  title = "证据栏"
 }: {
   citationsCount: number;
   context?: EvidenceRailContextItem[];
@@ -39,7 +39,7 @@ export function EvidenceRail({
   title?: string;
 }) {
   const dataSourceCaveat = getDataSourceCaveat(dataSource);
-  const liveModelLabel = generationMode === "live" ? "live" : "disabled/mock";
+  const liveModelLabel = generationMode === "live" ? "live" : "禁用/mock";
 
   return (
     <aside
@@ -52,21 +52,21 @@ export function EvidenceRail({
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <DataSourceChip
-            ariaLabel={`Data source is ${dataSource}`}
+            ariaLabel={`数据来源为 ${dataSource}`}
             source={dataSource}
           />
           <EvidenceBadge
-            detail={`${timeWindow.start} to ${timeWindow.end}`}
+            detail={`${timeWindow.start} 至 ${timeWindow.end}`}
             kind="freshness"
-            label="Window"
+            label="时间窗口"
           />
           <EvidenceBadge
             detail={String(citationsCount)}
             kind="citation"
-            label="Citations"
+            label="引用"
           />
           <StatusChip
-            label="Live model"
+            label="实时模型"
             tone={generationMode === "live" ? "risk" : "caution"}
             value={liveModelLabel}
           />
@@ -75,26 +75,26 @@ export function EvidenceRail({
 
       <div className={`rounded-md border p-3 ${dataSourceCaveat.className}`}>
         <p className="text-xs font-semibold uppercase tracking-normal">
-          Data caveat
+          数据局限
         </p>
         <p className="mt-2 text-sm leading-6">{dataSourceCaveat.copy}</p>
       </div>
 
       <dl className="space-y-3 text-sm">
-        <RailRow label="Resolved window" value={`${timeWindow.start} to ${timeWindow.end}`} />
-        <RailRow label="Window rule" value={timeWindow.explanation} />
-        {freshnessNote ? <RailRow label="Freshness" value={freshnessNote} /> : null}
+        <RailRow label="解析时间窗口" value={`${timeWindow.start} 至 ${timeWindow.end}`} />
+        <RailRow label="时间窗口规则" value={timeWindow.explanation} />
+        {freshnessNote ? <RailRow label="新鲜度" value={freshnessNote} /> : null}
         {itemCount !== undefined ? (
           <RailRow label={itemCountLabel} value={String(itemCount)} />
         ) : null}
-        <RailRow label="Citation count" value={String(citationsCount)} />
-        <RailRow label="Generation mode" value={generationMode} />
+        <RailRow label="引用数量" value={String(citationsCount)} />
+        <RailRow label="生成模式" value={generationMode} />
         {modelMetadata ? (
           <>
-            <RailRow label="Model provider" value={modelMetadata.provider} />
-            <RailRow label="API calls" value={String(modelMetadata.api_call_count)} />
-            <RailRow label="Prompt version" value={modelMetadata.prompt_version} />
-            {modelMetadata.model ? <RailRow label="Model" value={modelMetadata.model} /> : null}
+            <RailRow label="模型提供方" value={modelMetadata.provider} />
+            <RailRow label="API 调用" value={String(modelMetadata.api_call_count)} />
+            <RailRow label="提示词版本" value={modelMetadata.prompt_version} />
+            {modelMetadata.model ? <RailRow label="模型" value={modelMetadata.model} /> : null}
           </>
         ) : null}
         {context.map((item) => (
@@ -130,33 +130,33 @@ function getDataSourceCaveat(source: DataSource) {
   if (source === "supabase_radar_items") {
     return {
       className: "border-radar-success/30 bg-white text-radar-success",
-      copy: "Supabase public radar view was used for read-only retrieval. No Supabase write path is implied."
+      copy: "使用 Supabase 公共雷达视图进行只读检索，不代表执行任何 Supabase 写入。"
     };
   }
 
   if (source === "local_understanding_output") {
     return {
       className: "border-radar-freshness/30 bg-white text-radar-freshness",
-      copy: "Local understanding output was used. Coverage and freshness depend on generated local files."
+      copy: "使用本地理解输出。覆盖范围和新鲜度取决于生成的本地文件。"
     };
   }
 
   if (source === "mock_data") {
     return {
       className: "border-radar-caution/30 bg-white text-radar-caution",
-      copy: "Synthetic mock data was used. Treat this as workflow evidence, not production-current intelligence."
+      copy: "使用模拟数据。请将其视为工作流证据，而非当前生产情报。"
     };
   }
 
   if (source === "empty") {
     return {
       className: "border-radar-line bg-white text-radar-muted",
-      copy: "No radar evidence was retrieved. Any synthesis should remain explicitly limited."
+      copy: "未检索到雷达证据。任何综合都必须明确标注限制。"
     };
   }
 
   return {
     className: "border-radar-line bg-white text-radar-muted",
-    copy: "The retrieval source is unknown, so confidence should stay low."
+    copy: "检索来源未知，因此置信度应保持较低。"
   };
 }

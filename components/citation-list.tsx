@@ -4,8 +4,8 @@ import type { RetrievalCitation } from "@/lib/retrieval/types";
 
 export function CitationList({
   citations,
-  emptyMessage = "No citations were returned for this surface.",
-  title = "Citations",
+  emptyMessage = "此页面未返回引用。",
+  title = "引用",
   variant = "section"
 }: {
   citations: RetrievalCitation[];
@@ -45,19 +45,19 @@ export function CitationList({
                 <EvidenceBadge
                   detail={citation.source_name}
                   kind="citation"
-                  label="Source"
+                  label="来源"
                 />
                 <EvidenceBadge
                   detail={formatTimestamp(citation.published_at ?? citation.collected_at)}
                   kind="freshness"
-                  label={citation.published_at ? "Published" : "Collected"}
+                  label={citation.published_at ? "发布时间" : "采集时间"}
                 />
                 <StatusChip
-                  label={`Status: ${citation.status}`}
+                  label={`状态: ${statusLabel(citation.status)}`}
                   tone={statusTone(citation.status)}
                 />
                 <StatusChip
-                  label="Confidence"
+                  label="置信度"
                   tone={confidenceTone(citation.status, citation.confidence)}
                   value={`${Math.round(citation.confidence * 100)}%`}
                 />
@@ -125,7 +125,7 @@ function formatTimestamp(value: string) {
     return value;
   }
 
-  return `${new Intl.DateTimeFormat("en", {
+  return `${new Intl.DateTimeFormat("zh-CN", {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
@@ -133,4 +133,11 @@ function formatTimestamp(value: string) {
     timeZone: "UTC",
     year: "numeric"
   }).format(date)} UTC`;
+}
+
+function statusLabel(status: RetrievalCitation["status"]) {
+  if (status === "included") return "已纳入";
+  if (status === "needs_review") return "待复核";
+  if (status === "excluded") return "已排除";
+  return "失败";
 }

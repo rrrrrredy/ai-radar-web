@@ -177,39 +177,39 @@ function renderHome(snapshot: Snapshot) {
   const latestItems = snapshot.radar_items.slice(0, 8);
   const latestReports = latestReportsByType(snapshot);
 
-  return shell(snapshot, "home", 0, "AI Industry Radar", `
+  return shell(snapshot, "home", 0, "AI 行业雷达", `
     <section class="hero">
       <div>
         <div class="pill-row">
-          ${pill("Cloudflare primary", "success")}
+          ${pill("Cloudflare 主站", "success")}
           ${pill(snapshot.source.data_source, "neutral")}
-          ${pill(snapshot.source.kind, "evidence")}
+          ${pill("只读快照", "evidence")}
         </div>
-        <h1>AI Industry Radar</h1>
-        <p class="lead">Public AI industry signal desk backed by Supabase public views, current report candidates, source status, and explicit caveats.</p>
+        <h1>AI 行业雷达</h1>
+        <p class="lead">面向公开信息的 AI 行业情报台，展示 Supabase 公共视图、当前报告候选、来源状态和明确局限。</p>
         <div class="actions">
-          <a class="button primary" href="radar/">Open radar</a>
-          <a class="button" href="reports/">Review reports</a>
-          <a class="button" href="ask/">Ask surface</a>
-          <a class="button" href="write/">Write surface</a>
+          <a class="button primary" href="radar/">打开雷达</a>
+          <a class="button" href="reports/">查看报告</a>
+          <a class="button" href="ask/">提问</a>
+          <a class="button" href="write/">写作</a>
         </div>
       </div>
       <aside class="panel">
-        <h2>Production Data Status</h2>
+        <h2>生产数据状态</h2>
         <dl class="metric-grid">
-          ${metric("Sources total", snapshot.coverage.sources_total)}
-          ${metric("Raw items", snapshot.counts.raw_items)}
-          ${metric("Radar items", snapshot.counts.radar_items)}
-          ${metric("Public rows", snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)}
-          ${metric("Report candidates", snapshot.counts.report_candidates)}
-          ${metric("Citations", snapshot.counts.citations)}
+          ${metric("来源总数", snapshot.coverage.sources_total)}
+          ${metric("原始条目", snapshot.counts.raw_items)}
+          ${metric("雷达条目", snapshot.counts.radar_items)}
+          ${metric("公开条目", snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)}
+          ${metric("报告候选", snapshot.counts.report_candidates)}
+          ${metric("引用", snapshot.counts.citations)}
         </dl>
         <dl class="rail">
           ${coverageRailRows(snapshot)}
-          ${rail("Included / needs_review / excluded", `${snapshot.counts.included} / ${snapshot.counts.needs_review} / ${snapshot.counts.excluded}`)}
-          ${rail("Latest ingestion", formatDate(snapshot.freshness.latest_ingestion))}
-          ${rail("Latest understanding", formatDate(snapshot.freshness.latest_understanding))}
-          ${rail("Latest visible radar", formatDate(snapshot.freshness.latest_timestamp))}
+          ${rail("已纳入 / 待复核 / 已排除", `${snapshot.counts.included} / ${snapshot.counts.needs_review} / ${snapshot.counts.excluded}`)}
+          ${rail("最新采集", formatDate(snapshot.freshness.latest_ingestion))}
+          ${rail("最新理解", formatDate(snapshot.freshness.latest_understanding))}
+          ${rail("最新可见雷达", formatDate(snapshot.freshness.latest_timestamp))}
         </dl>
       </aside>
     </section>
@@ -217,8 +217,8 @@ function renderHome(snapshot: Snapshot) {
     <section class="grid two">
       <div class="panel">
         <div class="section-heading">
-          <h2>Radar Pulse</h2>
-          <a href="radar/">View all</a>
+          <h2>雷达脉冲</h2>
+          <a href="radar/">查看全部</a>
         </div>
         <div class="tag-block">
           ${countTags(snapshot.top_categories, "evidence")}
@@ -228,17 +228,17 @@ function renderHome(snapshot: Snapshot) {
       </div>
       <div class="panel">
         <div class="section-heading">
-          <h2>Fresh Reports</h2>
-          <a href="reports/">Open desk</a>
+          <h2>最新报告</h2>
+          <a href="reports/">打开报告台</a>
         </div>
-        <div class="row-list">${latestReports.map(renderCompactReport).join("") || empty("No public report candidates were found.")}</div>
+        <div class="row-list">${latestReports.map(renderCompactReport).join("") || empty("没有找到公开报告候选。")}</div>
       </div>
     </section>
 
     <section class="panel">
       <div class="section-heading">
-        <h2>Caveats</h2>
-        <a href="data/radar-snapshot.json">Public JSON</a>
+        <h2>注意事项</h2>
+        <a href="data/radar-snapshot.json">公开 JSON</a>
       </div>
       ${noteList(snapshot.caveats)}
     </section>
@@ -248,17 +248,17 @@ function renderHome(snapshot: Snapshot) {
 function renderRadar(snapshot: Snapshot) {
   const families = countSourceFamilies(snapshot.radar_items);
 
-  return shell(snapshot, "radar", 1, "Radar", `
+  return shell(snapshot, "radar", 1, "雷达", `
     <section class="page-heading">
       <div>
         <div class="pill-row">
-          ${pill(`${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} public rows`, "success")}
-          ${pill(`${snapshot.counts.snapshot_radar_items} rows in snapshot`, "evidence")}
-          ${pill(`${snapshot.coverage.attempted_sources} attempted sources`, "neutral")}
+          ${pill(`${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} 条公开`, "success")}
+          ${pill(`${snapshot.counts.snapshot_radar_items} 条快照`, "evidence")}
+          ${pill(`${snapshot.coverage.attempted_sources} 个已尝试来源`, "neutral")}
           ${pill(snapshot.source.data_source, "neutral")}
         </div>
-        <h1>Radar</h1>
-        <p class="lead">Public-safe rows with source, status, category, source family, freshness, confidence, and citation links.</p>
+        <h1>雷达</h1>
+        <p class="lead">仅展示公开安全条目，包含来源、状态、类别、来源家族、新鲜度、置信度和引用链接。</p>
       </div>
     </section>
 
@@ -266,39 +266,39 @@ function renderRadar(snapshot: Snapshot) {
 
     <section class="panel">
       <div class="controls" role="search">
-        <label>Search <input id="radar-search" type="search" placeholder="Title, source, category, tag"></label>
-        <label>Status <select id="radar-status">${option("all", "All statuses")}${["included", "needs_review", "excluded", "failed"].map((status) => option(status, status)).join("")}</select></label>
-        <label>Category <select id="radar-category">${option("all", "All categories")}${snapshot.top_categories.map((entry) => option(entry.label, entry.label)).join("")}</select></label>
-        <label>Source family <select id="radar-family">${option("all", "All families")}${Object.keys(families).map((family) => option(family, family)).join("")}</select></label>
+        <label>搜索 <input id="radar-search" type="search" placeholder="标题、来源、类别、标签"></label>
+        <label>状态 <select id="radar-status">${option("all", "全部状态")}${["included", "needs_review", "excluded", "failed"].map((status) => option(status, statusLabel(status))).join("")}</select></label>
+        <label>类别 <select id="radar-category">${option("all", "全部类别")}${snapshot.top_categories.map((entry) => option(entry.label, entry.label)).join("")}</select></label>
+        <label>来源家族 <select id="radar-family">${option("all", "全部家族")}${Object.keys(families).map((family) => option(family, family)).join("")}</select></label>
       </div>
       <div class="distribution">
-        ${distribution("Status", [
-          ["included", snapshot.counts.included],
-          ["needs_review", snapshot.counts.needs_review],
-          ["excluded", snapshot.counts.excluded],
-          ["failed", snapshot.counts.failed]
+        ${distribution("状态", [
+          [statusLabel("included"), snapshot.counts.included],
+          [statusLabel("needs_review"), snapshot.counts.needs_review],
+          [statusLabel("excluded"), snapshot.counts.excluded],
+          [statusLabel("failed"), snapshot.counts.failed]
         ])}
-        ${distribution("Category", snapshot.top_categories.slice(0, 8).map((entry) => [entry.label, entry.count]))}
-        ${distribution("Source family", Object.entries(families))}
-        ${distribution("Source coverage", [
-          ["total", snapshot.coverage.sources_total],
-          ["eligible", snapshot.coverage.automated_eligible_sources],
-          ["attempted", snapshot.coverage.attempted_sources],
-          ["public sources", snapshot.coverage.sources_with_public_items ?? 0],
-          ["failed", snapshot.coverage.failed_sources],
-          ["skipped", snapshot.coverage.skipped_sources]
+        ${distribution("类别", snapshot.top_categories.slice(0, 8).map((entry) => [entry.label, entry.count]))}
+        ${distribution("来源家族", Object.entries(families))}
+        ${distribution("来源覆盖", [
+          ["总数", snapshot.coverage.sources_total],
+          ["自动合格", snapshot.coverage.automated_eligible_sources],
+          ["已尝试", snapshot.coverage.attempted_sources],
+          ["有公开条目的来源", snapshot.coverage.sources_with_public_items ?? 0],
+          ["失败", snapshot.coverage.failed_sources],
+          ["跳过", snapshot.coverage.skipped_sources]
         ])}
-        ${distribution("Freshness", freshnessBuckets(snapshot.radar_items))}
+        ${distribution("新鲜度", freshnessBuckets(snapshot.radar_items))}
       </div>
     </section>
 
     <section class="grid radar-layout">
       <div class="row-list radar-list" id="radar-list">
-        ${snapshot.radar_items.map(renderRadarItem).join("") || empty("No radar rows are available.")}
+        ${snapshot.radar_items.map(renderRadarItem).join("") || empty("暂无雷达条目。")}
       </div>
       <aside class="panel sticky">
-        <h2>Citation Rail</h2>
-        <p class="note">Links point to public source pages. The snapshot excludes private raw content and provider metadata.</p>
+        <h2>引用栏</h2>
+        <p class="note">链接指向公开来源页面。快照不包含私有原文、供应商元数据或服务密钥。</p>
         <div class="row-list">${snapshot.radar_items.slice(0, 12).map(renderCitation).join("")}</div>
       </aside>
     </section>
@@ -309,62 +309,62 @@ function renderRadar(snapshot: Snapshot) {
 function renderReports(snapshot: Snapshot) {
   const reports = latestReportsByType(snapshot);
 
-  return shell(snapshot, "reports", 1, "Reports", `
+  return shell(snapshot, "reports", 1, "报告", `
     <section class="page-heading">
       <div>
         <div class="pill-row">
-          ${pill(`${snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates} candidates`, "success")}
-          ${pill(`${snapshot.counts.report_snapshots} public snapshots`, "evidence")}
-          ${pill(`${snapshot.counts.citations} citations`, "neutral")}
+          ${pill(`${snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates} 个候选`, "success")}
+          ${pill(`${snapshot.counts.report_snapshots} 个公开快照`, "evidence")}
+          ${pill(`${snapshot.counts.citations} 条引用`, "neutral")}
           ${pill(snapshot.source.data_source, "neutral")}
         </div>
-        <h1>Reports</h1>
-        <p class="lead">Latest daily and weekly candidates with status, time window, usable item counts, citations, caveats, missing evidence, and Markdown export.</p>
+        <h1>报告</h1>
+        <p class="lead">展示最新日报和周报候选，并公开状态、时间窗口、可用条目数、引用、局限、缺失证据和 Markdown 导出。</p>
       </div>
     </section>
     ${coveragePanel(snapshot)}
     ${reportCoveragePanel(snapshot, reports)}
     <section class="report-list">
-      ${reports.map(renderReport).join("") || empty("No public report candidates were found.")}
+      ${reports.map(renderReport).join("") || empty("没有找到公开报告候选。")}
     </section>
   `);
 }
 
 function renderAsk(snapshot: Snapshot) {
   const examples = [
-    ...snapshot.top_categories.slice(0, 3).map((entry) => `What changed in ${entry.label} signals?`),
-    "Which signals are strong enough for a weekly report?",
-    "Which items still need human review?"
+    ...snapshot.top_categories.slice(0, 3).map((entry) => `${labelize(entry.label)} 信号最近有什么变化？`),
+    "哪些信号已经足够支撑周报？",
+    "哪些条目仍然需要人工复核？"
   ];
 
-  return shell(snapshot, "ask", 1, "Ask", `
+  return shell(snapshot, "ask", 1, "提问", `
     <section class="page-heading">
       <div>
         <div class="pill-row">
-          ${pill(`${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} public rows`, "success")}
-          ${pill("Public data read surface", "evidence")}
+          ${pill(`${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} 条公开`, "success")}
+          ${pill("公开数据读取页", "evidence")}
         </div>
-        <h1>Ask Radar</h1>
-        <p class="lead">Cloudflare shows the current evidence context and query examples. Interactive generation stays on the reference dynamic app; this public page does not expose API keys or server routes.</p>
+        <h1>提问</h1>
+        <p class="lead">Cloudflare 展示当前证据上下文和示例问题。交互式生成保留在 Vercel 参考动态应用；此公开页不暴露 API Key 或服务端路由。</p>
       </div>
     </section>
     <section class="grid two">
       <div class="panel">
-        <h2>Evidence Context</h2>
+        <h2>证据上下文</h2>
         <dl class="rail">
-          ${rail("Data source", snapshot.source.data_source)}
-          ${rail("Latest radar", formatDate(snapshot.freshness.latest_timestamp))}
+          ${rail("数据来源", snapshot.source.data_source)}
+          ${rail("最新雷达", formatDate(snapshot.freshness.latest_timestamp))}
           ${coverageRailRows(snapshot)}
-          ${rail("Needs review", String(snapshot.counts.needs_review))}
+          ${rail("待复核", String(snapshot.counts.needs_review))}
         </dl>
       </div>
       <div class="panel">
-        <h2>Query Examples</h2>
+        <h2>示例问题</h2>
         ${noteList(examples)}
       </div>
     </section>
     <section class="panel">
-      <h2>Caveats</h2>
+      <h2>注意事项</h2>
       ${noteList(snapshot.caveats.slice(0, 6))}
     </section>
   `);
@@ -372,49 +372,49 @@ function renderAsk(snapshot: Snapshot) {
 
 function renderWrite(snapshot: Snapshot) {
   const prompts = [
-    ...snapshot.top_categories.slice(0, 3).map((entry) => `Turn current ${entry.label} signals into editorial topic candidates.`),
-    "Build a weekly observation outline from the strongest current evidence.",
-    "Find weak signals and missing evidence for a cautious industry note."
+    ...snapshot.top_categories.slice(0, 3).map((entry) => `把当前 ${labelize(entry.label)} 信号整理成选题候选。`),
+    "基于最强证据生成一份周观察提纲。",
+    "找出弱信号和缺失证据，形成谨慎的行业笔记。"
   ];
 
-  return shell(snapshot, "write", 1, "Write", `
+  return shell(snapshot, "write", 1, "写作", `
     <section class="page-heading">
       <div>
         <div class="pill-row">
-          ${pill(`${snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates} report candidates`, "success")}
-          ${pill(`${snapshot.counts.citations} citations`, "evidence")}
+          ${pill(`${snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates} 个报告候选`, "success")}
+          ${pill(`${snapshot.counts.citations} 条引用`, "evidence")}
         </div>
-        <h1>Write</h1>
-        <p class="lead">Public writing surface for current evidence, candidate angles, caveats, and report context. It is read-only on Cloudflare.</p>
+        <h1>写作</h1>
+        <p class="lead">基于当前证据、候选角度、局限和报告上下文的公开写作页。Cloudflare 上保持只读。</p>
       </div>
     </section>
     <section class="grid two">
       <div class="panel">
-        <h2>Writing Prompts</h2>
+        <h2>写作提示</h2>
         ${noteList(prompts)}
       </div>
       <div class="panel">
-        <h2>Data Context</h2>
+        <h2>数据上下文</h2>
         <dl class="rail">
-          ${rail("Data source", snapshot.source.data_source)}
-          ${rail("Latest radar", formatDate(snapshot.freshness.latest_timestamp))}
+          ${rail("数据来源", snapshot.source.data_source)}
+          ${rail("最新雷达", formatDate(snapshot.freshness.latest_timestamp))}
           ${coverageRailRows(snapshot)}
-          ${rail("Report candidates", String(snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates))}
+          ${rail("报告候选", String(snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates))}
         </dl>
       </div>
     </section>
     <section class="grid two">
       <div class="panel">
-        <h2>Current Report Context</h2>
-        ${latestReportsByType(snapshot).map(renderCompactReport).join("") || empty("No public report candidates were found.")}
+        <h2>当前报告上下文</h2>
+        ${latestReportsByType(snapshot).map(renderCompactReport).join("") || empty("没有找到公开报告候选。")}
       </div>
       <div class="panel">
-        <h2>Caveats</h2>
+        <h2>注意事项</h2>
         ${noteList(snapshot.caveats.slice(0, 6))}
       </div>
     </section>
     <section class="panel">
-      <h2>Evidence Gaps</h2>
+      <h2>缺失证据</h2>
       ${noteList(uniqueStrings(snapshot.reports.flatMap((report) => report.missing_evidence)).slice(0, 8).concat(snapshot.caveats.slice(0, 3)))}
     </section>
   `);
@@ -423,33 +423,33 @@ function renderWrite(snapshot: Snapshot) {
 function shell(snapshot: Snapshot, current: "home" | "radar" | "reports" | "ask" | "write", depth: 0 | 1, title: string, body: string) {
   const prefix = depth === 0 ? "" : "../";
   const nav = [
-    ["home", "Home", `${prefix}index.html`],
-    ["radar", "Radar", `${prefix}radar/`],
-    ["reports", "Reports", `${prefix}reports/`],
-    ["ask", "Ask", `${prefix}ask/`],
-    ["write", "Write", `${prefix}write/`]
+    ["home", "今日", `${prefix}index.html`],
+    ["radar", "雷达", `${prefix}radar/`],
+    ["reports", "报告", `${prefix}reports/`],
+    ["ask", "提问", `${prefix}ask/`],
+    ["write", "写作", `${prefix}write/`]
   ] as const;
 
   return `<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="AI Industry Radar Cloudflare public site">
-    <title>${escapeHtml(title)} - AI Industry Radar</title>
+    <meta name="description" content="AI 行业雷达 Cloudflare 公开站">
+    <title>${escapeHtml(title)} - AI 行业雷达</title>
     <link rel="stylesheet" href="${prefix}assets/styles.css">
   </head>
   <body>
     <header class="site-header">
-      <a class="brand" href="${prefix}index.html"><span class="brand-mark"></span><span>AI Industry Radar</span></a>
-      <nav aria-label="Primary navigation">
+      <a class="brand" href="${prefix}index.html"><span class="brand-mark"></span><span>AI 行业雷达</span></a>
+      <nav aria-label="主导航">
         ${nav.map(([id, label, href]) => `<a${id === current ? ' aria-current="page"' : ""} href="${escapeAttr(href)}">${escapeHtml(label)}</a>`).join("")}
       </nav>
     </header>
     <main>${body}</main>
     <footer class="site-footer">
-      <span>Generated ${escapeHtml(formatDate(snapshot.generated_at))}</span>
-      <span>Cloudflare public site. Reference dynamic app: <a href="${escapeAttr(snapshot.reference_app_url)}">${escapeHtml(snapshot.reference_app_url)}</a></span>
+      <span>生成时间 ${escapeHtml(formatDate(snapshot.generated_at))}</span>
+      <span>Cloudflare 公开只读站。Vercel 参考动态应用：<a href="${escapeAttr(snapshot.reference_app_url)}">${escapeHtml(snapshot.reference_app_url)}</a></span>
     </footer>
   </body>
 </html>`;
@@ -457,8 +457,8 @@ function shell(snapshot: Snapshot, current: "home" | "radar" | "reports" | "ask"
 
 function renderCompactItem(item: SnapshotItem) {
   return `<article class="compact-row">
-    <div>${pill(item.status, statusTone(item.status))}${pill(item.source_tier, "neutral")}<h3><a href="${escapeAttr(item.url)}">${escapeHtml(item.title)}</a></h3><p>${escapeHtml(item.summary_en || item.summary_zh || "No public summary available.")}</p></div>
-    <dl>${rail("Source", item.source_name)}${rail("Processed", formatDate(item.processed_at))}</dl>
+    <div>${pill(statusLabel(item.status), statusTone(item.status))}${pill(item.source_tier, "neutral")}<h3><a href="${escapeAttr(item.url)}">${escapeHtml(item.title)}</a></h3><p>${escapeHtml(item.summary_zh || item.summary_en || "暂无公开摘要。")}</p></div>
+    <dl>${rail("来源", item.source_name)}${rail("处理时间", formatDate(item.processed_at))}</dl>
   </article>`;
 }
 
@@ -468,13 +468,13 @@ function renderRadarItem(item: SnapshotItem) {
 
   return `<article class="radar-row" data-category="${escapeAttr(item.categories.join(" "))}" data-family="${escapeAttr(family)}" data-search="${escapeAttr(search)}" data-status="${escapeAttr(item.status)}">
     <div>
-      <div class="pill-row">${pill(item.status, statusTone(item.status))}${pill(family, "neutral")}${pill(`overall ${item.scores.overall.toFixed(2)}`, "evidence")}${pill(`confidence ${formatPercent(item.confidence)}`, "success")}</div>
+      <div class="pill-row">${pill(statusLabel(item.status), statusTone(item.status))}${pill(family, "neutral")}${pill(`综合 ${item.scores.overall.toFixed(2)}`, "evidence")}${pill(`置信度 ${formatPercent(item.confidence)}`, "success")}</div>
       <h2><a href="${escapeAttr(item.url)}">${escapeHtml(item.title)}</a></h2>
-      <p>${escapeHtml(item.summary_en || item.summary_zh || "No public summary available.")}</p>
-      ${item.why_it_matters ? `<p class="note"><strong>Why it matters:</strong> ${escapeHtml(item.why_it_matters)}</p>` : ""}
+      <p>${escapeHtml(item.summary_zh || item.summary_en || "暂无公开摘要。")}</p>
+      ${item.why_it_matters ? `<p class="note"><strong>为什么重要：</strong> ${escapeHtml(publicText(item.why_it_matters))}</p>` : ""}
       <div class="pill-row">${item.categories.map((category) => pill(labelize(category), "evidence")).join("")}${item.tags.slice(0, 5).map((tag) => pill(tag, "neutral")).join("")}</div>
     </div>
-    <aside><dl class="rail">${rail("Source", item.source_name)}${rail("Tier", item.source_tier)}${rail("Published", formatDate(item.published_at))}${rail("Processed", formatDate(item.processed_at))}</dl><a class="source-link" href="${escapeAttr(item.url)}">Open citation</a></aside>
+    <aside><dl class="rail">${rail("来源", item.source_name)}${rail("层级", item.source_tier)}${rail("发布时间", formatDate(item.published_at))}${rail("处理时间", formatDate(item.processed_at))}</dl><a class="source-link" href="${escapeAttr(item.url)}">打开引用</a></aside>
   </article>`;
 }
 
@@ -484,27 +484,27 @@ function renderCitation(item: SnapshotItem) {
 
 function renderCompactReport(report: SnapshotReport) {
   return `<article class="compact-row">
-    <div>${pill(report.report_type, "evidence")}${pill(report.status, statusTone(report.status))}${pill(report.mode, "neutral")}<h3>${escapeHtml(report.title)}</h3><p>${escapeHtml(report.summary)}</p></div>
-    <dl>${rail("Item count", String(report.source_item_count))}${rail("Citation count", String(report.citations.length))}${rail("Saved", formatDate(report.saved_at ?? report.generated_at))}</dl>
+    <div>${pill(reportTypeLabel(report.report_type), "evidence")}${pill(statusLabel(report.status), statusTone(report.status))}${pill(modeLabel(report.mode), "neutral")}<h3>${escapeHtml(publicText(report.title))}</h3><p>${escapeHtml(publicText(report.summary))}</p></div>
+    <dl>${rail("可用条目", String(report.source_item_count))}${rail("引用数", String(report.citations.length))}${rail("保存时间", formatDate(report.saved_at ?? report.generated_at))}</dl>
   </article>`;
 }
 
 function renderReport(report: SnapshotReport) {
   return `<article class="report-card">
-    <div class="section-heading"><div><div class="pill-row">${pill(report.report_type, "evidence")}${pill(report.status, statusTone(report.status))}${pill(report.mode, "success")}${pill(`Item count ${report.source_item_count}`, "neutral")}${pill(`Citation count ${report.citations.length}`, "neutral")}</div><h2>${escapeHtml(report.title)}</h2></div><span>${escapeHtml(formatDate(report.saved_at ?? report.generated_at))}</span></div>
-    <p class="report-summary">${escapeHtml(report.summary)}</p>
-    ${report.executive_summary ? `<p>${escapeHtml(report.executive_summary)}</p>` : ""}
-    <dl class="inline-defs">${rail("Window", `${formatDate(report.time_window.start)} to ${formatDate(report.time_window.end)}`)}${rail("Data source", report.data_source)}${rail("Missing evidence", String(report.missing_evidence.length))}</dl>
+    <div class="section-heading"><div><div class="pill-row">${pill(reportTypeLabel(report.report_type), "evidence")}${pill(statusLabel(report.status), statusTone(report.status))}${pill(modeLabel(report.mode), "success")}${pill(`条目 ${report.source_item_count}`, "neutral")}${pill(`引用 ${report.citations.length}`, "neutral")}</div><h2>${escapeHtml(publicText(report.title))}</h2></div><span>${escapeHtml(formatDate(report.saved_at ?? report.generated_at))}</span></div>
+    <p class="report-summary">${escapeHtml(publicText(report.summary))}</p>
+    ${report.executive_summary ? `<p>${escapeHtml(publicText(report.executive_summary))}</p>` : ""}
+    <dl class="inline-defs">${rail("时间窗口", `${formatDate(report.time_window.start)} 至 ${formatDate(report.time_window.end)}`)}${rail("数据来源", report.data_source)}${rail("缺失证据", String(report.missing_evidence.length))}</dl>
     ${report.sections.map(renderReportSection).join("")}
     ${report.citations.length > 0 ? `<div class="citation-grid">${report.citations.map(renderReportCitation).join("")}</div>` : ""}
-    ${report.caveats.length > 0 ? `<h3>Caveats</h3>${noteList(report.caveats)}` : ""}
-    ${report.missing_evidence.length > 0 ? `<h3>Missing evidence</h3>${noteList(report.missing_evidence)}` : ""}
-    <details class="markdown"><summary>Markdown export</summary><pre>${escapeHtml(markdownForReport(report))}</pre></details>
+    ${report.caveats.length > 0 ? `<h3>局限</h3>${noteList(report.caveats)}` : ""}
+    ${report.missing_evidence.length > 0 ? `<h3>缺失证据</h3>${noteList(report.missing_evidence)}` : ""}
+    <details class="markdown"><summary>Markdown 导出</summary><pre>${escapeHtml(markdownForReport(report))}</pre></details>
   </article>`;
 }
 
 function renderReportSection(section: SnapshotReport["sections"][number]) {
-  return `<section class="report-section"><h3>${escapeHtml(section.title)}</h3><p>${escapeHtml(section.summary)}</p>${section.bullets.length > 0 ? noteList(section.bullets) : ""}</section>`;
+  return `<section class="report-section"><h3>${escapeHtml(publicText(section.title))}</h3><p>${escapeHtml(publicText(section.summary))}</p>${section.bullets.length > 0 ? noteList(section.bullets) : ""}</section>`;
 }
 
 function renderReportCitation(citation: SnapshotReport["citations"][number]) {
@@ -513,31 +513,31 @@ function renderReportCitation(citation: SnapshotReport["citations"][number]) {
 
 function markdownForReport(report: SnapshotReport) {
   const lines = [
-    `# ${report.title}`,
+    `# ${publicText(report.title)}`,
     "",
-    report.summary,
+    publicText(report.summary),
     "",
-    `- Type: ${report.report_type}`,
-    `- Status: ${report.status}`,
-    `- Window: ${report.time_window.start} to ${report.time_window.end}`,
-    `- Source items: ${report.source_item_count}`,
-    `- Citations: ${report.citations.length}`,
+    `- 类型: ${reportTypeLabel(report.report_type)}`,
+    `- 状态: ${statusLabel(report.status)}`,
+    `- 时间窗口: ${report.time_window.start} 至 ${report.time_window.end}`,
+    `- 来源条目: ${report.source_item_count}`,
+    `- 引用: ${report.citations.length}`,
     "",
     ...report.sections.flatMap((section) => [
-      `## ${section.title}`,
+      `## ${publicText(section.title)}`,
       "",
-      section.summary,
+      publicText(section.summary),
       "",
-      ...section.bullets.map((bullet) => `- ${bullet}`),
+      ...section.bullets.map((bullet) => `- ${publicText(bullet)}`),
       ""
     ]),
-    "## Caveats",
+    "## 局限",
     "",
-    ...(report.caveats.length > 0 ? report.caveats.map((caveat) => `- ${caveat}`) : ["- No caveats recorded."]),
+    ...(report.caveats.length > 0 ? report.caveats.map((caveat) => `- ${publicText(caveat)}`) : ["- 未记录局限。"]),
     "",
-    "## Citations",
+    "## 引用",
     "",
-    ...(report.citations.length > 0 ? report.citations.map((citation) => `- ${citation.title} (${citation.source_name}) ${citation.url}`) : ["- No citations recorded."])
+    ...(report.citations.length > 0 ? report.citations.map((citation) => `- ${citation.title} (${citation.source_name}) ${citation.url}`) : ["- 未记录引用。"])
   ];
   return lines.join("\n");
 }
@@ -562,11 +562,11 @@ function countSourceFamilies(items: SnapshotItem[]) {
 
 function sourceFamily(item: Pick<SnapshotItem, "source_name" | "url" | "source_tier">) {
   const text = `${item.source_name} ${item.url} ${item.source_tier}`.toLowerCase();
-  if (text.includes("arxiv")) return "Research feeds";
-  if (text.includes("github") || text.includes("release") || text.includes("hugging face")) return "Open source";
-  if (["openai", "anthropic", "google", "deepmind", "meta", "llama", "deepseek", "qwen"].some((term) => text.includes(term))) return "Company/lab";
-  if (["lex", "every", "latent", "lenny", "benedict", "karpathy"].some((term) => text.includes(term))) return "Analysis/media";
-  return "Other public sources";
+  if (text.includes("arxiv")) return "研究订阅";
+  if (text.includes("github") || text.includes("release") || text.includes("hugging face")) return "开源项目";
+  if (["openai", "anthropic", "google", "deepmind", "meta", "llama", "deepseek", "qwen"].some((term) => text.includes(term))) return "公司/实验室";
+  if (["lex", "every", "latent", "lenny", "benedict", "karpathy"].some((term) => text.includes(term))) return "分析/媒体";
+  return "其他公开来源";
 }
 
 function freshnessBuckets(items: SnapshotItem[]): Array<[string, number]> {
@@ -590,7 +590,7 @@ function coveragePanel(snapshot: Snapshot) {
   return `
     <section class="panel">
       <div class="section-heading">
-        <h2>Public Snapshot Coverage</h2>
+        <h2>公开快照覆盖</h2>
       </div>
       <dl class="rail">
         ${coverageRailRows(snapshot)}
@@ -606,17 +606,17 @@ function reportCoveragePanel(snapshot: Snapshot, reports: SnapshotReport[]) {
   return `
     <section class="panel">
       <div class="section-heading">
-        <h2>Report Candidate Coverage</h2>
+        <h2>报告候选覆盖</h2>
       </div>
       <dl class="rail">
-        ${rail("Report candidates", String(snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates))}
-        ${rail("Candidate count", String(snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates))}
-        ${rail("Daily latest candidate", daily?.title ?? "not available")}
-        ${rail("Item count", String(daily?.source_item_count ?? 0))}
-        ${rail("Citation count", String(daily?.citations.length ?? 0))}
-        ${rail("Weekly latest candidate", weekly?.title ?? "not available")}
-        ${rail("Weekly item count", String(weekly?.source_item_count ?? 0))}
-        ${rail("Weekly citation count", String(weekly?.citations.length ?? 0))}
+        ${rail("报告候选", String(snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates))}
+        ${rail("候选数量", String(snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates))}
+        ${rail("最新日报候选", daily ? publicText(daily.title) : "不可用")}
+        ${rail("条目数", String(daily?.source_item_count ?? 0))}
+        ${rail("引用数", String(daily?.citations.length ?? 0))}
+        ${rail("最新周报候选", weekly ? publicText(weekly.title) : "不可用")}
+        ${rail("周报条目数", String(weekly?.source_item_count ?? 0))}
+        ${rail("周报引用数", String(weekly?.citations.length ?? 0))}
       </dl>
     </section>
   `;
@@ -624,24 +624,24 @@ function reportCoveragePanel(snapshot: Snapshot, reports: SnapshotReport[]) {
 
 function coverageRailRows(snapshot: Snapshot) {
   return [
-    rail("Public snapshot", snapshot.coverage.label),
-    rail("Sources total", String(snapshot.coverage.sources_total)),
-    rail("Automated eligible sources", String(snapshot.coverage.automated_eligible_sources)),
-    rail("Attempted sources", String(snapshot.coverage.attempted_sources)),
-    rail("Sources public", String(snapshot.coverage.sources_with_public_items ?? "not available")),
-    rail("Public rows", String(snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)),
-    rail("Failed/skipped sources", String(snapshot.coverage.failed_sources + snapshot.coverage.skipped_sources)),
-    rail("Source to raw coverage", formatNullablePercent(snapshot.coverage.source_to_raw_coverage)),
-    rail("Latest refresh", formatDate(snapshot.coverage.latest_refresh))
+    rail("只读快照", "公开快照"),
+    rail("来源总数", String(snapshot.coverage.sources_total)),
+    rail("自动合格来源", String(snapshot.coverage.automated_eligible_sources)),
+    rail("已尝试来源", String(snapshot.coverage.attempted_sources)),
+    rail("有公开条目的来源", String(snapshot.coverage.sources_with_public_items ?? "不可用")),
+    rail("公开条目", String(snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)),
+    rail("失败/跳过来源", String(snapshot.coverage.failed_sources + snapshot.coverage.skipped_sources)),
+    rail("来源到原始覆盖率", formatNullablePercent(snapshot.coverage.source_to_raw_coverage)),
+    rail("更新时间", formatDate(snapshot.coverage.latest_refresh))
   ].join("");
 }
 
 function metric(label: string, value: number | null) {
-  return `<div><dt>${escapeHtml(label)}</dt><dd>${value === null ? "n/a" : value.toLocaleString("en-US")}</dd></div>`;
+  return `<div><dt>${escapeHtml(label)}</dt><dd>${value === null ? "不可用" : value.toLocaleString("en-US")}</dd></div>`;
 }
 
 function rail(label: string, value: string | number | null) {
-  return `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value ?? "not available"))}</dd>`;
+  return `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value ?? "不可用"))}</dd>`;
 }
 
 function option(value: string, label: string) {
@@ -652,6 +652,35 @@ function pill(label: string, tone: "caution" | "evidence" | "neutral" | "success
   return `<span class="pill ${tone}">${escapeHtml(label)}</span>`;
 }
 
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    approved: "已批准",
+    draft: "草稿",
+    excluded: "已排除",
+    failed: "失败",
+    included: "已纳入",
+    needs_review: "待复核",
+    published: "已发布",
+    reviewed: "已复核"
+  };
+  return labels[status] ?? status;
+}
+
+function reportTypeLabel(type: string) {
+  if (type === "daily") return "日报";
+  if (type === "weekly") return "周报";
+  return type;
+}
+
+function modeLabel(mode: string) {
+  const labels: Record<string, string> = {
+    local_preview: "本地预览",
+    saved_candidate: "已保存候选",
+    saved_report: "已保存报告"
+  };
+  return labels[mode] ?? mode;
+}
+
 function statusTone(status: string): "caution" | "evidence" | "neutral" | "success" {
   if (status === "included" || status === "needs_review") return status === "included" ? "success" : "caution";
   if (status === "needs_review" || status === "draft") return "caution";
@@ -659,7 +688,7 @@ function statusTone(status: string): "caution" | "evidence" | "neutral" | "succe
 }
 
 function noteList(items: string[]) {
-  return `<ul class="note-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+  return `<ul class="note-list">${items.map((item) => `<li>${escapeHtml(publicText(item))}</li>`).join("")}</ul>`;
 }
 
 function empty(message: string) {
@@ -667,7 +696,125 @@ function empty(message: string) {
 }
 
 function labelize(value: string) {
-  return value.replace(/_/g, " ");
+  const labels: Record<string, string> = {
+    agent: "智能体",
+    attempted: "已尝试",
+    benchmark: "基准",
+    business: "商业",
+    daily: "日报",
+    draft: "草稿",
+    eligible: "自动合格",
+    excluded: "已排除",
+    failed: "失败",
+    infrastructure: "基础设施",
+    included: "已纳入",
+    "model release": "模型发布",
+    model_release: "模型发布",
+    needs_review: "待复核",
+    opinion: "观点",
+    "open source": "开源",
+    open_source: "开源",
+    other: "其他",
+    "product update": "产品更新",
+    product_update: "产品更新",
+    research: "研究",
+    safety: "安全",
+    tooling: "工具",
+    total: "总数",
+    weekly: "周报"
+  };
+  return labels[value] ?? value.replace(/_/g, " ");
+}
+
+function publicText(value: string) {
+  return value
+    .replace(
+      "Cloudflare Pages is the primary public read surface. Auth, Admin, server actions, and write workflows remain outside this public Cloudflare surface.",
+      "Cloudflare Pages 是主要公开只读页面；登录、Admin、服务端操作和写入流程不在这个公开页面中运行。"
+    )
+    .replace(
+      "Only public-safe radar and report fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
+      "只纳入公开安全的雷达和报告字段；私有原文、供应商元数据、内部备注、service-role 访问和密钥均已排除。"
+    )
+    .replace(
+      "Snapshot data came from Supabase public-safe read views using anon read access.",
+      "快照数据来自 Supabase 公开安全只读视图，并使用 anon 只读访问。"
+    )
+    .replace(
+      "Read-only Supabase public radar retrieval was used; no Supabase write path ran.",
+      "使用 Supabase 公共雷达视图进行只读检索；未运行 Supabase 写入路径。"
+    )
+    .replace(
+      "This surface shows available AI Radar evidence only; it is not a claim of complete current AI industry coverage.",
+      "此页面只展示当前可用的 AI 行业雷达证据，不声称覆盖完整的实时 AI 行业。"
+    )
+    .replace("This is a deterministic preview, not a published report.", "这是确定性预览，不是已发布报告。")
+    .replace(
+      "No live DeepSeek call, Supabase write, or scheduled persistence job was run.",
+      "未运行 Live DeepSeek 调用、Supabase 写入或计划任务持久化。"
+    )
+    .replace(
+      "Supabase coverage depends on rows already persisted into the public retrieval view.",
+      "Supabase 覆盖范围取决于已经持久化到公共检索视图的行。"
+    )
+    .replace(
+      "The preview has fewer than 3 usable items, so report synthesis should remain narrow.",
+      "该预览少于 3 条可用条目，因此报告综合应保持收窄。"
+    )
+    .replace(
+      "No usable item in this window is marked included; report language must remain provisional.",
+      "该时间窗口内没有标记为已纳入的可用条目，报告措辞必须保持暂定。"
+    )
+    .replace(
+      "More independent items are needed for a broad daily or weekly synthesis.",
+      "需要更多独立条目才能形成宽口径日报或周报综合。"
+    )
+    .replace(
+      "Human review is needed before treating any item as confirmed.",
+      "任何条目在视为确认前都需要人工复核。"
+    )
+    .replace(
+      "No retrieved radar items in this window support this section.",
+      "该时间窗口内没有检索到可支撑本章节的雷达条目。"
+    )
+    .replace(
+      "No usable radar evidence currently supports this section.",
+      "当前没有可用雷达证据支撑本章节。"
+    )
+    .replace(/Weekly AI Radar preview - ending /g, "AI 行业雷达周报预览 - 截至 ")
+    .replace(/Daily AI Radar preview - /g, "AI 行业雷达日报预览 - ")
+    .replace(/^Potentially relevant AI signal for review: /, "可能相关的待复核 AI 信号：")
+    .replace(/^May affect model capability tracking and product benchmarking: /, "可能影响模型能力跟踪和产品基准：")
+    .replace(/Deterministic daily preview from (\d+) usable radar item\(s\)\./g, "确定性日报预览基于 $1 条可用雷达条目。")
+    .replace(/Deterministic weekly preview from (\d+) usable radar item\(s\)\./g, "确定性周报预览基于 $1 条可用雷达条目。")
+    .replace(/(\d+) included and (\d+) needs_review item\(s\)\./g, "$1 条已纳入，$2 条待复核。")
+    .replace(
+      /(\d+) item\(s\) are marked needs_review and require human confirmation before confident synthesis\./g,
+      "$1 条标记为待复核，需要人工确认后才能进行高置信综合。"
+    )
+    .replace(/(\d+) radar item\(s\) matched this section\./g, "$1 条雷达条目匹配本章节。")
+    .replace(/(\d+) still need review\./g, "$1 条仍需复核。")
+    .replace(/Model \/ product \/ company updates/g, "模型/产品/公司更新")
+    .replace(/Research \/ open-source/g, "研究/开源")
+    .replace(/Agents \/ products/g, "智能体/产品")
+    .replace(/Business \/ ecosystem/g, "商业/生态")
+    .replace(/Weak signals \/ needs_review/g, "弱信号/待复核")
+    .replace(/needs_review/g, "待复核")
+    .replace(/included/g, "已纳入")
+    .replace(/Visible categories: ([^.]+)\./g, (_, categories: string) => {
+      return `可见类别： ${categories
+        .split(",")
+        .map((category) => labelize(category.trim()))
+        .join("、")}。`;
+    })
+    .replace(/Visible categories:/g, "可见类别：")
+    .replace(/Top visible signal:/g, "最高可见信号：")
+    .replace(/(最高可见信号：[^.。]+) from ([^.。]+)([.。])/g, "$1 来自 $2$3")
+    .replace(/Deterministic daily preview/g, "确定性日报预览")
+    .replace(/Deterministic weekly preview/g, "确定性周报预览")
+    .replace(/usable radar item\(s\)/g, "条可用雷达条目")
+    .replace(/usable item\(s\)/g, "条可用条目")
+    .replace(/radar item\(s\)/g, "条雷达条目");
 }
 
 function formatPercent(value: number) {
@@ -675,14 +822,14 @@ function formatPercent(value: number) {
 }
 
 function formatNullablePercent(value: number | null) {
-  return value === null ? "not available" : formatPercent(value);
+  return value === null ? "不可用" : formatPercent(value);
 }
 
 function formatDate(value: string | null | undefined) {
-  if (!value) return "not available";
+  if (!value) return "不可用";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return `${new Intl.DateTimeFormat("en", {
+  return `${new Intl.DateTimeFormat("zh-CN", {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",

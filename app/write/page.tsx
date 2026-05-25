@@ -11,13 +11,13 @@ export default async function WritePage({
   const params = searchParams ? await searchParams : {};
   const summary = await loadProductDataSummary();
   const categoryPrompts = summary.topCategories.slice(0, 3).map((category) => {
-    return `Turn current ${category.label} signals into editorial topic candidates.`;
+    return `把当前 ${category.label} 信号整理成编辑选题候选。`;
   });
   const suggestedPrompts = [
     ...categoryPrompts,
-    "Build a weekly observation outline from the strongest current evidence.",
-    "Find weak signals and missing evidence for a cautious industry note.",
-    "Group current model, product, and agent/tooling updates into writing angles."
+    "基于最强证据生成一份周观察提纲。",
+    "找出弱信号和缺失证据，形成谨慎的行业笔记。",
+    "把当前模型、产品和智能体/工具更新分组成写作角度。"
   ];
   const initialPrompt = firstParam(params.prompt) ?? suggestedPrompts[0] ?? "";
 
@@ -43,7 +43,7 @@ function firstParam(value: string | string[] | undefined) {
 
 function formatTimestamp(value: string | null | undefined) {
   if (!value) {
-    return "not available";
+    return "不可用";
   }
 
   const date = new Date(value);
@@ -51,7 +51,7 @@ function formatTimestamp(value: string | null | undefined) {
     return value;
   }
 
-  return `${new Intl.DateTimeFormat("en", {
+  return `${new Intl.DateTimeFormat("zh-CN", {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",

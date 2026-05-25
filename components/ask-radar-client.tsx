@@ -53,12 +53,12 @@ export function AskRadarClient({
       const body = (await response.json()) as AskAnswer | { error?: string };
 
       if (!response.ok) {
-        throw new Error("error" in body && body.error ? body.error : "Request failed.");
+        throw new Error("error" in body && body.error ? body.error : "请求失败。");
       }
 
       setAnswer(body as AskAnswer);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to ask Radar.");
+      setError(caught instanceof Error ? caught.message : "无法完成提问。");
       setAnswer(null);
     } finally {
       setIsLoading(false);
@@ -70,24 +70,22 @@ export function AskRadarClient({
       <section className="grid gap-6 border-b border-radar-line pb-8 lg:grid-cols-[minmax(0,1fr)_380px]">
         <div>
           <div className="flex flex-wrap gap-2">
-            <DataSourceChip detail="current retrieval surface" source={dataSummary.dataSource} />
-            <EvidenceBadge detail={`${dataSummary.visibleRows} rows`} kind="evidence" label="Radar rows" />
-            <EvidenceBadge detail={dataSummary.latestRadarTime} kind="freshness" label="Latest" />
-            <StatusChip label="Attempted sources" tone="evidence" value={dataSummary.attemptedSources} />
-            <StatusChip label="Public sources" tone="success" value={dataSummary.sourcesWithPublicItems} />
-            <StatusChip label="Generation" tone="caution" value="mock API mode" />
+            <DataSourceChip detail="当前检索面" source={dataSummary.dataSource} />
+            <EvidenceBadge detail={`${dataSummary.visibleRows} 条`} kind="evidence" label="雷达条目" />
+            <EvidenceBadge detail={dataSummary.latestRadarTime} kind="freshness" label="更新时间" />
+            <StatusChip label="已尝试来源" tone="evidence" value={dataSummary.attemptedSources} />
+            <StatusChip label="公开来源" tone="success" value={dataSummary.sourcesWithPublicItems} />
+            <StatusChip label="生成模式" tone="caution" value="mock API" />
           </div>
-          <h1 className="mt-4 text-3xl font-semibold text-radar-ink">Ask Radar</h1>
+          <h1 className="mt-4 text-3xl font-semibold text-radar-ink">提问</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-            Query current AI Radar evidence. Suggested questions are shaped by
-            the live category mix, and every answer keeps source, time window,
-            uncertainty, and citations visible.
+            基于当前 AI 行业雷达证据提问。示例问题来自实时类别分布，回答会保留来源、时间窗口、不确定性和引用。
           </p>
         </div>
 
         <aside className="rounded-lg border border-radar-line bg-radar-panel p-4">
           <h2 className="text-sm font-semibold uppercase tracking-normal text-radar-muted">
-            Query hub
+            提问入口
           </h2>
           <div className="mt-3 flex flex-wrap gap-2">
             {dataSummary.topCategories.map((category) => (
@@ -96,9 +94,9 @@ export function AskRadarClient({
           </div>
           <ol className="mt-4 space-y-2 text-sm leading-6 text-radar-muted">
             {[
-              "Choose a live-data question",
-              "Run mock generation against retrieval",
-              "Review facts, inference, uncertainty, citations"
+              "选择一个基于当前数据的问题",
+              "用 mock 模式对检索结果生成回答",
+              "检查事实、推断、不确定性和引用"
             ].map((item, index) => (
               <li className="flex gap-3" key={item}>
                 <span className="font-mono text-xs font-semibold text-radar-muted">
@@ -114,7 +112,7 @@ export function AskRadarClient({
       <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
         <div className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
           <label className="block" htmlFor="ask-question">
-            <span className="text-sm font-semibold text-radar-ink">Question</span>
+            <span className="text-sm font-semibold text-radar-ink">问题</span>
             <textarea
               className="mt-3 min-h-28 w-full resize-y rounded-md border border-radar-line px-3 py-3 text-sm leading-6 text-radar-ink outline-none focus:border-radar-evidence"
               id="ask-question"
@@ -125,8 +123,7 @@ export function AskRadarClient({
 
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm leading-6 text-radar-muted">
-              Public-safe retrieval remains the evidence source; the API request
-              shape is unchanged.
+              公开安全检索仍是证据来源；API 请求结构保持不变。
             </p>
             <button
               className="rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
@@ -134,15 +131,15 @@ export function AskRadarClient({
               onClick={submitQuestion}
               type="button"
             >
-              {isLoading ? "Asking..." : "Ask"}
+              {isLoading ? "提问中..." : "提问"}
             </button>
           </div>
         </div>
 
         <aside className="rounded-lg border border-radar-line bg-radar-panel p-4">
-          <h2 className="text-sm font-semibold text-radar-ink">Analytical shortcuts</h2>
+          <h2 className="text-sm font-semibold text-radar-ink">分析快捷问题</h2>
           <p className="mt-2 text-xs leading-5 text-radar-muted">
-            Each shortcut fills the same question field and keeps retrieval unchanged.
+            每个快捷问题都会填入同一个输入框，检索来源不变。
           </p>
           <div className="mt-4 space-y-2">
             {suggestedQuestions.map((suggestion, index) => (
@@ -177,7 +174,7 @@ function AnswerView({ answer }: { answer: AskAnswer }) {
   const hasEvidence = answer.retrieved_item_count > 0 && answer.citations.length > 0;
 
   return (
-    <section aria-label="Ask Radar answer" className="space-y-5">
+    <section aria-label="提问回答" className="space-y-5">
       <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
         <EvidenceRail
           citationsCount={answer.citations.length}
@@ -187,19 +184,19 @@ function AnswerView({ answer }: { answer: AskAnswer }) {
           itemCount={answer.retrieved_item_count}
           modelMetadata={answer.model_metadata}
           timeWindow={answer.resolved_time_window}
-          title="Data source and time window"
+          title="数据来源与时间窗口"
         />
 
         <div className="space-y-5">
           <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
             <div className="flex flex-wrap gap-2">
               <EvidenceBadge
-                detail={hasEvidence ? "bounded by retrieved items" : "no evidence retrieved"}
+                detail={hasEvidence ? "受检索条目限制" : "未检索到证据"}
                 kind={hasEvidence ? "evidence" : "uncertainty"}
-                label="Short answer"
+                label="简短回答"
               />
               <StatusChip
-                label="Generation"
+                label="生成"
                 tone={answer.mode === "live" ? "risk" : "caution"}
                 value={answer.mode}
               />
@@ -207,46 +204,45 @@ function AnswerView({ answer }: { answer: AskAnswer }) {
             <p className="mt-4 text-lg leading-8 text-radar-ink">{answer.short_answer}</p>
             {!hasEvidence ? (
               <p className="mt-4 rounded-md border border-radar-caution/30 bg-radar-caution/5 px-3 py-3 text-sm leading-6 text-radar-caution">
-                No citation-backed evidence was retrieved, so this should be read
-                as a limited retrieval result rather than a confirmed answer.
+                未检索到带引用的证据，因此这只是有限检索结果，不应视为确认答案。
               </p>
             ) : null}
           </section>
 
           <AnswerSection
-            description="Direct claims from retrieved radar items. Each row keeps a source label visible."
-            title="Facts"
+            description="来自检索雷达条目的直接陈述。每行都保留来源标签。"
+            title="事实"
             tone="evidence"
           >
             <ClaimList
               citations={answer.citations}
-              empty="No evidence-backed facts were retrieved."
+              empty="未检索到有证据支撑的事实。"
               items={answer.facts}
               kind="fact"
             />
           </AnswerSection>
 
           <AnswerSection
-            description="Interpretation stays visually lower-certainty than facts."
-            title="Evidence-backed inference"
+            description="解释性判断的确定性低于事实。"
+            title="基于证据的推断"
             tone="inference"
           >
             <ClaimList
               citations={answer.citations}
-              empty="No inference was generated because evidence was insufficient."
+              empty="证据不足，未生成推断。"
               items={answer.evidence_backed_inference}
               kind="inference"
             />
           </AnswerSection>
 
           <AnswerSection
-            description="Missing, stale, local, mock, or needs_review evidence stays visible before citations."
-            title="Uncertainty"
+            description="缺失、过期、本地、模拟或待复核证据会在引用前保持可见。"
+            title="不确定性"
             tone="caution"
           >
             <ClaimList
               citations={answer.citations}
-              empty="No uncertainty notes were returned."
+              empty="未返回不确定性说明。"
               items={answer.uncertainty}
               kind="uncertainty"
             />
@@ -256,8 +252,8 @@ function AnswerView({ answer }: { answer: AskAnswer }) {
 
       <CitationList
         citations={answer.citations}
-        emptyMessage="No citations available for this response."
-        title="Citations"
+        emptyMessage="此回答暂无引用。"
+        title="引用"
       />
     </section>
   );
@@ -297,25 +293,25 @@ function ClaimList({
                   <EvidenceBadge
                     detail={citation.source_name}
                     kind="citation"
-                    label="Source"
+                    label="来源"
                   />
                   <StatusChip
-                    label={`Status: ${citation.status}`}
+                    label={`状态: ${statusLabel(citation.status)}`}
                     tone={statusTone(citation.status)}
                   />
                 </>
               ) : (
                 <EvidenceBadge
-                  detail="not citation-specific"
+                  detail="非特定引用"
                   kind="uncertainty"
-                  label="Source"
+                  label="来源"
                 />
               )}
               {needsReview ? (
                 <EvidenceBadge
-                  detail="not confirmed"
+                  detail="未确认"
                   kind="needs_review"
-                  label="needs_review"
+                  label="待复核"
                 />
               ) : null}
             </div>
@@ -341,26 +337,33 @@ function claimClasses(kind: "fact" | "inference" | "uncertainty", needsReview: b
 
 function claimLabel(kind: "fact" | "inference" | "uncertainty") {
   if (kind === "fact") {
-    return "Fact";
+    return "事实";
   }
 
   if (kind === "inference") {
-    return "Inference";
+    return "推断";
   }
 
-  return "Uncertainty";
+  return "不确定性";
 }
 
 function claimDetail(kind: "fact" | "inference" | "uncertainty") {
   if (kind === "fact") {
-    return "source-tied";
+    return "绑定来源";
   }
 
   if (kind === "inference") {
-    return "lower certainty";
+    return "较低确定性";
   }
 
-  return "review before conclusion";
+  return "先复核再下结论";
+}
+
+function statusLabel(status: RetrievalCitation["status"]) {
+  if (status === "included") return "已纳入";
+  if (status === "needs_review") return "待复核";
+  if (status === "excluded") return "已排除";
+  return "失败";
 }
 
 function statusTone(status: RetrievalCitation["status"]): StatusTone {

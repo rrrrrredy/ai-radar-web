@@ -4,9 +4,9 @@ import { AppShell } from "@/components/app-shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Industry Radar",
+  title: "AI 行业雷达",
   description:
-    "A bilingual public-information AI industry radar for tracking daily AI events, entities, and reports."
+    "基于公开信息的 AI 行业雷达，用于跟踪每日 AI 事件、实体和报告。"
 };
 
 export default function RootLayout({
@@ -15,7 +15,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="zh-CN">
       <body>
         <AppShell>{children}</AppShell>
       </body>

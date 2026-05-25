@@ -11,13 +11,13 @@ export default async function AskPage({
   const params = searchParams ? await searchParams : {};
   const summary = await loadProductDataSummary();
   const categoryQuestions = summary.topCategories.slice(0, 3).map((category) => {
-    return `What changed in ${category.label} signals?`;
+    return `${category.label} 信号最近有什么变化？`;
   });
   const suggestedQuestions = [
     ...categoryQuestions,
-    "Which signals are strong enough for a weekly report?",
-    "Which items still need human review?",
-    "What are the newest product or model updates?"
+    "哪些信号已经足够支撑周报？",
+    "哪些条目仍然需要人工复核？",
+    "最新的产品或模型更新是什么？"
   ];
   const initialQuestion = firstParam(params.question) ?? suggestedQuestions[0] ?? "";
 
@@ -43,7 +43,7 @@ function firstParam(value: string | string[] | undefined) {
 
 function formatTimestamp(value: string | null | undefined) {
   if (!value) {
-    return "not available";
+    return "不可用";
   }
 
   const date = new Date(value);
@@ -51,7 +51,7 @@ function formatTimestamp(value: string | null | undefined) {
     return value;
   }
 
-  return `${new Intl.DateTimeFormat("en", {
+  return `${new Intl.DateTimeFormat("zh-CN", {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",

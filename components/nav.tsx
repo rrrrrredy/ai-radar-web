@@ -6,16 +6,16 @@ import { usePathname } from "next/navigation";
 import { LanguageToggle } from "@/components/language-toggle";
 
 const publicNavItems = [
-  { href: "/", label: "Today" },
-  { href: "/radar", label: "Radar" },
-  { href: "/clusters", label: "Clusters" },
-  { href: "/entities", label: "Entities" },
-  { href: "/reports", label: "Reports" },
-  { href: "/ask", label: "Ask" },
-  { href: "/write", label: "Write" }
+  { href: "/", label: "今日" },
+  { href: "/radar", label: "雷达" },
+  { href: "/clusters", label: "聚类" },
+  { href: "/entities", label: "实体" },
+  { href: "/reports", label: "报告" },
+  { href: "/ask", label: "提问" },
+  { href: "/write", label: "写作" }
 ];
 
-const adminNavItem = { href: "/admin", label: "Ops/Admin" };
+const adminNavItem = { href: "/admin", label: "运维/Admin" };
 
 export function Nav({ isSignedIn = false }: { isSignedIn?: boolean }) {
   const pathname = usePathname();
@@ -26,10 +26,10 @@ export function Nav({ isSignedIn = false }: { isSignedIn?: boolean }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link className="group" href="/">
             <span className="block text-base font-semibold text-radar-ink group-hover:text-radar-evidence">
-              AI Industry Radar
+              AI 行业雷达
             </span>
             <span className="block text-xs font-medium text-radar-muted">
-              Editorial Intelligence Desk
+              AI 行业情报台
             </span>
           </Link>
           <div className="flex items-center gap-3">
@@ -37,13 +37,13 @@ export function Nav({ isSignedIn = false }: { isSignedIn?: boolean }) {
             {isSignedIn ? (
               <div className="flex items-center gap-2">
                 <span className="rounded-md border border-radar-evidence/30 bg-radar-evidence/10 px-3 py-2 text-sm font-medium text-radar-evidence">
-                  Signed in
+                  已登录
                 </span>
                 <a
                   className="rounded-md border border-radar-line px-3 py-2 text-sm font-medium text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
                   href="/auth/logout"
                 >
-                  Sign out
+                  退出
                 </a>
               </div>
             ) : (
@@ -51,13 +51,13 @@ export function Nav({ isSignedIn = false }: { isSignedIn?: boolean }) {
                 className="rounded-md border border-radar-line px-3 py-2 text-sm font-medium text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
                 href="/auth/login"
               >
-                Sign in
+                登录
               </Link>
             )}
           </div>
         </div>
         <nav
-          aria-label="Main navigation"
+          aria-label="主导航"
           className="flex flex-wrap items-center justify-between gap-3"
         >
           <div className="flex flex-wrap gap-2">
@@ -73,7 +73,7 @@ export function Nav({ isSignedIn = false }: { isSignedIn?: boolean }) {
           </div>
           <div className="flex flex-wrap items-center gap-2 border-l border-radar-line pl-3 max-sm:border-l-0 max-sm:pl-0">
             <span className="text-xs font-semibold uppercase tracking-normal text-radar-muted">
-              Ops
+              运维
             </span>
             <NavLink
               href={adminNavItem.href}

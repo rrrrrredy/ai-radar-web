@@ -110,3 +110,29 @@ Weekly candidate:
 - Missing evidence: 0
 
 Writes were limited to controlled source/raw/radar/report persistence and report audit rows with `ENABLE_SUPABASE_WRITES=true` set only for the local process.
+
+## Closeout retry - 2026-05-25
+
+Milestone L closeout added targeted source selection to `scripts/run-resumable-activation.ts`:
+
+- `--source-id <id>` can be repeated.
+- `--source-ids a,b,c` accepts a comma-separated list.
+- When source ids are supplied, the checkpoint limit is bounded to the selected source count unless an explicit `--limit` is passed.
+
+The closeout used bounded retry rather than another broad activation:
+
+- Retried the original timeout/fetch-aborted source set once: `andrew-chen`, `epoch-ai`, `heartcore-insights`, `marc-andreessen`, `the-strategy-desk`.
+- Left the original HTTP 403 sources with final blocked-access reason: `the-information`, `turing-post`.
+- Ran a second high-signal targeted pass for `openai-news`, `arxiv-cs-ai`, `arxiv-cs-cl`, `arxiv-cs-lg`, and `arxiv-cs-cv`.
+- Persisted only completed chunks with local `ENABLE_SUPABASE_WRITES=true`; deployed write gates remain disabled.
+
+Final closeout counts:
+
+- `sources`: 312
+- `raw_items`: 173
+- `radar_items`: 167
+- `public_radar_items`: 151
+- Radar status counts: included 150, needs_review 4, excluded 13, failed 0
+- `report_candidates`: 18
+
+The new `public_radar_items > 150` closeout target was reached.

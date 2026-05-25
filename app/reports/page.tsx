@@ -38,28 +38,26 @@ export default async function ReportsPage({
         <div>
           <div className="flex flex-wrap gap-2">
             <DataSourceChip detail={modeLabel(selectedReport)} source={selectedReport.data_source} />
-            <StatusChip label="Report status" tone={statusTone(selectedReport.status)} value={selectedReport.status} />
-            <StatusChip label="Saved mode" tone={selectedReport.read_source === "supabase" ? "success" : "caution"} value={readSourceLabel(selectedReport)} />
-            <StatusChip label="Publication" tone={publicationTone(selectedReport)} value={publicationLabel(selectedReport)} />
+            <StatusChip label="报告状态" tone={statusTone(selectedReport.status)} value={statusLabel(selectedReport.status)} />
+            <StatusChip label="保存模式" tone={selectedReport.read_source === "supabase" ? "success" : "caution"} value={readSourceLabel(selectedReport)} />
+            <StatusChip label="发布状态" tone={publicationTone(selectedReport)} value={publicationLabel(selectedReport)} />
           </div>
-          <h1 className="mt-4 text-3xl font-semibold text-radar-ink">Reports</h1>
+          <h1 className="mt-4 text-3xl font-semibold text-radar-ink">报告</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-            Daily and weekly report drafts now prefer saved Supabase report workflow rows.
-            When no saved row is available, this page falls back to a deterministic
-            draft from retrieved radar evidence and keeps uncertainty visible.
+            日报和周报优先读取已保存的 Supabase 报告工作流记录。没有保存记录时，页面回退到基于检索证据的确定性草稿，并保留不确定性。
           </p>
         </div>
 
         <aside className="rounded-lg border border-radar-line bg-radar-panel p-4">
           <h2 className="text-sm font-semibold uppercase tracking-normal text-radar-muted">
-            Workflow boundaries
+            工作流边界
           </h2>
           <dl className="mt-3 space-y-3 text-sm">
-            <RailRow label="Selected type" value={selectedReport.report_type} />
-            <RailRow label="Candidate count" value={String(coverage.reportCandidates ?? data.reports.length)} />
-            <RailRow label="Saved/generated" value={readSourceLabel(selectedReport)} />
-            <RailRow label="Generated at" value={selectedReport.generated_at} />
-            <RailRow label="Time window" value={`${selectedReport.time_window.start} to ${selectedReport.time_window.end}`} />
+            <RailRow label="选中类型" value={reportTypeLabel(selectedReport.report_type)} />
+            <RailRow label="候选数量" value={String(coverage.reportCandidates ?? data.reports.length)} />
+            <RailRow label="保存/生成" value={readSourceLabel(selectedReport)} />
+            <RailRow label="生成时间" value={selectedReport.generated_at} />
+            <RailRow label="时间窗口" value={`${selectedReport.time_window.start} 至 ${selectedReport.time_window.end}`} />
           </dl>
         </aside>
       </section>
@@ -67,7 +65,7 @@ export default async function ReportsPage({
       {data.warnings.length > 0 ? (
         <section className="rounded-lg border border-radar-caution/40 bg-white p-4 shadow-soft">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold text-radar-ink">Read notes</h2>
+            <h2 className="text-lg font-semibold text-radar-ink">读取说明</h2>
             <StatusChip label={String(data.warnings.length)} tone="caution" />
           </div>
           <ul className="mt-3 grid gap-2 text-sm leading-6 text-radar-muted">
@@ -85,15 +83,13 @@ export default async function ReportsPage({
       <section className="rounded-lg border border-radar-line bg-radar-panel p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-semibold text-radar-ink">Latest saved candidates</h2>
+            <h2 className="text-2xl font-semibold text-radar-ink">最新已保存候选</h2>
             <p className="mt-2 text-sm leading-6 text-radar-muted">
-              The daily and weekly workflow records are the primary report desk
-              entry points. Status, time window, citations, caveats, and export
-              readiness stay visible before the full draft.
+              日报和周报工作流记录是报告台入口。完整草稿前会先显示状态、时间窗口、引用、局限和导出状态。
             </p>
           </div>
           <StatusChip
-            label="Saved candidate mode"
+            label="已保存候选模式"
             tone={data.reports.some((report) => report.read_source === "supabase") ? "success" : "caution"}
             value={data.reports.filter((report) => report.read_source === "supabase").length}
           />
@@ -109,7 +105,7 @@ export default async function ReportsPage({
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2" aria-label="Report selector">
+      <section className="grid gap-4 lg:grid-cols-2" aria-label="报告选择">
         {data.reports.map((report) => (
           <ReportTabCard
             isSelected={report.report_type === selectedReport.report_type}
@@ -123,7 +119,7 @@ export default async function ReportsPage({
         <aside className="space-y-4 rounded-lg border border-radar-line bg-radar-panel p-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-normal text-radar-muted">
-              Selected draft
+              选中草稿
             </p>
             <h2 className="mt-2 text-lg font-semibold leading-7 text-radar-ink">
               {selectedReport.title}
@@ -131,17 +127,17 @@ export default async function ReportsPage({
           </div>
           <div className="flex flex-wrap gap-2">
             <DataSourceChip source={selectedReport.data_source} />
-            <EvidenceBadge detail={`${selectedReport.usable_item_count}/${selectedReport.retrieved_item_count}`} kind="evidence" label="Usable" />
-            <EvidenceBadge detail={String(selectedReport.citations.length)} kind="citation" label="Citations" />
-            <EvidenceBadge detail={String(selectedReport.missing_evidence.length)} kind="uncertainty" label="Gaps" />
+            <EvidenceBadge detail={`${selectedReport.usable_item_count}/${selectedReport.retrieved_item_count}`} kind="evidence" label="可用" />
+            <EvidenceBadge detail={String(selectedReport.citations.length)} kind="citation" label="引用" />
+            <EvidenceBadge detail={String(selectedReport.missing_evidence.length)} kind="uncertainty" label="缺口" />
           </div>
           <dl className="space-y-3 text-sm">
-            <RailRow label="Status" value={selectedReport.status} />
-            <RailRow label="Mode" value={modeLabel(selectedReport)} />
-            <RailRow label="Publication" value={publicationLabel(selectedReport)} />
-            <RailRow label="Saved at" value={selectedReport.saved_at ?? "not saved"} />
-            <RailRow label="Model/API calls" value={`${selectedReport.model_metadata.provider}; ${selectedReport.model_metadata.api_call_count} call(s)`} />
-            <RailRow label="Window rule" value={selectedReport.time_window.explanation} />
+            <RailRow label="状态" value={statusLabel(selectedReport.status)} />
+            <RailRow label="模式" value={modeLabel(selectedReport)} />
+            <RailRow label="发布" value={publicationLabel(selectedReport)} />
+            <RailRow label="保存时间" value={selectedReport.saved_at ?? "未保存"} />
+            <RailRow label="模型/API 调用" value={`${selectedReport.model_metadata.provider}; ${selectedReport.model_metadata.api_call_count} 次`} />
+            <RailRow label="时间窗口规则" value={selectedReport.time_window.explanation} />
           </dl>
           <div className="flex flex-wrap gap-2">
             {selectedReport.id ? (
@@ -149,14 +145,14 @@ export default async function ReportsPage({
                 className="inline-flex rounded-md border border-radar-line bg-white px-4 py-2 text-sm font-semibold text-radar-ink hover:border-radar-admin hover:text-radar-admin"
                 href={`/reports/${selectedReport.id}`}
               >
-                Open detail
+                打开详情
               </a>
             ) : null}
             <a
               className="inline-flex rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black"
               href="/write"
             >
-              Expand in Write
+              到写作台展开
             </a>
           </div>
         </aside>
@@ -164,23 +160,23 @@ export default async function ReportsPage({
         <div className="space-y-5">
           <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
             <div className="flex flex-wrap gap-2">
-              <EvidenceBadge kind="evidence" label="Summary" />
-              <StatusChip label="Report status" tone={statusTone(selectedReport.status)} value={selectedReport.status} />
-              <StatusChip label="Supabase writes" tone="neutral" value={selectedReport.read_source === "supabase" ? "saved row" : "none"} />
+              <EvidenceBadge kind="evidence" label="摘要" />
+              <StatusChip label="报告状态" tone={statusTone(selectedReport.status)} value={statusLabel(selectedReport.status)} />
+              <StatusChip label="Supabase 写入" tone="neutral" value={selectedReport.read_source === "supabase" ? "已保存记录" : "无"} />
             </div>
             <p className="mt-4 text-lg leading-8 text-radar-ink">
-              {selectedReport.one_sentence_summary}
+              {publicText(selectedReport.one_sentence_summary)}
             </p>
             <p className="mt-3 text-sm leading-6 text-radar-muted">
-              {selectedReport.executive_summary}
+              {selectedReport.executive_summary ? publicText(selectedReport.executive_summary) : selectedReport.executive_summary}
             </p>
           </section>
 
           <section className="space-y-4">
             <div>
-              <h2 className="text-lg font-semibold text-radar-ink">Report sections</h2>
+              <h2 className="text-lg font-semibold text-radar-ink">报告章节</h2>
               <p className="mt-2 text-sm leading-6 text-radar-muted">
-                Sections preserve the evidence boundary and keep empty or weak areas explicit.
+                章节会保留证据边界，并显式标出空白或薄弱区域。
               </p>
             </div>
             {selectedReport.sections.length > 0 ? (
@@ -189,19 +185,19 @@ export default async function ReportsPage({
               ))
             ) : (
               <EmptyState
-                description="This saved row does not include structured report sections."
-                title="No structured sections"
+                description="该保存记录没有结构化报告章节。"
+                title="没有结构化章节"
               />
             )}
           </section>
 
-          <PlanningList items={selectedReport.caveats} tone="caution" title="Caveats" />
-          <PlanningList items={selectedReport.missing_evidence} tone="risk" title="Missing evidence" />
+          <PlanningList items={selectedReport.caveats} tone="caution" title="局限" />
+          <PlanningList items={selectedReport.missing_evidence} tone="risk" title="缺失证据" />
 
           <CitationList
             citations={selectedReport.citations}
-            emptyMessage="No citations are available for this report draft."
-            title="Report citations"
+            emptyMessage="此报告草稿暂无引用。"
+            title="报告引用"
           />
 
           <ReportMarkdownExport markdown={selectedReport.markdown} />
@@ -224,13 +220,13 @@ function ReportCoveragePanel({
   return (
     <section className="rounded-lg border border-radar-line bg-radar-panel p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-lg font-semibold text-radar-ink">Report data coverage</h2>
-        <StatusChip label="Report candidates" tone="admin" value={coverage.reportCandidates ?? reports.length} />
-        <StatusChip label="Public radar items" tone="evidence" value={coverage.publicRadarItems ?? 0} />
+        <h2 className="text-lg font-semibold text-radar-ink">报告数据覆盖</h2>
+        <StatusChip label="报告候选" tone="admin" value={coverage.reportCandidates ?? reports.length} />
+        <StatusChip label="公开雷达条目" tone="evidence" value={coverage.publicRadarItems ?? 0} />
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <ReportCoverageRow label="Daily latest candidate" report={daily} />
-        <ReportCoverageRow label="Weekly latest candidate" report={weekly} />
+        <ReportCoverageRow label="最新日报候选" report={daily} />
+        <ReportCoverageRow label="最新周报候选" report={weekly} />
       </div>
     </section>
   );
@@ -248,15 +244,15 @@ function ReportCoverageRow({
       <p className="text-xs font-semibold uppercase tracking-normal text-radar-muted">{label}</p>
       {report ? (
         <>
-          <h3 className="mt-2 text-sm font-semibold leading-6 text-radar-ink">{report.title}</h3>
+          <h3 className="mt-2 text-sm font-semibold leading-6 text-radar-ink">{publicText(report.title)}</h3>
           <div className="mt-2 flex flex-wrap gap-2">
-            <EvidenceBadge detail={String(report.usable_item_count)} kind="evidence" label="Item count" />
-            <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="Citation count" />
-            <StatusChip label={report.status} tone={statusTone(report.status)} />
+            <EvidenceBadge detail={String(report.usable_item_count)} kind="evidence" label="条目数" />
+            <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="引用数" />
+            <StatusChip label={statusLabel(report.status)} tone={statusTone(report.status)} />
           </div>
         </>
       ) : (
-        <p className="mt-2 text-sm leading-6 text-radar-muted">No candidate is available.</p>
+        <p className="mt-2 text-sm leading-6 text-radar-muted">暂无候选。</p>
       )}
     </div>
   );
@@ -276,34 +272,34 @@ function ReportOverviewCard({
       }`}
     >
       <div className="flex flex-wrap gap-2">
-        <StatusChip label={report.report_type} tone="evidence" />
-        <StatusChip label={report.status} tone={statusTone(report.status)} />
+        <StatusChip label={reportTypeLabel(report.report_type)} tone="evidence" />
+        <StatusChip label={statusLabel(report.status)} tone={statusTone(report.status)} />
         <StatusChip label={readSourceLabel(report)} tone={report.read_source === "supabase" ? "success" : "caution"} />
-        <EvidenceBadge detail={String(report.usable_item_count)} kind="evidence" label="Usable" />
-        <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="Citations" />
-        <EvidenceBadge detail={String(report.caveats.length)} kind="uncertainty" label="Caveats" />
+        <EvidenceBadge detail={String(report.usable_item_count)} kind="evidence" label="可用" />
+        <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="引用" />
+        <EvidenceBadge detail={String(report.caveats.length)} kind="uncertainty" label="局限" />
       </div>
-      <h3 className="mt-4 text-xl font-semibold leading-7 text-radar-ink">{report.title}</h3>
-      <p className="mt-3 text-sm leading-6 text-radar-muted">{report.one_sentence_summary}</p>
+      <h3 className="mt-4 text-xl font-semibold leading-7 text-radar-ink">{publicText(report.title)}</h3>
+      <p className="mt-3 text-sm leading-6 text-radar-muted">{publicText(report.one_sentence_summary)}</p>
       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-        <RailRow label="Generated" value={report.generated_at} />
-        <RailRow label="Time window" value={`${report.time_window.start} to ${report.time_window.end}`} />
-        <RailRow label="Missing evidence" value={String(report.missing_evidence.length)} />
-        <RailRow label="Markdown bytes" value={String(report.markdown.length)} />
+        <RailRow label="生成时间" value={report.generated_at} />
+        <RailRow label="时间窗口" value={`${report.time_window.start} 至 ${report.time_window.end}`} />
+        <RailRow label="缺失证据" value={String(report.missing_evidence.length)} />
+        <RailRow label="Markdown 字节" value={String(report.markdown.length)} />
       </dl>
       <div className="mt-4 flex flex-wrap gap-2">
         <a
           className="rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black"
           href={`/reports?type=${report.report_type}`}
         >
-          Review {report.report_type}
+          查看{reportTypeLabel(report.report_type)}
         </a>
         {report.id ? (
           <a
             className="rounded-md border border-radar-line px-4 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
             href={`/reports/${report.id}`}
           >
-            Open saved row
+            打开保存记录
           </a>
         ) : null}
       </div>
@@ -329,17 +325,17 @@ function ReportTabCard({
       href={`/reports?type=${report.report_type}`}
     >
       <div className="flex flex-wrap gap-2">
-        <StatusChip label={report.report_type} tone={isSelected ? "evidence" : "neutral"} />
-        <StatusChip label={report.status} tone={statusTone(report.status)} />
+        <StatusChip label={reportTypeLabel(report.report_type)} tone={isSelected ? "evidence" : "neutral"} />
+        <StatusChip label={statusLabel(report.status)} tone={statusTone(report.status)} />
         <StatusChip label={modeLabel(report)} tone={publicationTone(report)} />
         <StatusChip label={readSourceLabel(report)} tone={report.read_source === "supabase" ? "success" : "caution"} />
-        <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="Citations" />
+        <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="引用" />
       </div>
       <h2 className="mt-4 text-xl font-semibold leading-7 text-radar-ink">
-        {report.title}
+        {publicText(report.title)}
       </h2>
       <p className="mt-3 line-clamp-3 text-sm leading-6 text-radar-muted">
-        {report.one_sentence_summary}
+        {publicText(report.one_sentence_summary)}
       </p>
     </a>
   );
@@ -350,32 +346,32 @@ function ReportSectionView({ section }: { section: GeneratedReportSection }) {
     <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-base font-semibold text-radar-ink">{section.title}</h3>
-          <p className="mt-2 text-sm leading-6 text-radar-muted">{section.summary}</p>
+          <h3 className="text-base font-semibold text-radar-ink">{publicText(section.title)}</h3>
+          <p className="mt-2 text-sm leading-6 text-radar-muted">{publicText(section.summary)}</p>
         </div>
-        <EvidenceBadge detail={String(section.bullets.length)} kind={section.bullets.length > 0 ? "evidence" : "uncertainty"} label="Bullets" />
+        <EvidenceBadge detail={String(section.bullets.length)} kind={section.bullets.length > 0 ? "evidence" : "uncertainty"} label="要点" />
       </div>
 
       {section.bullets.length > 0 ? (
         <ul className="mt-4 grid gap-2 text-sm leading-6 text-radar-muted">
           {section.bullets.map((bullet) => (
             <li className="rounded-md border border-radar-line bg-radar-panel px-3 py-2" key={bullet}>
-              {bullet}
+              {publicText(bullet)}
             </li>
           ))}
         </ul>
       ) : (
         <EmptyState
-          description="This section has no generated bullets from the available evidence."
-          title="No section bullets"
+          description="当前证据没有为该章节生成要点。"
+          title="没有章节要点"
         />
       )}
 
       {section.citations.length > 0 || section.caveats.length > 0 || section.missing_evidence.length > 0 ? (
         <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <InlineList items={section.citations} label="Citation ids" tone="evidence" />
-          <InlineList items={section.caveats} label="Section caveats" tone="caution" />
-          <InlineList items={section.missing_evidence} label="Missing evidence" tone="risk" />
+          <InlineList items={section.citations} label="引用 ID" tone="evidence" />
+          <InlineList items={section.caveats} label="章节局限" tone="caution" />
+          <InlineList items={section.missing_evidence} label="缺失证据" tone="risk" />
         </div>
       ) : null}
     </section>
@@ -401,12 +397,12 @@ function PlanningList({
         <ul className="mt-4 grid gap-2 text-sm leading-6 text-radar-muted">
           {items.map((item) => (
             <li className="rounded-md border border-radar-line bg-radar-panel px-3 py-2" key={item}>
-              {item}
+              {publicText(item)}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mt-3 text-sm leading-6 text-radar-muted">No notes returned for this draft.</p>
+        <p className="mt-3 text-sm leading-6 text-radar-muted">此草稿暂无说明。</p>
       )}
     </section>
   );
@@ -427,11 +423,11 @@ function InlineList({
       {items.length > 0 ? (
         <ul className="mt-2 space-y-1 text-sm leading-6 text-radar-muted">
           {items.map((item) => (
-            <li key={item}>{item}</li>
+            <li key={item}>{publicText(item)}</li>
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-sm leading-6 text-radar-muted">None.</p>
+        <p className="mt-2 text-sm leading-6 text-radar-muted">无。</p>
       )}
     </div>
   );
@@ -472,6 +468,25 @@ function statusTone(status: GeneratedReportStatus): StatusTone {
   return "neutral";
 }
 
+function statusLabel(status: GeneratedReportStatus) {
+  const labels: Partial<Record<GeneratedReportStatus, string>> = {
+    approved: "已批准",
+    archived: "已归档",
+    deferred: "已延后",
+    draft: "草稿",
+    needs_review: "待复核",
+    preview: "预览",
+    published: "已发布",
+    rejected: "已拒绝",
+    reviewed: "已复核"
+  };
+  return labels[status] ?? status;
+}
+
+function reportTypeLabel(type: ReportPreviewType) {
+  return type === "weekly" ? "周报" : "日报";
+}
+
 function publicationTone(report: ReportWorkflowDocument): StatusTone {
   if (report.status === "published") {
     return "success";
@@ -494,64 +509,174 @@ function publicationTone(report: ReportWorkflowDocument): StatusTone {
 
 function publicationLabel(report: ReportWorkflowDocument) {
   if (report.read_source === "generated_preview") {
-    return "generated preview";
+    return "生成预览";
   }
 
   if (report.mode === "saved_candidate") {
     if (report.status === "approved") {
-      return "approved candidate";
+      return "已批准候选";
     }
 
     if (report.status === "published") {
-      return "candidate published";
+      return "候选已发布";
     }
 
-    return "saved candidate";
+    return "已保存候选";
   }
 
   if (report.mode === "saved_report") {
     if (report.status === "published") {
-      return "published report";
+      return "已发布报告";
     }
 
     if (report.status === "reviewed") {
-      return "approved report";
+      return "已复核报告";
     }
 
-    return "saved report";
+    return "已保存报告";
   }
 
   return modeLabel(report);
 }
 
 function readSourceLabel(report: ReportWorkflowDocument) {
-  return report.read_source === "supabase" ? "saved workflow" : "generated preview";
+  return report.read_source === "supabase" ? "已保存工作流" : "生成预览";
 }
 
 function modeLabel(report: ReportWorkflowDocument) {
   if (report.mode === "saved_candidate") {
     if (report.status === "approved") {
-      return "approved report candidate";
+      return "已批准报告候选";
     }
 
-    return "saved report candidate";
+    return "已保存报告候选";
   }
 
   if (report.mode === "saved_report") {
     if (report.status === "published") {
-      return "published report";
+      return "已发布报告";
     }
 
     if (report.status === "reviewed") {
-      return "approved saved report";
+      return "已复核保存报告";
     }
 
-    return "saved report record";
+    return "已保存报告记录";
   }
 
   if (report.model_metadata.mode === "live_deepseek") {
-    return "live DeepSeek draft";
+    return "Live DeepSeek 草稿";
   }
 
-  return "deterministic draft";
+  return "确定性草稿";
+}
+
+function publicText(value: string) {
+  return value
+    .replace(
+      "Cloudflare Pages is the primary public read surface. Auth, Admin, server actions, and write workflows remain outside this public Cloudflare surface.",
+      "Cloudflare Pages 是主要公开只读页面；登录、Admin、服务端操作和写入流程不在这个公开页面中运行。"
+    )
+    .replace(
+      "Only public-safe radar and report fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
+      "只纳入公开安全的雷达和报告字段；私有原文、供应商元数据、内部备注、service-role 访问和密钥均已排除。"
+    )
+    .replace(
+      "Snapshot data came from Supabase public-safe read views using anon read access.",
+      "快照数据来自 Supabase 公开安全只读视图，并使用 anon 只读访问。"
+    )
+    .replace(
+      "Read-only Supabase public radar retrieval was used; no Supabase write path ran.",
+      "使用 Supabase 公共雷达视图进行只读检索；未运行 Supabase 写入路径。"
+    )
+    .replace(
+      "This surface shows available AI Radar evidence only; it is not a claim of complete current AI industry coverage.",
+      "此页面只展示当前可用的 AI 行业雷达证据，不声称覆盖完整的实时 AI 行业。"
+    )
+    .replace("This is a deterministic preview, not a published report.", "这是确定性预览，不是已发布报告。")
+    .replace(
+      "No live DeepSeek call, Supabase write, or scheduled persistence job was run.",
+      "未运行 Live DeepSeek 调用、Supabase 写入或计划任务持久化。"
+    )
+    .replace(
+      "Supabase coverage depends on rows already persisted into the public retrieval view.",
+      "Supabase 覆盖范围取决于已经持久化到公共检索视图的行。"
+    )
+    .replace(
+      "The preview has fewer than 3 usable items, so report synthesis should remain narrow.",
+      "该预览少于 3 条可用条目，因此报告综合应保持收窄。"
+    )
+    .replace(
+      "No usable item in this window is marked included; report language must remain provisional.",
+      "该时间窗口内没有标记为已纳入的可用条目，报告措辞必须保持暂定。"
+    )
+    .replace(
+      "More independent items are needed for a broad daily or weekly synthesis.",
+      "需要更多独立条目才能形成宽口径日报或周报综合。"
+    )
+    .replace(
+      "Human review is needed before treating any item as confirmed.",
+      "任何条目在视为确认前都需要人工复核。"
+    )
+    .replace(
+      "No retrieved radar items in this window support this section.",
+      "该时间窗口内没有检索到可支撑本章节的雷达条目。"
+    )
+    .replace(
+      "No usable radar evidence currently supports this section.",
+      "当前没有可用雷达证据支撑本章节。"
+    )
+    .replace(/Weekly AI Radar preview - ending /g, "AI 行业雷达周报预览 - 截至 ")
+    .replace(/Daily AI Radar preview - /g, "AI 行业雷达日报预览 - ")
+    .replace(/^Potentially relevant AI signal for review: /, "可能相关的待复核 AI 信号：")
+    .replace(/^May affect model capability tracking and product benchmarking: /, "可能影响模型能力跟踪和产品基准：")
+    .replace(/Deterministic daily preview from (\d+) usable radar item\(s\)\./g, "确定性日报预览基于 $1 条可用雷达条目。")
+    .replace(/Deterministic weekly preview from (\d+) usable radar item\(s\)\./g, "确定性周报预览基于 $1 条可用雷达条目。")
+    .replace(/(\d+) included and (\d+) needs_review item\(s\)\./g, "$1 条已纳入，$2 条待复核。")
+    .replace(
+      /(\d+) item\(s\) are marked needs_review and require human confirmation before confident synthesis\./g,
+      "$1 条标记为待复核，需要人工确认后才能进行高置信综合。"
+    )
+    .replace(/(\d+) radar item\(s\) matched this section\./g, "$1 条雷达条目匹配本章节。")
+    .replace(/(\d+) still need review\./g, "$1 条仍需复核。")
+    .replace(/Model \/ product \/ company updates/g, "模型/产品/公司更新")
+    .replace(/Research \/ open-source/g, "研究/开源")
+    .replace(/Agents \/ products/g, "智能体/产品")
+    .replace(/Business \/ ecosystem/g, "商业/生态")
+    .replace(/Weak signals \/ needs_review/g, "弱信号/待复核")
+    .replace(/needs_review/g, "待复核")
+    .replace(/included/g, "已纳入")
+    .replace(/Visible categories: ([^.]+)\./g, (_, categories: string) => {
+      return `可见类别： ${categories
+        .split(",")
+        .map((category) => labelizeReportCategory(category.trim()))
+        .join("、")}。`;
+    })
+    .replace(/Visible categories:/g, "可见类别：")
+    .replace(/Top visible signal:/g, "最高可见信号：")
+    .replace(/(最高可见信号：[^.。]+) from ([^.。]+)([.。])/g, "$1 来自 $2$3")
+    .replace(/Deterministic daily preview/g, "确定性日报预览")
+    .replace(/Deterministic weekly preview/g, "确定性周报预览")
+    .replace(/usable radar item\(s\)/g, "条可用雷达条目")
+    .replace(/usable item\(s\)/g, "条可用条目")
+    .replace(/radar item\(s\)/g, "条雷达条目");
+}
+
+function labelizeReportCategory(value: string) {
+  const labels: Record<string, string> = {
+    agent: "智能体",
+    benchmark: "基准",
+    business: "商业",
+    infrastructure: "基础设施",
+    model_release: "模型发布",
+    open_source: "开源",
+    other: "其他",
+    policy: "政策",
+    product_update: "产品更新",
+    research: "研究",
+    safety: "安全",
+    tooling: "工具"
+  };
+
+  return labels[value] ?? value.replace(/_/g, " ");
 }

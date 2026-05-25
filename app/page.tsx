@@ -18,36 +18,34 @@ export default async function HomePage() {
       <section className="grid gap-8 border-b border-radar-line pb-8 lg:grid-cols-[minmax(0,1fr)_420px]">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <DataSourceChip detail="production read path" source={summary.dataSource} />
-            <StatusChip label="Public information only" tone="evidence" />
-            <StatusChip label="Coverage" tone="caution" value="improving" />
+            <DataSourceChip detail="生产只读路径" source={summary.dataSource} />
+            <StatusChip label="仅基于公开信息" tone="evidence" />
+            <StatusChip label="覆盖率" tone="caution" value="持续补齐" />
           </div>
           <h1 className="mt-4 max-w-4xl text-4xl font-semibold leading-tight tracking-normal text-radar-ink sm:text-5xl">
-            AI Industry Radar
+            AI 行业雷达
           </h1>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-radar-muted">
-            Editorial Intelligence Desk for AI signals: source coverage,
-            retrieved evidence, report candidates, and caveats in one public
-            data surface.
+            面向 AI 信号的行业情报台：把来源覆盖、检索证据、报告候选和局限放在同一个公开数据界面。
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
             <Link
               className="rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black"
               href="/radar"
             >
-              Open radar
+              打开雷达
             </Link>
             <Link
               className="rounded-md border border-radar-line px-4 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
               href="/reports"
             >
-              Review reports
+              查看报告
             </Link>
             <Link
               className="rounded-md border border-radar-line px-4 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
               href="/ask"
             >
-              Ask with evidence
+              基于证据提问
             </Link>
           </div>
         </div>
@@ -73,22 +71,22 @@ export default async function HomePage() {
 function ProductionStatusPanel({ summary }: { summary: ProductDataSummary }) {
   const coverage = summary.coverage;
   const metrics = [
-    { label: "Sources total", value: coverage.sourcesTotal, tone: "evidence" as const },
-    { label: "Attempted", value: coverage.attemptedSources, tone: "freshness" as const },
-    { label: "Sources public", value: formatCount(coverage.sourcesWithPublicItems), tone: "success" as const },
-    { label: "Public rows", value: formatCount(coverage.publicRadarItems), tone: "success" as const },
-    { label: "Failed/skipped", value: coverage.failedSources + coverage.skippedSources, tone: "risk" as const },
-    { label: "Report candidates", value: formatCount(summary.counts.reportCandidates), tone: "admin" as const },
-    { label: "Citations", value: summary.counts.citations, tone: "neutral" as const }
+    { label: "来源总数", value: coverage.sourcesTotal, tone: "evidence" as const },
+    { label: "已尝试", value: coverage.attemptedSources, tone: "freshness" as const },
+    { label: "公开来源", value: formatCount(coverage.sourcesWithPublicItems), tone: "success" as const },
+    { label: "公开条目", value: formatCount(coverage.publicRadarItems), tone: "success" as const },
+    { label: "失败/跳过", value: coverage.failedSources + coverage.skippedSources, tone: "risk" as const },
+    { label: "报告候选", value: formatCount(summary.counts.reportCandidates), tone: "admin" as const },
+    { label: "引用", value: summary.counts.citations, tone: "neutral" as const }
   ];
 
   return (
     <aside className="rounded-lg border border-radar-line bg-radar-panel p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-normal text-radar-muted">
-          Production data status
+          生产数据状态
         </h2>
-        <DataSourceChip detail="homepage status" source={summary.dataSource} />
+        <DataSourceChip detail="首页状态" source={summary.dataSource} />
       </div>
       <dl className="mt-4 grid grid-cols-2 gap-3">
         {metrics.map((metric) => (
@@ -103,13 +101,13 @@ function ProductionStatusPanel({ summary }: { summary: ProductDataSummary }) {
         ))}
       </dl>
       <div className="mt-4 grid gap-2 text-sm">
-        <RailRow label="Data source" value={summary.dataSource} />
-        <RailRow label="Automated eligible sources" value={String(coverage.automatedEligibleSources)} />
-        <RailRow label="Included / needs_review / excluded" value={`${summary.counts.included} / ${summary.counts.needsReview} / ${summary.counts.excluded}`} />
-        <RailRow label="Latest refresh" value={formatTimestamp(coverage.latestRefresh ?? summary.latest.radar)} />
-        <RailRow label="Latest ingestion" value={formatTimestamp(coverage.latestIngestion ?? summary.latest.ingestion)} />
-        <RailRow label="Latest understanding" value={formatTimestamp(coverage.latestUnderstanding ?? summary.latest.understanding)} />
-        <RailRow label="Source to raw coverage" value={formatRate(coverage.rates.sourceRawCoverage)} />
+        <RailRow label="数据来源" value={summary.dataSource} />
+        <RailRow label="自动合格来源" value={String(coverage.automatedEligibleSources)} />
+        <RailRow label="已纳入 / 待复核 / 已排除" value={`${summary.counts.included} / ${summary.counts.needsReview} / ${summary.counts.excluded}`} />
+        <RailRow label="更新时间" value={formatTimestamp(coverage.latestRefresh ?? summary.latest.radar)} />
+        <RailRow label="最新采集" value={formatTimestamp(coverage.latestIngestion ?? summary.latest.ingestion)} />
+        <RailRow label="最新理解" value={formatTimestamp(coverage.latestUnderstanding ?? summary.latest.understanding)} />
+        <RailRow label="来源到原始覆盖率" value={formatRate(coverage.rates.sourceRawCoverage)} />
       </div>
     </aside>
   );
@@ -120,28 +118,27 @@ function RadarPulse({ summary }: { summary: ProductDataSummary }) {
     <section className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold text-radar-ink">Radar Pulse</h2>
+          <h2 className="text-2xl font-semibold text-radar-ink">雷达脉冲</h2>
           <p className="mt-2 text-sm leading-6 text-radar-muted">
-            Live public retrieval counts, category concentration, source mix,
-            and the newest visible signals from Supabase.
+            展示公开检索计数、类别集中度、来源结构和 Supabase 中最新可见信号。
           </p>
         </div>
         <Link className="text-sm font-semibold text-radar-evidence" href="/radar">
-          Open full radar
+          打开完整雷达
         </Link>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">
-        <CountList entries={summary.topCategories} title="Top categories" />
-        <CountList entries={summary.topSources} title="Top sources" />
-        <CountList entries={summary.topSourceFamilies} title="Source families" />
+        <CountList entries={summary.topCategories} title="重点类别" />
+        <CountList entries={summary.topSources} title="主要来源" />
+        <CountList entries={summary.topSourceFamilies} title="来源家族" />
       </div>
 
       <section className="overflow-hidden rounded-lg border border-radar-line bg-white shadow-soft">
         <div className="border-b border-radar-line bg-radar-panel px-4 py-3">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold text-radar-ink">Latest signals</h3>
-            <EvidenceBadge detail={String(summary.latestSignals.length)} kind="freshness" label="Rows" />
+            <h3 className="text-sm font-semibold text-radar-ink">最新信号</h3>
+            <EvidenceBadge detail={String(summary.latestSignals.length)} kind="freshness" label="条目" />
           </div>
         </div>
         <div className="divide-y divide-radar-line">
@@ -152,7 +149,7 @@ function RadarPulse({ summary }: { summary: ProductDataSummary }) {
                   <span className="font-mono text-xs font-semibold text-radar-muted">
                     {String(index + 1).padStart(2, "0")}
                   </span>
-                  <StatusChip label={signal.status} tone={statusTone(signal.status)} />
+                  <StatusChip label={statusLabel(signal.status)} tone={statusTone(signal.status)} />
                   {signal.categories.slice(0, 2).map((category) => (
                     <StatusChip key={category} label={category} tone="neutral" />
                   ))}
@@ -164,8 +161,8 @@ function RadarPulse({ summary }: { summary: ProductDataSummary }) {
                 </h3>
               </div>
               <aside className="rounded-md border border-radar-line bg-radar-panel p-3 text-sm">
-                <RailRow label="Source" value={signal.source} />
-                <RailRow label="Timestamp" value={formatTimestamp(signal.timestamp)} />
+                <RailRow label="来源" value={signal.source} />
+                <RailRow label="时间" value={formatTimestamp(signal.timestamp)} />
               </aside>
             </article>
           ))}
@@ -183,9 +180,9 @@ function LatestReports({ summary }: { summary: ProductDataSummary }) {
   return (
     <aside className="space-y-4">
       <div>
-        <h2 className="text-2xl font-semibold text-radar-ink">Saved candidates</h2>
+        <h2 className="text-2xl font-semibold text-radar-ink">已保存候选</h2>
         <p className="mt-2 text-sm leading-6 text-radar-muted">
-          Daily and weekly candidates are saved workflow records, not published reports.
+          日报和周报候选是已保存的工作流记录，不等同于已发布报告。
         </p>
       </div>
       {reports.map((report) => (
@@ -195,10 +192,10 @@ function LatestReports({ summary }: { summary: ProductDataSummary }) {
           key={report.report_type}
         >
           <div className="flex flex-wrap gap-2">
-            <StatusChip label={report.report_type} tone="evidence" />
-            <StatusChip label={report.status} tone={statusTone(report.status)} />
-            <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="Citations" />
-            <EvidenceBadge detail={String(report.usable_item_count)} kind="evidence" label="Usable" />
+            <StatusChip label={report.report_type === "weekly" ? "周报" : "日报"} tone="evidence" />
+            <StatusChip label={statusLabel(report.status)} tone={statusTone(report.status)} />
+            <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="引用" />
+            <EvidenceBadge detail={String(report.usable_item_count)} kind="evidence" label="可用" />
           </div>
           <h3 className="mt-3 text-base font-semibold leading-7 text-radar-ink">
             {report.title}
@@ -207,7 +204,7 @@ function LatestReports({ summary }: { summary: ProductDataSummary }) {
             {report.one_sentence_summary}
           </p>
           <p className="mt-3 text-xs leading-5 text-radar-muted">
-            Window: {formatTimestamp(report.time_window.start)} to {formatTimestamp(report.time_window.end)}
+            时间窗口: {formatTimestamp(report.time_window.start)} 至 {formatTimestamp(report.time_window.end)}
           </p>
         </Link>
       ))}
@@ -215,7 +212,7 @@ function LatestReports({ summary }: { summary: ProductDataSummary }) {
         className="inline-flex rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black"
         href="/reports"
       >
-        Open report desk
+        打开报告台
       </Link>
     </aside>
   );
@@ -229,14 +226,12 @@ function RelationshipPreview({ summary }: { summary: ProductDataSummary }) {
     <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold text-radar-ink">Relationship preview</h2>
+          <h2 className="text-2xl font-semibold text-radar-ink">关系预览</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
-            Inspired by the reference knowledge graph: this is a real, lightweight
-            map of how current Supabase radar rows connect sources, categories,
-            and saved report candidates.
+            轻量关系图展示当前 Supabase 雷达条目如何连接来源、类别和已保存报告候选。
           </p>
         </div>
-        <StatusChip label="Graph preview" tone="admin" value="real counts" />
+        <StatusChip label="关系图预览" tone="admin" value="真实计数" />
       </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -257,27 +252,26 @@ function RelationshipPreview({ summary }: { summary: ProductDataSummary }) {
             <circle className="fill-radar-admin/10 stroke-radar-admin" cx="545" cy="230" r="24" strokeWidth="2" />
           </svg>
           <div className="relative grid min-h-64 grid-cols-[1fr_1.1fr_1fr] items-center gap-3 text-center">
-            <NodeColumn entries={categories} label="Categories" tone="freshness" />
+            <NodeColumn entries={categories} label="类别" tone="freshness" />
             <div className="rounded-full border border-radar-evidence bg-white px-5 py-6 shadow-soft">
               <p className="text-xs font-semibold uppercase tracking-normal text-radar-muted">
-                Data source
+                数据来源
               </p>
               <p className="mt-2 text-sm font-semibold text-radar-ink">supabase_radar_items</p>
               <p className="mt-1 text-2xl font-semibold text-radar-evidence">
                 {summary.counts.visibleRadarItems}
               </p>
             </div>
-            <NodeColumn entries={sources} label="Sources" tone="admin" />
+            <NodeColumn entries={sources} label="来源" tone="admin" />
           </div>
         </div>
 
         <aside className="space-y-3">
-          <GraphLegendRow label="Category nodes" value={categories.length} tone="freshness" />
-          <GraphLegendRow label="Source nodes" value={sources.length} tone="admin" />
-          <GraphLegendRow label="Report nodes" value={summary.reports.savedCount} tone="evidence" />
+          <GraphLegendRow label="类别节点" value={categories.length} tone="freshness" />
+          <GraphLegendRow label="来源节点" value={sources.length} tone="admin" />
+          <GraphLegendRow label="报告节点" value={summary.reports.savedCount} tone="evidence" />
           <div className="rounded-md border border-radar-caution/30 bg-radar-caution/5 p-3 text-sm leading-6 text-radar-caution">
-            Relationship depth is intentionally limited to public-safe retrieval
-            fields. Entity extraction can deepen this in a later milestone.
+            关系深度目前仅限公开安全的检索字段。实体抽取可在后续里程碑继续加深。
           </div>
         </aside>
       </div>
@@ -287,33 +281,32 @@ function RelationshipPreview({ summary }: { summary: ProductDataSummary }) {
 
 function QueryHubPanel({ summary }: { summary: ProductDataSummary }) {
   const categoryQueries = summary.topCategories.slice(0, 3).map((category) => ({
-    href: `/ask?question=${encodeURIComponent(`What changed in ${category.label} signals?`)}`,
-    label: `What changed in ${category.label}?`,
-    meta: `${category.count} visible rows`
+    href: `/ask?question=${encodeURIComponent(`${category.label} 信号最近有什么变化？`)}`,
+    label: `${category.label} 最近有什么变化？`,
+    meta: `${category.count} 条可见`
   }));
   const prompts = [
     ...categoryQueries,
     {
-      href: "/ask?question=Which signals are strong enough for a weekly report?",
-      label: "Which signals are strong enough for a weekly report?",
-      meta: `${summary.counts.visibleRadarItems} radar rows`
+      href: "/ask?question=哪些信号已经足够支撑周报？",
+      label: "哪些信号已经足够支撑周报？",
+      meta: `${summary.counts.visibleRadarItems} 条雷达`
     },
     {
       href: "/write",
-      label: "Turn current signals into editorial topic candidates",
-      meta: "Write desk"
+      label: "把当前信号整理成编辑选题候选",
+      meta: "写作台"
     }
   ];
 
   return (
     <section className="rounded-lg border border-radar-line bg-radar-panel p-5">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-2xl font-semibold text-radar-ink">Analyst query hub</h2>
+        <h2 className="text-2xl font-semibold text-radar-ink">分析提问入口</h2>
         <DataSourceChip source={summary.dataSource} />
       </div>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
-        Action-oriented entry points mirror the query-hub reference pattern:
-        start from current data shape, then move into Ask or Write.
+        从当前数据结构出发，进入提问或写作流程。
       </p>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         {prompts.map((prompt, index) => (
@@ -340,18 +333,46 @@ function CaveatPanel({ caveats, warnings }: { caveats: string[]; warnings: strin
   return (
     <aside className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-lg font-semibold text-radar-ink">Coverage notes</h2>
-        <StatusChip label="Caveats" tone="caution" value={visible.length} />
+        <h2 className="text-lg font-semibold text-radar-ink">覆盖说明</h2>
+        <StatusChip label="注意事项" tone="caution" value={visible.length} />
       </div>
       <ul className="mt-4 space-y-2 text-sm leading-6 text-radar-muted">
         {visible.map((note) => (
           <li className="rounded-md border border-radar-line bg-radar-panel px-3 py-2" key={note}>
-            {note}
+            {publicText(note)}
           </li>
         ))}
       </ul>
     </aside>
   );
+}
+
+function publicText(value: string) {
+  return value
+    .replace(
+      "Cloudflare Pages is the primary public read surface. Auth, Admin, server actions, and write workflows remain outside this public Cloudflare surface.",
+      "Cloudflare Pages 是主要公开只读页面；登录、Admin、服务端操作和写入流程不在这个公开页面中运行。"
+    )
+    .replace(
+      "Only public-safe radar and report fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
+      "只纳入公开安全的雷达和报告字段；私有原文、供应商元数据、内部备注、service-role 访问和密钥均已排除。"
+    )
+    .replace(
+      "Snapshot data came from Supabase public-safe read views using anon read access.",
+      "快照数据来自 Supabase 公开安全只读视图，并使用 anon 只读访问。"
+    )
+    .replace(
+      "Read-only Supabase public radar retrieval was used; no Supabase write path ran.",
+      "使用 Supabase 公共雷达视图进行只读检索；未运行 Supabase 写入路径。"
+    )
+    .replace(
+      "This surface shows available AI Radar evidence only; it is not a claim of complete current AI industry coverage.",
+      "此页面只展示当前可用的 AI 行业雷达证据，不声称覆盖完整的实时 AI 行业。"
+    )
+    .replace(
+      "Supabase coverage depends on rows already persisted into the public retrieval view.",
+      "Supabase 覆盖范围取决于已经持久化到公共检索视图的行。"
+    );
 }
 
 function CountList({ entries, title }: { entries: CountEntry[]; title: string }) {
@@ -377,7 +398,7 @@ function CountList({ entries, title }: { entries: CountEntry[]; title: string })
             )
           )
         ) : (
-          <StatusChip label="none" tone="neutral" />
+          <StatusChip label="无" tone="neutral" />
         )}
       </div>
     </section>
@@ -431,12 +452,12 @@ function RailRow({ label, value }: { label: string; value: string }) {
 }
 
 function formatCount(value: number | null) {
-  return value === null ? "n/a" : value;
+  return value === null ? "不可用" : value;
 }
 
 function formatTimestamp(value: string | null | undefined) {
   if (!value) {
-    return "not available";
+    return "不可用";
   }
 
   const date = new Date(value);
@@ -444,7 +465,7 @@ function formatTimestamp(value: string | null | undefined) {
     return value;
   }
 
-  return `${new Intl.DateTimeFormat("en", {
+  return `${new Intl.DateTimeFormat("zh-CN", {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
@@ -455,7 +476,7 @@ function formatTimestamp(value: string | null | undefined) {
 }
 
 function formatRate(value: number | null) {
-  return value === null ? "not available" : `${Math.round(value * 1000) / 10}%`;
+  return value === null ? "不可用" : `${Math.round(value * 1000) / 10}%`;
 }
 
 function statusTone(status: string): StatusTone {
@@ -472,6 +493,22 @@ function statusTone(status: string): StatusTone {
   }
 
   return "neutral";
+}
+
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    approved: "已批准",
+    archived: "已归档",
+    draft: "草稿",
+    excluded: "已排除",
+    failed: "失败",
+    included: "已纳入",
+    needs_review: "待复核",
+    preview: "预览",
+    published: "已发布",
+    reviewed: "已复核"
+  };
+  return labels[status] ?? status;
 }
 
 function metricToneClass(tone: StatusTone) {

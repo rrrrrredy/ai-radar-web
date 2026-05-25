@@ -265,11 +265,11 @@ export function sourceFamily(item: Pick<RetrievalRadarItem, "source_name" | "url
   const haystack = `${item.source_name} ${item.url} ${item.source_tier}`.toLowerCase();
 
   if (haystack.includes("arxiv")) {
-    return "Research feeds";
+    return "研究订阅";
   }
 
   if (haystack.includes("github") || haystack.includes("release") || haystack.includes("hugging face")) {
-    return "Open source";
+    return "开源项目";
   }
 
   if (
@@ -277,18 +277,30 @@ export function sourceFamily(item: Pick<RetrievalRadarItem, "source_name" | "url
       haystack.includes(term)
     )
   ) {
-    return "Company/lab";
+    return "公司/实验室";
   }
 
   if (["lex", "every", "latent", "lenny", "benedict", "karpathy"].some((term) => haystack.includes(term))) {
-    return "Analysis/media";
+    return "分析/媒体";
   }
 
-  return "Other public sources";
+  return "其他公开来源";
 }
 
 export function labelize(value: string) {
-  return value.replace(/_/g, " ");
+  const labels: Record<string, string> = {
+    benchmark: "基准",
+    business: "商业",
+    infrastructure: "基础设施",
+    model_release: "模型发布",
+    open_source: "开源",
+    policy: "政策",
+    product_update: "产品更新",
+    research: "研究",
+    safety: "安全",
+    tooling: "工具"
+  };
+  return labels[value] ?? value.replace(/_/g, " ");
 }
 
 function sanitizeSummaryError(error: unknown) {

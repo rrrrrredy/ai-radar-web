@@ -51,6 +51,7 @@ type CliOptions = {
   limit: number | null;
   chunkSize: number;
   maxItemsPerSource: number;
+  sourceIds: string[] | null;
   persist: boolean;
   resume: boolean;
   reset: boolean;
@@ -222,6 +223,7 @@ function parseArgs(args: string[]): CliOptions {
     limit: null,
     chunkSize: 5,
     maxItemsPerSource: 3,
+    sourceIds: null,
     persist: false,
     resume: false,
     reset: false,
@@ -250,6 +252,17 @@ function parseArgs(args: string[]): CliOptions {
         break;
       case "--max-items-per-source":
         options.maxItemsPerSource = readNumberArg(args, index);
+        index += 1;
+        break;
+      case "--source-id":
+        options.sourceIds = uniqueMessages([...(options.sourceIds ?? []), readStringArg(args, index)]);
+        index += 1;
+        break;
+      case "--source-ids":
+        options.sourceIds = uniqueMessages([
+          ...(options.sourceIds ?? []),
+          ...readStringArg(args, index).split(",").map((value) => value.trim())
+        ]);
         index += 1;
         break;
       case "--persist":
@@ -304,6 +317,25 @@ function readNumberArg(args: string[], index: number) {
 }
 
 function selectedSourcesForOptions(options: CliOptions) {
+  if (options.sourceIds?.length) {
+    const sources = options.sourceIds.flatMap((sourceId) =>
+      selectSources({
+        limit: 1,
+        method: DEFAULT_SELECTION_OPTIONS.method,
+        maxItemsPerSource: options.maxItemsPerSource,
+        sourceId
+      }).sources
+    );
+    const selectedIds = new Set(sources.map((source) => source.id));
+    const missing = options.sourceIds.filter((sourceId) => !selectedIds.has(sourceId));
+
+    if (missing.length > 0) {
+      throw new Error(`No eligible sources matched requested source ids: ${missing.join(", ")}`);
+    }
+
+    return sources;
+  }
+
   const selection = selectSources({
     limit: options.limit ?? 10,
     method: DEFAULT_SELECTION_OPTIONS.method,
@@ -329,7 +361,8 @@ async function initializeCheckpoint(options: CliOptions, selectedSources: Select
   }
 
   const now = new Date().toISOString();
-  const limit = options.limit ?? 10;
+  const requestedLimit = options.limit ?? (options.sourceIds?.length ? selectedSources.length : 10);
+  const limit = Math.min(requestedLimit, selectedSources.length);
   return {
     schema_version: 1,
     run_id: `activation_${now.replace(/[-:.]/g, "").replace("T", "_").replace("Z", "Z")}`,

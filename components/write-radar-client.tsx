@@ -12,7 +12,7 @@ import { TopicCandidateCard } from "@/components/topic-candidate-card";
 import type { RetrievalDataSource } from "@/lib/retrieval/types";
 import type { WritingAssistantOutput } from "@/lib/writing-assistant/types";
 
-const WRITING_AUDIENCE = "AI practitioners";
+const WRITING_AUDIENCE = "AI 从业者";
 const WRITING_OUTPUT_TYPE = "topic_candidates";
 
 export type WriteRadarClientProps = {
@@ -59,12 +59,12 @@ export function WriteRadarClient({
       const body = (await response.json()) as WritingAssistantOutput | { error?: string };
 
       if (!response.ok) {
-        throw new Error("error" in body && body.error ? body.error : "Request failed.");
+        throw new Error("error" in body && body.error ? body.error : "请求失败。");
       }
 
       setOutput(body as WritingAssistantOutput);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to generate writing assistance.");
+      setError(caught instanceof Error ? caught.message : "无法生成写作辅助。");
       setOutput(null);
     } finally {
       setIsLoading(false);
@@ -76,24 +76,22 @@ export function WriteRadarClient({
       <section className="grid gap-6 border-b border-radar-line pb-8 lg:grid-cols-[minmax(0,1fr)_400px]">
         <div>
           <div className="flex flex-wrap gap-2">
-            <DataSourceChip detail="current retrieval surface" source={dataSummary.dataSource} />
-            <EvidenceBadge detail={`${dataSummary.visibleRows} rows`} kind="evidence" label="Radar rows" />
-            <EvidenceBadge detail={dataSummary.latestRadarTime} kind="freshness" label="Latest" />
-            <StatusChip label="Attempted sources" tone="evidence" value={dataSummary.attemptedSources} />
-            <StatusChip label="Public sources" tone="success" value={dataSummary.sourcesWithPublicItems} />
-            <StatusChip label="Generation" tone="caution" value="mock API mode" />
+            <DataSourceChip detail="当前检索面" source={dataSummary.dataSource} />
+            <EvidenceBadge detail={`${dataSummary.visibleRows} 条`} kind="evidence" label="雷达条目" />
+            <EvidenceBadge detail={dataSummary.latestRadarTime} kind="freshness" label="更新时间" />
+            <StatusChip label="已尝试来源" tone="evidence" value={dataSummary.attemptedSources} />
+            <StatusChip label="公开来源" tone="success" value={dataSummary.sourcesWithPublicItems} />
+            <StatusChip label="生成模式" tone="caution" value="mock API" />
           </div>
-          <h1 className="mt-4 text-3xl font-semibold text-radar-ink">Write</h1>
+          <h1 className="mt-4 text-3xl font-semibold text-radar-ink">写作</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-            Build editorial topic candidates from current radar evidence. The
-            entry surface now starts from live categories and keeps caveats,
-            counterpoints, missing evidence, and citations in the workflow.
+            从当前雷达证据生成编辑选题候选。入口会使用实时类别，并在工作流中保留局限、反方观点、缺失证据和引用。
           </p>
         </div>
 
         <aside className="rounded-lg border border-radar-line bg-radar-panel p-4">
           <h2 className="text-sm font-semibold uppercase tracking-normal text-radar-muted">
-            Topic hub
+            选题入口
           </h2>
           <div className="mt-3 flex flex-wrap gap-2">
             {dataSummary.topCategories.map((category) => (
@@ -101,8 +99,7 @@ export function WriteRadarClient({
             ))}
           </div>
           <p className="mt-4 text-sm leading-6 text-radar-muted">
-            Shortcut prompts use the current category distribution as starting
-            context. API request fields remain unchanged.
+            快捷提示以当前类别分布作为上下文，API 请求字段保持不变。
           </p>
         </aside>
       </section>
@@ -110,7 +107,7 @@ export function WriteRadarClient({
       <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
         <div className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
           <label className="block" htmlFor="write-query">
-            <span className="text-sm font-semibold text-radar-ink">Writing prompt</span>
+            <span className="text-sm font-semibold text-radar-ink">写作提示</span>
             <textarea
               className="mt-3 min-h-28 w-full resize-y rounded-md border border-radar-line px-3 py-3 text-sm leading-6 text-radar-ink outline-none focus:border-radar-evidence"
               id="write-query"
@@ -121,7 +118,7 @@ export function WriteRadarClient({
 
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm leading-6 text-radar-muted">
-              Suggestions are generated from retrieved evidence and caveats, not from unstated facts.
+              建议来自已检索证据和局限，而不是未说明的事实。
             </p>
             <button
               className="rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
@@ -129,15 +126,15 @@ export function WriteRadarClient({
               onClick={generate}
               type="button"
             >
-              {isLoading ? "Generating..." : "Generate seeds"}
+              {isLoading ? "生成中..." : "生成种子"}
             </button>
           </div>
         </div>
 
         <aside className="rounded-lg border border-radar-line bg-radar-panel p-4">
-          <h2 className="text-sm font-semibold text-radar-ink">Industry observation workflows</h2>
+          <h2 className="text-sm font-semibold text-radar-ink">行业观察流程</h2>
           <p className="mt-2 text-xs leading-5 text-radar-muted">
-            Each shortcut fills the same prompt field and keeps mock generation as the default.
+            每个快捷项都会填入同一个提示框，并保持 mock 生成作为默认模式。
           </p>
           <div className="mt-4 space-y-2">
             {suggestedPrompts.map((prompt, index) => (
@@ -170,30 +167,30 @@ export function WriteRadarClient({
 
 function WritingOutputView({ output }: { output: WritingAssistantOutput }) {
   return (
-    <section aria-label="Writing assistant output" className="space-y-5">
+    <section aria-label="写作辅助输出" className="space-y-5">
       <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
         <EvidenceRail
           citationsCount={output.citations.length}
           context={[
-            { label: "Audience", value: WRITING_AUDIENCE },
-            { label: "Output type", value: WRITING_OUTPUT_TYPE },
-            { label: "Query", value: output.query }
+            { label: "受众", value: WRITING_AUDIENCE },
+            { label: "输出类型", value: WRITING_OUTPUT_TYPE },
+            { label: "查询", value: output.query }
           ]}
           dataSource={output.data_source}
           generationMode={output.mode}
           itemCount={output.candidate_topics.length}
-          itemCountLabel="Candidate topics"
+          itemCountLabel="候选选题"
           modelMetadata={output.model_metadata}
           timeWindow={output.resolved_time_window}
-          title="Data source and time window"
+          title="数据来源与时间窗口"
         />
 
         <div className="space-y-5">
           <section className="space-y-4">
             <div className="max-w-3xl">
-              <h2 className="text-lg font-semibold text-radar-ink">Candidate topics</h2>
+              <h2 className="text-lg font-semibold text-radar-ink">候选选题</h2>
               <p className="mt-2 text-sm leading-6 text-radar-muted">
-                Topic candidates are drafts for editorial judgment, not confirmed conclusions.
+                候选选题是供编辑判断的草稿，不是已确认结论。
               </p>
             </div>
             {output.candidate_topics.length > 0 ? (
@@ -210,28 +207,28 @@ function WritingOutputView({ output }: { output: WritingAssistantOutput }) {
               </div>
             ) : (
               <p className="rounded-md border border-radar-caution/30 bg-radar-caution/5 px-3 py-3 text-sm leading-6 text-radar-caution">
-                No candidate topics could be generated from the current retrieval result.
+                当前检索结果无法生成候选选题。
               </p>
             )}
           </section>
 
           <PlanningList
-            description="Reasons a proposed angle may not yet hold up."
-            empty="No counterpoints were returned."
+            description="拟定角度可能尚不成立的原因。"
+            empty="未返回反方观点。"
             items={output.counterpoints}
-            title="Counterpoints"
+            title="反方观点"
           />
           <PlanningList
-            description="Evidence gaps are explicit work items before publication."
-            empty="No missing-evidence notes were returned."
+            description="缺失证据是发布前需要处理的明确事项。"
+            empty="未返回缺失证据说明。"
             items={output.missing_evidence}
-            title="Missing evidence"
+            title="缺失证据"
           />
 
           <CitationList
             citations={output.citations}
-            emptyMessage="No citations available for this writing output."
-            title="Citations"
+            emptyMessage="此写作输出暂无引用。"
+            title="引用"
           />
         </div>
       </div>

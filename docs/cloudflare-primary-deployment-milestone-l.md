@@ -1,6 +1,6 @@
 # Milestone L Cloudflare Primary Deployment
 
-Date: 2026-05-22
+Date: 2026-05-25
 
 ## Architecture chosen
 
@@ -45,7 +45,7 @@ Cloudflare URL:
 
 Latest deployment alias observed:
 
-- `https://eafa66c6.ai-industry-radar.pages.dev`
+- `https://04aa8a98.ai-industry-radar.pages.dev`
 
 Wrangler:
 
@@ -59,47 +59,47 @@ Cloudflare production alias:
 
 | Route | Status | Result |
 | --- | ---: | --- |
-| `/` | 200 | AI Industry Radar, Cloudflare primary label, Supabase counts visible |
-| `/radar/` | 200 | 106 public rows, filters/search/distributions, citations visible |
-| `/reports/` | 200 | Daily/weekly candidates, statuses, windows, citations, caveats, Markdown export |
-| `/ask/` | 200 | Data source, freshness, query examples, caveats visible |
-| `/write/` | 200 | Data source, report context, prompt examples, caveats visible |
-| `/data/radar-snapshot.json` | 200 | Public JSON snapshot with 106 public rows and 14 report candidates |
+| `/` | 200 | Chinese-first AI 行业雷达 UI, Supabase counts, coverage and caveats visible |
+| `/radar/` | 200 | 151 public rows, filters/search/distributions, citation rail visible |
+| `/reports/` | 200 | Latest daily/weekly candidates, statuses, windows, citations, caveats, missing evidence, Markdown export |
+| `/ask/` | 200 | Data source, freshness, Chinese example questions, caveats visible |
+| `/write/` | 200 | Data source, report context, Chinese prompt examples, caveats visible |
+| `/data/radar-snapshot.json` | 200 | Public JSON snapshot with 151 public rows and 18 report candidates |
 
 Browser verification:
 
-- Homepage DOM showed sources 312, raw items 140, radar items 121, public rows 106, report candidates 14.
-- `/radar/` rendered 106 rows and filter controls. Searching `OpenAI` reduced visible rows to 15.
-- `/reports/`, `/ask/`, and `/write/` showed AI Industry Radar branding, Supabase-backed data, and no wrong-domain strings.
-- Browser console check returned no warnings or errors on checked routes.
+- Homepage DOM showed sources 312, raw items 173, radar items 167, public rows 151, report candidates 18.
+- `/radar/` rendered 151 rows with filter controls, status/category/source distributions, and citation rail.
+- `/reports/`, `/ask/`, and `/write/` showed Chinese-first AI 行业雷达 branding, Supabase-backed data, missing-evidence/caveat language, and no wrong-domain strings.
+- Static HTML scan found remaining English only in source/report data such as proper titles, source names, and persisted source summaries.
 
 ## Data freshness
 
 Snapshot generated:
 
-- `2026-05-22T04:21:45.807Z` on the first deployment
-- refreshed on redeploy after `/write` caveat polish
+- `2026-05-25T01:27Z` closeout Cloudflare build
 
 Latest public radar timestamp:
 
-- `2026-05-22T04:13:38.288+00:00`
+- `2026-05-25T01:05:29.771+00:00`
 
 Latest ingestion:
 
-- `2026-05-22T04:11:48.668+00:00`
+- `2026-05-25T01:03:44.664+00:00`
 
 Latest understanding:
 
-- `2026-05-22T04:14:10.821+00:00`
+- `2026-05-25T01:05:55.654+00:00`
 
 ## Vercel role
 
-Vercel remains healthy as the reference dynamic deployment:
+Vercel remains the reference dynamic deployment:
 
 - `https://ai-radar-web-luosongred-5507s-projects.vercel.app`
 - Public pages return 200.
 - `/api/ask` mock returns 200 with Supabase-backed citations.
 - `/api/writing-assistant` mock returns 200 with Supabase-backed topic candidates.
+- The Chinese-first Vercel UI should be rechecked after the final closeout commit is pushed to `main` and Vercel finishes its Git-triggered build.
 
 Vercel is not the primary public access path for Milestone L.
 
@@ -107,7 +107,8 @@ Vercel is not the primary public access path for Milestone L.
 
 - Cloudflare Pages site is read-only and public-safe.
 - Interactive generation APIs and admin/auth workflows remain on the reference dynamic app.
-- GitHub rate limits and some public source 403/fetch failures remain data-coverage caveats.
+- Manual/blocked sources remain outside automation: X API future sources, WeChat/manual-only sources, and sources needing public URL review.
+- Original failed sources were handled with one bounded retry for timeout/fetch failures and final blocked-access reason for HTTP 403 sources.
 - No scheduled jobs were run or enabled.
 
 ## Next milestone recommendation

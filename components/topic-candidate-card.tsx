@@ -21,57 +21,57 @@ export function TopicCandidateCard({
   return (
     <article className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
       <div className="flex flex-wrap gap-2">
-        <StatusChip label="Candidate" tone="neutral" value={String(index + 1).padStart(2, "0")} />
+        <StatusChip label="候选" tone="neutral" value={String(index + 1).padStart(2, "0")} />
         <StatusChip
-          label="Confidence"
+          label="置信度"
           tone={confidenceTone(topic.confidence, needsReview)}
           value={`${Math.round(topic.confidence * 100)}%`}
         />
         {needsReview ? (
           <EvidenceBadge
             kind="needs_review"
-            label="Review"
-            detail="do not treat as confirmed"
+            label="复核"
+            detail="不要视为确认结论"
           />
         ) : null}
         {observationLens ? (
-          <StatusChip label="Observation lens" tone="evidence" value={observationLens} />
+          <StatusChip label="观察视角" tone="evidence" value={observationLens} />
         ) : null}
       </div>
 
       <h2 className="mt-4 text-lg font-semibold leading-7 text-radar-ink">{topic.title}</h2>
       <p className="mt-3 text-sm leading-6 text-radar-muted">{topic.neutral_summary}</p>
 
-      <TopicBlock title="Why it matters" tone="neutral">
+      <TopicBlock title="为什么重要" tone="neutral">
         <p className="text-sm leading-6 text-radar-muted">{topic.why_it_matters}</p>
       </TopicBlock>
 
       <TopicList
         items={topic.evidence}
-        title="Evidence"
+        title="证据"
         tone="evidence"
       />
       <TopicList
-        empty="No caveats were returned for this topic."
+        empty="该选题未返回局限。"
         items={topic.caveats}
-        title="Caveats"
+        title="局限"
         tone="caution"
       />
-      <TopicBlock title="Suggested angle" tone="inference">
+      <TopicBlock title="建议角度" tone="inference">
         <p className="text-sm leading-6 text-radar-muted">{topic.suggested_angle}</p>
       </TopicBlock>
 
       {counterpoints.length > 0 ? (
         <TopicList
           items={counterpoints.slice(0, 1)}
-          title="Counterpoint to test"
+          title="待检验反方观点"
           tone="caution"
         />
       ) : null}
       {missingEvidence.length > 0 ? (
         <TopicList
           items={missingEvidence.slice(0, 1)}
-          title="Missing evidence"
+          title="缺失证据"
           tone="caution"
         />
       ) : null}
@@ -79,8 +79,8 @@ export function TopicCandidateCard({
       <div className="mt-5 border-t border-radar-line pt-4">
         <CitationList
           citations={topic.citations}
-          emptyMessage="No topic-specific citations were returned."
-          title="Topic citations"
+          emptyMessage="未返回该选题的专属引用。"
+          title="选题引用"
           variant="embedded"
         />
       </div>
@@ -139,7 +139,7 @@ function TopicList({
           ))}
         </ul>
       ) : (
-        <p className="text-sm leading-6 text-radar-muted">{empty ?? "No items were returned."}</p>
+        <p className="text-sm leading-6 text-radar-muted">{empty ?? "未返回条目。"}</p>
       )}
     </TopicBlock>
   );
@@ -171,15 +171,15 @@ function confidenceTone(confidence: number, needsReview: boolean): StatusTone {
 
 function getObservationLens(title: string) {
   if (title.includes("海外") || title.includes("国内")) {
-    return "Overseas / domestic";
+    return "海外 / 国内";
   }
 
   if (title.includes("行业重点")) {
-    return "Industry focus";
+    return "行业重点";
   }
 
   if (title.toLowerCase().includes("supplemental")) {
-    return "Supplemental";
+    return "补充";
   }
 
   return "";
@@ -187,16 +187,16 @@ function getObservationLens(title: string) {
 
 function toneLabel(tone: "neutral" | "evidence" | "inference" | "caution") {
   if (tone === "evidence") {
-    return "Evidence";
+    return "证据";
   }
 
   if (tone === "inference") {
-    return "Angle";
+    return "角度";
   }
 
   if (tone === "caution") {
-    return "Caution";
+    return "注意";
   }
 
-  return "Context";
+  return "上下文";
 }

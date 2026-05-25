@@ -37,10 +37,10 @@ type RadarFilters = {
 
 const languageOptions: RetrievalLanguage[] = ["zh", "en", "mixed", "unknown"];
 const windowOptions: Array<{ value: RadarFilters["window"]; label: string }> = [
-  { value: "all", label: "All available" },
-  { value: "24h", label: "Last 24 hours" },
-  { value: "7d", label: "Last 7 days" },
-  { value: "30d", label: "Last 30 days" }
+  { value: "all", label: "全部时间" },
+  { value: "24h", label: "最近 24 小时" },
+  { value: "7d", label: "最近 7 天" },
+  { value: "30d", label: "最近 30 天" }
 ];
 
 export default async function RadarPage({
@@ -65,41 +65,39 @@ export default async function RadarPage({
       <section className="grid gap-6 border-b border-radar-line pb-8 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <DataSourceChip detail="read-only" source={feed.data_source} />
+            <DataSourceChip detail="只读" source={feed.data_source} />
             <EvidenceBadge
               detail={String(feed.counts.total)}
               kind="evidence"
-              label="Retrieved"
+              label="已检索"
             />
-            <StatusChip label="Live DeepSeek" tone="caution" value="not run" />
-            <StatusChip label="Supabase writes" tone="risk" value="not run" />
+            <StatusChip label="Live DeepSeek" tone="caution" value="未运行" />
+            <StatusChip label="Supabase 写入" tone="risk" value="未运行" />
           </div>
-          <h1 className="mt-4 text-3xl font-semibold text-radar-ink">Radar</h1>
+          <h1 className="mt-4 text-3xl font-semibold text-radar-ink">雷达</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-            Usable radar list over the currently available retrieval evidence.
-            It discloses source, freshness, uncertainty, review status, and
-            citations before treating any item as report-ready signal.
+            当前可用检索证据的雷达列表。每条信号在进入报告前都展示来源、新鲜度、不确定性、复核状态和引用。
           </p>
         </div>
 
         <aside className="rounded-lg border border-radar-line bg-radar-panel p-4">
           <h2 className="text-sm font-semibold uppercase tracking-normal text-radar-muted">
-            Data source and freshness
+            数据来源与新鲜度
           </h2>
           <dl className="mt-3 space-y-3 text-sm">
-            <RailRow label="Data source" value={feed.data_source} />
-            <RailRow label="Freshness" value={feed.freshness_note} />
+            <RailRow label="数据来源" value={feed.data_source} />
+            <RailRow label="新鲜度" value={feed.freshness_note} />
             <RailRow
-              label="Latest processed"
-              value={feed.processed_at ?? "not available"}
+              label="最新处理"
+              value={feed.processed_at ?? "不可用"}
             />
             <RailRow
-              label="Generated from evidence"
+              label="生成时间"
               value={feed.generated_at}
             />
             <RailRow
-              label="Current filter result"
-              value={`${filteredItems.length} of ${feed.counts.total} item(s)`}
+              label="当前筛选结果"
+              value={`${filteredItems.length} / ${feed.counts.total} 条`}
             />
           </dl>
         </aside>
@@ -111,50 +109,49 @@ export default async function RadarPage({
       <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-radar-ink">Filters</h2>
+            <h2 className="text-lg font-semibold text-radar-ink">筛选</h2>
             <p className="mt-2 text-sm leading-6 text-radar-muted">
-              Query-param filters are applied server-side and do not change the
-              retrieval source.
+              查询参数在服务端应用，不会改变检索来源。
             </p>
           </div>
           <a
             className="rounded-md border border-radar-line px-3 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
             href="/radar"
           >
-            Reset
+            重置
           </a>
         </div>
         <form className="mt-4 grid gap-3 md:grid-cols-6" method="get">
           <label className="block md:col-span-2" htmlFor="radar-filter-q">
             <span className="text-xs font-semibold uppercase tracking-normal text-radar-muted">
-              Search
+              搜索
             </span>
             <input
               className="mt-2 w-full rounded-md border border-radar-line bg-white px-3 py-2 text-sm text-radar-ink outline-none focus:border-radar-evidence"
               defaultValue={filters.query}
               id="radar-filter-q"
               name="q"
-              placeholder="Search title, summary, source, tag"
+              placeholder="搜索标题、摘要、来源、标签"
               type="search"
             />
           </label>
           <SelectField
-            label="Status"
+            label="状态"
             name="status"
             options={[
-              { label: "All statuses", value: "all" },
+              { label: "全部状态", value: "all" },
               ...UNDERSTANDING_STATUSES.map((status) => ({
-                label: status,
+                label: statusLabel(status),
                 value: status
               }))
             ]}
             value={filters.status}
           />
           <SelectField
-            label="Category"
+            label="类别"
             name="category"
             options={[
-              { label: "All categories", value: "all" },
+              { label: "全部类别", value: "all" },
               ...RADAR_CATEGORIES.map((category) => ({
                 label: labelize(category),
                 value: category
@@ -163,10 +160,10 @@ export default async function RadarPage({
             value={filters.category}
           />
           <SelectField
-            label="Source family"
+            label="来源家族"
             name="source_family"
             options={[
-              { label: "All families", value: "all" },
+              { label: "全部家族", value: "all" },
               ...sourceFamilyOptions(feed).map((family) => ({
                 label: family,
                 value: family
@@ -175,10 +172,10 @@ export default async function RadarPage({
             value={filters.sourceFamily}
           />
           <SelectField
-            label="Source tier"
+            label="来源层级"
             name="source_tier"
             options={[
-              { label: "All tiers", value: "all" },
+              { label: "全部层级", value: "all" },
               ...Object.keys(feed.counts.by_source_tier)
                 .sort()
                 .map((tier) => ({ label: tier, value: tier }))
@@ -186,10 +183,10 @@ export default async function RadarPage({
             value={filters.sourceTier}
           />
           <SelectField
-            label="Language"
+            label="语言"
             name="language"
             options={[
-              { label: "All languages", value: "all" },
+              { label: "全部语言", value: "all" },
               ...languageOptions.map((language) => ({
                 label: language,
                 value: language
@@ -198,7 +195,7 @@ export default async function RadarPage({
             value={filters.language}
           />
           <SelectField
-            label="Time window"
+            label="时间窗口"
             name="window"
             options={windowOptions}
             value={filters.window}
@@ -208,7 +205,7 @@ export default async function RadarPage({
               className="rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black"
               type="submit"
             >
-              Apply filters
+              应用筛选
             </button>
           </div>
         </form>
@@ -217,30 +214,29 @@ export default async function RadarPage({
       {feed.caveats.length > 0 ? (
         <section className="rounded-lg border border-radar-caution/30 bg-radar-caution/5 p-4">
           <div className="flex flex-wrap items-center gap-2">
-            <EvidenceBadge kind="uncertainty" label="Caveats" />
-            <StatusChip label="Completeness" tone="caution" value="not claimed" />
+            <EvidenceBadge kind="uncertainty" label="注意事项" />
+            <StatusChip label="完整性" tone="caution" value="不声称完整" />
           </div>
           <ul className="mt-3 grid gap-2 text-sm leading-6 text-radar-muted">
             {feed.caveats.map((caveat) => (
-              <li key={caveat}>{caveat}</li>
+              <li key={caveat}>{publicText(caveat)}</li>
             ))}
           </ul>
         </section>
       ) : null}
 
-      <section aria-label="Radar evidence list" className="space-y-3">
+      <section aria-label="雷达证据列表" className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-radar-ink">
-              Evidence rows
+              证据条目
             </h2>
             <p className="mt-2 text-sm leading-6 text-radar-muted">
-              Dense rows keep source, status, confidence, timing, and citation
-              visible next to the claim.
+              紧凑条目把来源、状态、置信度、时间和引用放在信号旁边。
             </p>
           </div>
           <StatusChip
-            label="Visible items"
+            label="可见条目"
             tone={filteredItems.length > 0 ? "evidence" : "caution"}
             value={filteredItems.length}
           />
@@ -254,16 +250,16 @@ export default async function RadarPage({
           </div>
         ) : (
           <EmptyState
-            description="No radar rows match the selected filters. Reset filters or widen the time window to inspect the available evidence."
-            title="No matching radar evidence"
+            description="没有雷达条目匹配当前筛选。请重置筛选或放宽时间窗口。"
+            title="没有匹配的雷达证据"
           />
         )}
       </section>
 
       <CitationList
         citations={filteredCitations}
-        emptyMessage="No included or needs_review citations are visible under the current filters."
-        title="Visible citations"
+        emptyMessage="当前筛选下没有已纳入或待复核的引用。"
+        title="可见引用"
       />
     </div>
   );
@@ -281,30 +277,30 @@ function CountRail({
   return (
     <section className="rounded-lg border border-radar-line bg-radar-panel p-4">
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Metric label="Public radar items" value={feed.counts.total} />
-        <Metric label="Visible after filters" value={filteredCount} />
-        <Metric label="Included" tone="evidence" value={feed.counts.included} />
-        <Metric label="Needs review" tone="caution" value={feed.counts.needs_review} />
-        <Metric label="Excluded" tone="risk" value={feed.counts.excluded} />
-        <Metric label="Failed" tone="risk" value={feed.counts.failed} />
+        <Metric label="公开雷达条目" value={feed.counts.total} />
+        <Metric label="筛选后可见" value={filteredCount} />
+        <Metric label="已纳入" tone="evidence" value={feed.counts.included} />
+        <Metric label="待复核" tone="caution" value={feed.counts.needs_review} />
+        <Metric label="已排除" tone="risk" value={feed.counts.excluded} />
+        <Metric label="失败" tone="risk" value={feed.counts.failed} />
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Metric label="Sources total" value={coverage.sourcesTotal} />
-        <Metric label="Automated eligible" value={coverage.automatedEligibleSources} />
-        <Metric label="Attempted sources" tone="evidence" value={coverage.attemptedSources} />
-        <Metric label="Sources public" tone="evidence" value={coverage.sourcesWithPublicItems ?? 0} />
-        <Metric label="Source coverage" value={coverage.rates.sourcePublicVisibility === null ? "n/a" : formatPercent(coverage.rates.sourcePublicVisibility)} />
-        <Metric label="Failed/skipped sources" tone="risk" value={coverage.failedSources + coverage.skippedSources} />
+        <Metric label="来源总数" value={coverage.sourcesTotal} />
+        <Metric label="自动合格" value={coverage.automatedEligibleSources} />
+        <Metric label="已尝试来源" tone="evidence" value={coverage.attemptedSources} />
+        <Metric label="公开来源" tone="evidence" value={coverage.sourcesWithPublicItems ?? 0} />
+        <Metric label="来源覆盖率" value={coverage.rates.sourcePublicVisibility === null ? "不可用" : formatPercent(coverage.rates.sourcePublicVisibility)} />
+        <Metric label="失败/跳过来源" tone="risk" value={coverage.failedSources + coverage.skippedSources} />
       </div>
       <div className="mt-4 grid gap-4 lg:grid-cols-4">
         <CountGroup
           counts={feed.counts.by_category}
-          title="Categories"
+          title="类别"
           valueLabel={labelize}
         />
-        <CountGroup counts={sourceFamilyCounts(feed.items)} title="Source families" />
-        <CountGroup counts={feed.counts.by_source_tier} title="Source tiers" />
-        <CountGroup counts={feed.counts.by_source} title="Sources" />
+        <CountGroup counts={sourceFamilyCounts(feed.items)} title="来源家族" />
+        <CountGroup counts={feed.counts.by_source_tier} title="来源层级" />
+        <CountGroup counts={feed.counts.by_source} title="来源" />
       </div>
     </section>
   );
@@ -340,15 +336,15 @@ function CategoryTabs({ feed, filters }: { feed: RadarFeed; filters: RadarFilter
     <section className="rounded-lg border border-radar-line bg-radar-panel p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-radar-ink">Category tabs</h2>
+          <h2 className="text-lg font-semibold text-radar-ink">类别标签</h2>
           <p className="mt-1 text-sm leading-6 text-radar-muted">
-            Browse the visible public retrieval set by signal family.
+            按信号类别浏览当前可见的公开检索集合。
           </p>
         </div>
         <StatusChip
-          label="Selected"
+          label="已选择"
           tone={filters.category === "all" ? "neutral" : "evidence"}
-          value={filters.category === "all" ? "all" : labelize(filters.category)}
+          value={filters.category === "all" ? "全部" : labelize(filters.category)}
         />
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
@@ -356,7 +352,7 @@ function CategoryTabs({ feed, filters }: { feed: RadarFeed; filters: RadarFilter
           count={feed.counts.total}
           href={`/radar${queryString(baseParams, "category", null)}`}
           isSelected={filters.category === "all"}
-          label="All"
+          label="全部"
         />
         {categories.map(([category, count]) => (
           <CategoryTab
@@ -450,7 +446,7 @@ function CountGroup({
             />
           ))
         ) : (
-          <StatusChip label="none" tone="neutral" />
+          <StatusChip label="无" tone="neutral" />
         )}
       </div>
     </div>
@@ -464,12 +460,12 @@ function RadarItemRow({
   index: number;
   item: RetrievalRadarItem;
 }) {
-  const summary = item.summary_en || item.summary_zh || "No summary available.";
+  const summary = item.summary_zh || item.summary_en || "暂无摘要。";
   const timestampLabel = item.published_at
-    ? "Published"
+    ? "发布时间"
     : item.collected_at
-      ? "Collected"
-      : "Processed";
+      ? "采集时间"
+      : "处理时间";
   const timestamp = itemEvidenceTimestamp(item);
 
   return (
@@ -480,21 +476,21 @@ function RadarItemRow({
             <span className="font-mono text-xs font-semibold text-radar-muted">
               {String(index + 1).padStart(2, "0")}
             </span>
-            <StatusChip label={item.status} tone={statusTone(item.status)} />
+            <StatusChip label={statusLabel(item.status)} tone={statusTone(item.status)} />
             <StatusChip
-              label="Confidence"
+              label="置信度"
               tone={confidenceTone(item)}
               value={formatPercent(item.confidence)}
             />
             <EvidenceBadge
               detail={formatScore(item.overall_score)}
               kind={item.status === "needs_review" ? "needs_review" : "evidence"}
-              label="Overall"
+              label="综合"
             />
             <EvidenceBadge
               detail={item.source_tier}
               kind="citation"
-              label="Tier"
+              label="层级"
             />
           </div>
 
@@ -513,30 +509,29 @@ function RadarItemRow({
 
           {item.why_it_matters ? (
             <div className="mt-3 rounded-md border border-radar-evidence/20 bg-radar-evidence/5 px-3 py-2 text-sm leading-6 text-radar-muted">
-              <span className="font-semibold text-radar-ink">Why it matters: </span>
-              {item.why_it_matters}
+              <span className="font-semibold text-radar-ink">为什么重要: </span>
+              {publicText(item.why_it_matters)}
             </div>
           ) : null}
 
           {item.status === "needs_review" ? (
             <p className="mt-3 rounded-md border border-radar-caution/30 bg-radar-caution/5 px-3 py-2 text-sm leading-6 text-radar-caution">
-              This row is marked needs_review and should not be treated as
-              confirmed without human review.
+              此条目标记为待复核，未经人工确认前不应视为已确认结论。
             </p>
           ) : null}
 
           {item.status === "excluded" || item.status === "failed" ? (
             <p className="mt-3 rounded-md border border-radar-risk/30 bg-radar-risk/5 px-3 py-2 text-sm leading-6 text-radar-risk">
               {item.exclusion_reason
-                ? `Not report evidence: ${item.exclusion_reason}.`
-                : "Not report evidence under the current understanding status."}
+                ? `不是报告证据：${item.exclusion_reason}。`
+                : "在当前理解状态下不是报告证据。"}
             </p>
           ) : null}
         </div>
 
         <aside className="rounded-md border border-radar-line bg-radar-panel p-3">
           <div className="flex flex-wrap gap-2">
-            <EvidenceBadge detail={item.source_name} kind="citation" label="Source" />
+            <EvidenceBadge detail={item.source_name} kind="citation" label="来源" />
             <EvidenceBadge
               detail={formatTimestamp(timestamp)}
               kind="freshness"
@@ -545,15 +540,15 @@ function RadarItemRow({
             <StatusChip label={item.language} tone="neutral" />
           </div>
           <dl className="mt-3 space-y-2 text-sm">
-            <RailRow label="Processed" value={formatTimestamp(item.processed_at)} />
-            <RailRow label="Collected" value={formatTimestamp(item.collected_at)} />
+            <RailRow label="处理时间" value={formatTimestamp(item.processed_at)} />
+            <RailRow label="采集时间" value={formatTimestamp(item.collected_at)} />
             <RailRow
-              label="Published"
-              value={item.published_at ? formatTimestamp(item.published_at) : "not provided"}
+              label="发布时间"
+              value={item.published_at ? formatTimestamp(item.published_at) : "未提供"}
             />
             <RailRow
-              label="Scores"
-              value={`cred ${formatScore(item.credibility_score)} / novelty ${formatScore(item.novelty_score)} / importance ${formatScore(item.importance_score)}`}
+              label="评分"
+              value={`可信度 ${formatScore(item.credibility_score)} / 新颖度 ${formatScore(item.novelty_score)} / 重要性 ${formatScore(item.importance_score)}`}
             />
           </dl>
           <div className="mt-3 flex flex-wrap gap-1.5">
@@ -562,7 +557,7 @@ function RadarItemRow({
                 detail={labelize(category)}
                 kind="evidence"
                 key={category}
-                label="Category"
+                label="类别"
               />
             ))}
             {item.tags.slice(0, 4).map((tag) => (
@@ -575,7 +570,7 @@ function RadarItemRow({
             rel="noreferrer"
             target="_blank"
           >
-            Open citation
+            打开引用
           </a>
         </aside>
       </div>
@@ -773,6 +768,13 @@ function statusTone(status: UnderstandingStatus): StatusTone {
   return "risk";
 }
 
+function statusLabel(status: UnderstandingStatus) {
+  if (status === "included") return "已纳入";
+  if (status === "needs_review") return "待复核";
+  if (status === "excluded") return "已排除";
+  return "失败";
+}
+
 function confidenceTone(item: RetrievalRadarItem): StatusTone {
   if (item.status === "needs_review") {
     return "caution";
@@ -812,7 +814,7 @@ function formatTimestamp(value: string) {
     return value;
   }
 
-  return `${new Intl.DateTimeFormat("en", {
+  return `${new Intl.DateTimeFormat("zh-CN", {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
@@ -820,4 +822,34 @@ function formatTimestamp(value: string) {
     timeZone: "UTC",
     year: "numeric"
   }).format(date)} UTC`;
+}
+
+function publicText(value: string) {
+  return value
+    .replace(
+      "Cloudflare Pages is the primary public read surface. Auth, Admin, server actions, and write workflows remain outside this public Cloudflare surface.",
+      "Cloudflare Pages 是主要公开只读页面；登录、Admin、服务端操作和写入流程不在这个公开页面中运行。"
+    )
+    .replace(
+      "Only public-safe radar and report fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
+      "只纳入公开安全的雷达和报告字段；私有原文、供应商元数据、内部备注、service-role 访问和密钥均已排除。"
+    )
+    .replace(
+      "Snapshot data came from Supabase public-safe read views using anon read access.",
+      "快照数据来自 Supabase 公开安全只读视图，并使用 anon 只读访问。"
+    )
+    .replace(
+      "Read-only Supabase public radar retrieval was used; no Supabase write path ran.",
+      "使用 Supabase 公共雷达视图进行只读检索；未运行 Supabase 写入路径。"
+    )
+    .replace(
+      "This surface shows available AI Radar evidence only; it is not a claim of complete current AI industry coverage.",
+      "此页面只展示当前可用的 AI 行业雷达证据，不声称覆盖完整的实时 AI 行业。"
+    )
+    .replace(
+      "Supabase coverage depends on rows already persisted into the public retrieval view.",
+      "Supabase 覆盖范围取决于已经持久化到公共检索视图的行。"
+    )
+    .replace(/^Potentially relevant AI signal for review: /, "可能相关的待复核 AI 信号：")
+    .replace(/^May affect model capability tracking and product benchmarking: /, "可能影响模型能力跟踪和产品基准：");
 }
