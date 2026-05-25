@@ -3,6 +3,11 @@ import "server-only";
 import { loadRadarFeed, type RadarFeed } from "@/lib/radar/feed";
 import { buildDeterministicReportDraft, formatMarkdownReport } from "@/lib/reports/generate-live-report";
 import { generateReportPreview } from "@/lib/reports/generate-report-preview";
+import {
+  distinctSourcesFromCitations,
+  normalizeReportQualityGate,
+  reportQualityGateFields
+} from "@/lib/reports/quality-gates";
 import type {
   GeneratedReportDraft,
   GeneratedReportMode,
@@ -253,7 +258,7 @@ function normalizeCandidateRow(row: PublicCandidateRow): ReportWorkflowDocument 
     read_source: "supabase",
     saved_at: optionalText(row.created_at),
     source_item_ids: stringArray(row.source_item_ids),
-    status: candidateStatus(row.status)
+    status: draft.quality_gate_passed ? candidateStatus(row.status) : "needs_review"
   };
 }
 
@@ -313,9 +318,23 @@ function normalizeReportDraft(
   const timeWindowValue = normalizeTimeWindow(value.time_window) ?? fallback.timeWindow;
   const generatedAt = optionalText(value.generated_at) ?? fallback.generatedAt;
   const modelMetadata = normalizeModelMetadata(value.model_metadata);
+  const citations = normalizeCitations(value.citations);
+  const usableItemCount = integer(value.usable_item_count);
+  const citationCount = optionalInteger(value.citation_count) ?? citations.length;
+  const distinctSourceCount =
+    optionalInteger(value.distinct_source_count) ?? distinctSourcesFromCitations(citations);
+  const categoryCount = optionalInteger(value.category_count) ?? 0;
+  const qualityGate = normalizeReportQualityGate(value.quality_gate, {
+    categoryCount,
+    categoryGateApplicable: categoryCount > 0,
+    citationCount,
+    distinctSourceCount,
+    reportType,
+    usableItemCount
+  });
   const draft: GeneratedReportDraft = {
     caveats: stringArray(value.caveats),
-    citations: normalizeCitations(value.citations),
+    citations,
     data_source: dataSourceValue(value.data_source) ?? fallback.dataSource,
     executive_summary: text(value.executive_summary) || fallback.summary,
     generated_at: generatedAt,
@@ -332,7 +351,7 @@ function normalizeReportDraft(
     status: fallback.status,
     time_window: timeWindowValue,
     title: text(value.title) || fallback.title,
-    usable_item_count: integer(value.usable_item_count),
+    ...reportQualityGateFields(qualityGate),
     markdown: text(value.markdown)
   };
 
@@ -353,6 +372,14 @@ function minimalSavedDraft(fallback: {
   timeWindow: ResolvedTimeWindow;
   title: string;
 }): GeneratedReportDraft {
+  const qualityGate = normalizeReportQualityGate(null, {
+    categoryCount: 0,
+    categoryGateApplicable: false,
+    citationCount: 0,
+    distinctSourceCount: 0,
+    reportType: fallback.reportType,
+    usableItemCount: 0
+  });
   const draft: GeneratedReportDraft = {
     caveats: ["Saved report metadata does not include a structured report draft payload."],
     citations: [],
@@ -376,7 +403,7 @@ function minimalSavedDraft(fallback: {
     status: fallback.status,
     time_window: fallback.timeWindow,
     title: fallback.title,
-    usable_item_count: 0,
+    ...reportQualityGateFields(qualityGate),
     markdown: ""
   };
 

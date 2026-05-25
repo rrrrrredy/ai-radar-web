@@ -29,6 +29,7 @@
     "ops:reports": "tsx scripts/run-operating-loop.ts --mode generate-reports",
     "ops:full:dry-run": "tsx scripts/run-operating-loop.ts --mode full",
     "ops:full:live:persist": "tsx scripts/run-operating-loop.ts --mode full --live --persist",
+    "ops:summary": "tsx scripts/write-ops-summary.ts",
     "scheduled:hourly:dry-run": "tsx scripts/run-scheduled-radar-job.ts --mode hourly-dry-run",
     "scheduled:daily:dry-run": "tsx scripts/run-scheduled-radar-job.ts --mode daily-report-seed",
     "scheduled:weekly:dry-run": "tsx scripts/run-scheduled-radar-job.ts --mode weekly-report-seed",

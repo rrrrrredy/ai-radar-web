@@ -9,6 +9,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { isPublicHttpUrl } from "@/lib/ingestion/config";
 import { readCleanedSources, sourceFamily } from "@/lib/ingestion/select-sources";
 import type { CleanedSource, IngestionRawItem, IngestionSourceSummary } from "@/lib/ingestion/types";
+import {
+  categorizeFailureFamily,
+  compactFailureFamilyCounts,
+  incrementFailureFamily,
+  type FailureFamilyCounts
+} from "@/lib/ops/failure-families";
 import { isSourceHealthEligible } from "@/lib/supabase/persistence";
 import { getSupabaseServiceClient, getSupabaseServiceStatus } from "@/lib/supabase/service";
 import type { UnderstandingRadarItem, UnderstandingStatus } from "@/lib/understanding/types";
@@ -185,6 +191,7 @@ type PipelineAudit = {
   latest_ingestion_timestamp: string | null;
   latest_understanding_timestamp: string | null;
   excluded_reasons_distribution: Record<string, number>;
+  failure_family_distribution: FailureFamilyCounts;
   failed_source_reason_distribution: Record<string, number>;
   conversion_rates: {
     source_to_raw_coverage: string;
@@ -725,6 +732,7 @@ function buildPipelineAudit(input: {
       source_to_raw_coverage: rate(sourceRowsWithRaw, automatedEligible)
     },
     excluded_reasons_distribution: excludedReasonsDistribution(radarRows),
+    failure_family_distribution: failureFamilyDistribution(latestResults, radarRows),
     failed_source_reason_distribution: countBy(failedResults.map((result) => failedStatus(result))),
     latest_ingestion_timestamp: input.supabase.latestIngestion,
     latest_understanding_timestamp: input.supabase.latestUnderstanding,
@@ -907,6 +915,39 @@ function failedStatus(result: IngestionSourceSummary): FinalSourceStatus {
   return "needs_review";
 }
 
+function failureFamilyDistribution(
+  sourceResults: IngestionSourceSummary[],
+  radarRows: Array<{ exclusion_reason?: string | null; understanding_status?: string | null }>
+) {
+  const counts: FailureFamilyCounts = {};
+
+  for (const result of sourceResults) {
+    const family = categorizeFailureFamily({
+      crawlMethod: result.crawl_method,
+      errorMessage: result.error_message,
+      itemCount: result.item_count,
+      metadata: result.metadata,
+      status: result.status,
+      warnings: result.warnings
+    });
+    incrementFailureFamily(counts, family);
+  }
+
+  for (const row of radarRows) {
+    const status = normalizeStatus(row.understanding_status);
+    if (status !== "excluded" && status !== "failed") {
+      continue;
+    }
+    const family = categorizeFailureFamily({
+      exclusionReason: row.exclusion_reason,
+      status
+    });
+    incrementFailureFamily(counts, family);
+  }
+
+  return compactFailureFamilyCounts(counts);
+}
+
 function excludedReasonsDistribution(rows: Array<{ exclusion_reason?: string | null; understanding_status?: string | null }>) {
   return countBy(
     rows
@@ -1071,6 +1112,10 @@ function renderMarkdown(report: DataCompletenessReport) {
     "### Failed Source Reasons",
     "",
     renderDistribution(report.pipeline.failed_source_reason_distribution),
+    "",
+    "### Failure Families",
+    "",
+    renderDistribution(report.pipeline.failure_family_distribution),
     "",
     "## GitHub Rate Limit",
     "",

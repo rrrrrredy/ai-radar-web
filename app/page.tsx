@@ -193,9 +193,11 @@ function LatestReports({ summary }: { summary: ProductDataSummary }) {
         >
           <div className="flex flex-wrap gap-2">
             <StatusChip label={report.report_type === "weekly" ? "周报" : "日报"} tone="evidence" />
+            <StatusChip label={report.quality_gate_passed ? "质量通过" : "需要更多数据"} tone={report.quality_gate_passed ? "success" : "caution"} />
             <StatusChip label={statusLabel(report.status)} tone={statusTone(report.status)} />
             <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="引用" />
             <EvidenceBadge detail={String(report.usable_item_count)} kind="evidence" label="可用" />
+            <EvidenceBadge detail={`${report.distinct_source_count}/${report.category_count}`} kind="freshness" label="来源/类别" />
           </div>
           <h3 className="mt-3 text-base font-semibold leading-7 text-radar-ink">
             {report.title}

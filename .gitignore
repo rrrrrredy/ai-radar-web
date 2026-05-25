@@ -57,6 +57,11 @@ data/reports/latest/*.json
 data/reports/runs/*.json
 data/reports/tmp/
 data/reports/*.json
+data/ops/latest/*.json
+data/ops/latest/*.md
+data/ops/runs/*.json
+data/ops/runs/*.md
+data/ops/tmp/
 data/scheduled/latest/*.json
 data/scheduled/runs/*.json
 data/scheduled/tmp/

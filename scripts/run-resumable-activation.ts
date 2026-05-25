@@ -20,6 +20,13 @@ import type {
   SelectedSource
 } from "@/lib/ingestion/types";
 import {
+  categorizeFailureFamily,
+  compactFailureFamilyCounts,
+  incrementFailureFamily,
+  mergeFailureFamilyCounts,
+  type FailureFamilyCounts
+} from "@/lib/ops/failure-families";
+import {
   entityKey,
   ingestionRunRow,
   loadLocalIds,
@@ -76,6 +83,8 @@ type ChunkCheckpoint = {
   excluded_count: number;
   failed_count: number;
   duplicate_count: number;
+  deepseek_api_call_count?: number;
+  failure_families?: FailureFamilyCounts;
   persisted: boolean;
   persist_counts?: PersistCounts;
   source_results: IngestionSourceSummary[];
@@ -459,6 +468,8 @@ async function runChunk(input: {
       radar_item_count: output.radar_items.length,
       ...statusCountFields(output.radar_items),
       duplicate_count: ingestionRun.duplicate_count,
+      deepseek_api_call_count: understanding.run.api_call_count,
+      failure_families: chunkFailureFamilies(ingestionRun.source_results, output.radar_items, ingestionRun.duplicate_count),
       persisted,
       persist_counts: persistCounts,
       source_results: ingestionRun.source_results,
@@ -478,6 +489,8 @@ async function runChunk(input: {
       excluded_count: 0,
       failed_count: 0,
       duplicate_count: 0,
+      deepseek_api_call_count: 0,
+      failure_families: chunkFailureFamilies([], [], 0, error instanceof Error ? error.message : String(error)),
       persisted: false,
       source_results: [],
       warnings: [],
@@ -586,6 +599,45 @@ function statusCountFields(items: UnderstandingRadarItem[]) {
     excluded_count: counts.excluded,
     failed_count: counts.failed
   };
+}
+
+function chunkFailureFamilies(
+  sourceResults: IngestionSourceSummary[],
+  radarItems: UnderstandingRadarItem[],
+  duplicateCount: number,
+  chunkError?: string
+) {
+  const counts: FailureFamilyCounts = {};
+
+  if (chunkError) {
+    incrementFailureFamily(counts, categorizeFailureFamily({ errorMessage: chunkError, status: "failed" }));
+  }
+
+  for (const result of sourceResults) {
+    incrementFailureFamily(counts, categorizeFailureFamily({
+      crawlMethod: result.crawl_method,
+      errorMessage: result.error_message,
+      itemCount: result.item_count,
+      metadata: result.metadata,
+      status: result.status,
+      warnings: result.warnings
+    }));
+  }
+
+  incrementFailureFamily(counts, "duplicate_only", duplicateCount);
+
+  for (const item of radarItems) {
+    if (item.status !== "excluded" && item.status !== "failed") {
+      continue;
+    }
+
+    incrementFailureFamily(counts, categorizeFailureFamily({
+      exclusionReason: item.exclusion_reason,
+      status: item.status
+    }));
+  }
+
+  return compactFailureFamilyCounts(counts);
 }
 
 async function persistActivationData(
@@ -921,7 +973,8 @@ async function buildSummary(checkpoint: ActivationCheckpoint, selectedSources: S
     needs_review: sum(chunks.map((chunk) => chunk.needs_review_count)),
     excluded: sum(chunks.map((chunk) => chunk.excluded_count)),
     failed: sum(chunks.map((chunk) => chunk.failed_count)),
-    duplicates: sum(chunks.map((chunk) => chunk.duplicate_count))
+    duplicates: sum(chunks.map((chunk) => chunk.duplicate_count)),
+    deepseek_api_calls: sum(chunks.map((chunk) => chunk.deepseek_api_call_count ?? 0))
   };
 
   return {
@@ -937,6 +990,7 @@ async function buildSummary(checkpoint: ActivationCheckpoint, selectedSources: S
     },
     totals,
     source_families: familyStatuses(checkpoint, sourceById),
+    failure_families: mergeFailureFamilyCounts(chunks.map((chunk) => chunk.failure_families ?? {})),
     chunks,
     supabase_counts: await loadSupabaseCounts(),
     warnings: uniqueMessages([...checkpoint.warnings, ...chunks.flatMap((chunk) => chunk.warnings)])
@@ -1132,6 +1186,8 @@ function printSummary(summary: Awaited<ReturnType<typeof buildSummary>>) {
   console.log(`Raw/radar items: ${summary.totals.raw_items}/${summary.totals.radar_items}`);
   console.log(`Included / needs_review / excluded / failed: ${summary.totals.included} / ${summary.totals.needs_review} / ${summary.totals.excluded} / ${summary.totals.failed}`);
   console.log(`Duplicates: ${summary.totals.duplicates}`);
+  console.log(`DeepSeek API calls: ${summary.totals.deepseek_api_calls}`);
+  console.log(`Failure families: ${formatCounts(summary.failure_families)}`);
   console.log(`Checkpoint: ${relative(checkpointPath)}`);
   console.log(`Summary: ${relative(summaryPath)}`);
   console.log(`Supabase public_radar_items: ${formatNullable(summary.supabase_counts.public_radar_items)}`);
@@ -1212,6 +1268,15 @@ function relative(filePath: string) {
 
 function formatNullable(value: number | null) {
   return value === null ? "unavailable" : String(value);
+}
+
+function formatCounts(counts: Record<string, number | undefined>) {
+  const entries = Object.entries(counts).filter(([, value]) => Number(value) > 0);
+  if (entries.length === 0) {
+    return "none";
+  }
+
+  return entries.map(([key, value]) => `${key}=${value}`).join(" ");
 }
 
 function sanitizeLogValue(value: string) {

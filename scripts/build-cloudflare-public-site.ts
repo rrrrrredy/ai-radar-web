@@ -45,6 +45,16 @@ type SnapshotReport = {
   generated_at?: string;
   saved_at?: string;
   source_item_count: number;
+  usable_item_count: number;
+  citation_count: number;
+  distinct_source_count: number;
+  category_count: number;
+  quality_gate_passed: boolean;
+  quality_gate_reasons: string[];
+  quality_gate?: {
+    passed: boolean;
+    reasons: string[];
+  };
   confidence?: number;
   sections: Array<{
     title: string;
@@ -127,6 +137,7 @@ type Snapshot = {
     radar_to_public_visibility: number | null;
     source_public_visibility: number | null;
     failed_source_reasons: Record<string, number>;
+    failure_families?: Record<string, number>;
     skipped_source_reasons: Record<string, number>;
   };
   top_categories: Array<{ label: string; count: number }>;
@@ -484,17 +495,18 @@ function renderCitation(item: SnapshotItem) {
 
 function renderCompactReport(report: SnapshotReport) {
   return `<article class="compact-row">
-    <div>${pill(reportTypeLabel(report.report_type), "evidence")}${pill(statusLabel(report.status), statusTone(report.status))}${pill(modeLabel(report.mode), "neutral")}<h3>${escapeHtml(publicText(report.title))}</h3><p>${escapeHtml(publicText(report.summary))}</p></div>
-    <dl>${rail("可用条目", String(report.source_item_count))}${rail("引用数", String(report.citations.length))}${rail("保存时间", formatDate(report.saved_at ?? report.generated_at))}</dl>
+    <div>${pill(reportTypeLabel(report.report_type), "evidence")}${qualityPill(report)}${pill(statusLabel(report.status), statusTone(report.status))}${pill(modeLabel(report.mode), "neutral")}<h3>${escapeHtml(publicText(report.title))}</h3><p>${escapeHtml(publicText(report.summary))}</p></div>
+    <dl>${rail("可用条目", String(report.usable_item_count ?? report.source_item_count))}${rail("引用数", String(report.citation_count ?? report.citations.length))}${rail("来源/类别", `${report.distinct_source_count ?? 0} / ${report.category_count ?? 0}`)}${rail("保存时间", formatDate(report.saved_at ?? report.generated_at))}</dl>
   </article>`;
 }
 
 function renderReport(report: SnapshotReport) {
   return `<article class="report-card">
-    <div class="section-heading"><div><div class="pill-row">${pill(reportTypeLabel(report.report_type), "evidence")}${pill(statusLabel(report.status), statusTone(report.status))}${pill(modeLabel(report.mode), "success")}${pill(`条目 ${report.source_item_count}`, "neutral")}${pill(`引用 ${report.citations.length}`, "neutral")}</div><h2>${escapeHtml(publicText(report.title))}</h2></div><span>${escapeHtml(formatDate(report.saved_at ?? report.generated_at))}</span></div>
+    <div class="section-heading"><div><div class="pill-row">${pill(reportTypeLabel(report.report_type), "evidence")}${qualityPill(report)}${pill(statusLabel(report.status), statusTone(report.status))}${pill(modeLabel(report.mode), "success")}${pill(`可用 ${report.usable_item_count ?? report.source_item_count}`, "neutral")}${pill(`引用 ${report.citation_count ?? report.citations.length}`, "neutral")}${pill(`来源 ${report.distinct_source_count ?? 0}`, "neutral")}${pill(`类别 ${report.category_count ?? 0}`, "neutral")}</div><h2>${escapeHtml(publicText(report.title))}</h2></div><span>${escapeHtml(formatDate(report.saved_at ?? report.generated_at))}</span></div>
     <p class="report-summary">${escapeHtml(publicText(report.summary))}</p>
     ${report.executive_summary ? `<p>${escapeHtml(publicText(report.executive_summary))}</p>` : ""}
-    <dl class="inline-defs">${rail("时间窗口", `${formatDate(report.time_window.start)} 至 ${formatDate(report.time_window.end)}`)}${rail("数据来源", report.data_source)}${rail("缺失证据", String(report.missing_evidence.length))}</dl>
+    <dl class="inline-defs">${rail("质量门禁", qualityLabel(report))}${rail("可用/引用/来源/类别", `${report.usable_item_count ?? report.source_item_count} / ${report.citation_count ?? report.citations.length} / ${report.distinct_source_count ?? 0} / ${report.category_count ?? 0}`)}${rail("时间窗口", `${formatDate(report.time_window.start)} 至 ${formatDate(report.time_window.end)}`)}${rail("数据来源", report.data_source)}${rail("缺失证据", String(report.missing_evidence.length))}</dl>
+    ${!report.quality_gate_passed && report.quality_gate_reasons.length > 0 ? `<h3>为什么报告偏薄</h3>${noteList(report.quality_gate_reasons)}` : ""}
     ${report.sections.map(renderReportSection).join("")}
     ${report.citations.length > 0 ? `<div class="citation-grid">${report.citations.map(renderReportCitation).join("")}</div>` : ""}
     ${report.caveats.length > 0 ? `<h3>局限</h3>${noteList(report.caveats)}` : ""}
@@ -521,7 +533,11 @@ function markdownForReport(report: SnapshotReport) {
     `- 状态: ${statusLabel(report.status)}`,
     `- 时间窗口: ${report.time_window.start} 至 ${report.time_window.end}`,
     `- 来源条目: ${report.source_item_count}`,
-    `- 引用: ${report.citations.length}`,
+    `- 质量门禁: ${qualityLabel(report)}`,
+    `- 可用条目: ${report.usable_item_count ?? report.source_item_count}`,
+    `- 引用: ${report.citation_count ?? report.citations.length}`,
+    `- 独立来源: ${report.distinct_source_count ?? 0}`,
+    `- 类别: ${report.category_count ?? 0}`,
     "",
     ...report.sections.flatMap((section) => [
       `## ${publicText(section.title)}`,
@@ -534,6 +550,10 @@ function markdownForReport(report: SnapshotReport) {
     "## 局限",
     "",
     ...(report.caveats.length > 0 ? report.caveats.map((caveat) => `- ${publicText(caveat)}`) : ["- 未记录局限。"]),
+    "",
+    "## 质量门禁",
+    "",
+    ...(report.quality_gate_passed ? ["- 已通过。"] : report.quality_gate_reasons.map((reason) => `- ${publicText(reason)}`)),
     "",
     "## 引用",
     "",
@@ -595,6 +615,7 @@ function coveragePanel(snapshot: Snapshot) {
       <dl class="rail">
         ${coverageRailRows(snapshot)}
       </dl>
+      ${Object.keys(snapshot.coverage.failure_families ?? {}).length > 0 ? `<div class="distribution">${distribution("失败类别", Object.entries(snapshot.coverage.failure_families ?? {}))}</div>` : ""}
     </section>
   `;
 }
@@ -612,11 +633,13 @@ function reportCoveragePanel(snapshot: Snapshot, reports: SnapshotReport[]) {
         ${rail("报告候选", String(snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates))}
         ${rail("候选数量", String(snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates))}
         ${rail("最新日报候选", daily ? publicText(daily.title) : "不可用")}
-        ${rail("条目数", String(daily?.source_item_count ?? 0))}
-        ${rail("引用数", String(daily?.citations.length ?? 0))}
+        ${rail("质量门禁", daily ? qualityLabel(daily) : "不可用")}
+        ${rail("条目数", String(daily?.usable_item_count ?? daily?.source_item_count ?? 0))}
+        ${rail("引用/来源/类别", `${daily?.citation_count ?? daily?.citations.length ?? 0} / ${daily?.distinct_source_count ?? 0} / ${daily?.category_count ?? 0}`)}
         ${rail("最新周报候选", weekly ? publicText(weekly.title) : "不可用")}
-        ${rail("周报条目数", String(weekly?.source_item_count ?? 0))}
-        ${rail("周报引用数", String(weekly?.citations.length ?? 0))}
+        ${rail("周报质量门禁", weekly ? qualityLabel(weekly) : "不可用")}
+        ${rail("周报条目数", String(weekly?.usable_item_count ?? weekly?.source_item_count ?? 0))}
+        ${rail("周报引用/来源/类别", `${weekly?.citation_count ?? weekly?.citations.length ?? 0} / ${weekly?.distinct_source_count ?? 0} / ${weekly?.category_count ?? 0}`)}
       </dl>
     </section>
   `;
@@ -679,6 +702,14 @@ function modeLabel(mode: string) {
     saved_report: "已保存报告"
   };
   return labels[mode] ?? mode;
+}
+
+function qualityPill(report: SnapshotReport) {
+  return pill(qualityLabel(report), report.quality_gate_passed ? "success" : "caution");
+}
+
+function qualityLabel(report: SnapshotReport) {
+  return report.quality_gate_passed ? "质量通过" : "需要更多数据";
 }
 
 function statusTone(status: string): "caution" | "evidence" | "neutral" | "success" {
@@ -769,6 +800,14 @@ function publicText(value: string) {
       "More independent items are needed for a broad daily or weekly synthesis.",
       "需要更多独立条目才能形成宽口径日报或周报综合。"
     )
+    .replace(
+      "Report quality gate did not pass; keep this candidate in needs_review until more data is available.",
+      "报告质量门禁未通过；在补充更多数据前，该候选应保持待复核。"
+    )
+    .replace(/usable_items (\d+) is below (daily|weekly) minimum (\d+)/g, (_, count: string, type: string, minimum: string) => `${count} 条可用条目低于${reportTypeLabel(type)}最低要求 ${minimum} 条`)
+    .replace(/citations (\d+) is below (daily|weekly) minimum (\d+)/g, (_, count: string, type: string, minimum: string) => `${count} 条引用低于${reportTypeLabel(type)}最低要求 ${minimum} 条`)
+    .replace(/distinct_sources (\d+) is below (daily|weekly) minimum (\d+)/g, (_, count: string, type: string, minimum: string) => `${count} 个独立来源低于${reportTypeLabel(type)}最低要求 ${minimum} 个`)
+    .replace(/categories (\d+) is below (daily|weekly) minimum (\d+)/g, (_, count: string, type: string, minimum: string) => `${count} 个类别低于${reportTypeLabel(type)}最低要求 ${minimum} 个`)
     .replace(
       "Human review is needed before treating any item as confirmed.",
       "任何条目在视为确认前都需要人工复核。"

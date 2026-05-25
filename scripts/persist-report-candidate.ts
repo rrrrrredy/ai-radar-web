@@ -72,6 +72,9 @@ function printCandidateSummary(
   console.log(`Usable items: ${candidateDraft.usable_item_count}`);
   console.log(`Source item UUIDs: ${candidateDraft.source_item_ids.length}`);
   console.log(`Citations: ${candidateDraft.citations.length}`);
+  console.log(`Quality gate: ${candidateDraft.quality_gate_passed ? "passed" : "needs_more_data"}`);
+  console.log(`Distinct sources: ${candidateDraft.distinct_source_count}`);
+  console.log(`Categories: ${candidateDraft.category_count}`);
   console.log(`Caveats: ${candidateDraft.caveats.length}`);
   console.log(`Missing evidence: ${candidateDraft.missing_evidence.length}`);
   console.log(`Live requested: ${options.live ? "yes" : "no"}`);
@@ -79,6 +82,12 @@ function printCandidateSummary(
   console.log(`API calls: ${candidateDraft.model_metadata.api_call_count}`);
   if (candidateDraft.model_metadata.error) {
     console.log(`Live fallback reason: ${sanitizeLogValue(candidateDraft.model_metadata.error)}`);
+  }
+  if (candidateDraft.quality_gate_reasons.length > 0) {
+    console.log("Quality gate reasons:");
+    for (const reason of candidateDraft.quality_gate_reasons) {
+      console.log(`- ${sanitizeLogValue(reason)}`);
+    }
   }
   console.log(`Markdown bytes: ${Buffer.byteLength(candidateDraft.markdown, "utf8")}`);
   console.log(`Write requested: ${options.write ? "yes" : "no"}`);
@@ -117,7 +126,10 @@ async function persistCandidate(
       confidence: confidenceForReport(candidateDraft),
       metadata: {
         candidate_signature: candidateSignature,
+        category_count: candidateDraft.category_count,
+        citation_count: candidateDraft.citation_count,
         created_from: "report_candidate_cli",
+        distinct_source_count: candidateDraft.distinct_source_count,
         duplicate_check: overlap
           ? {
               action: "created_new_candidate",
@@ -130,8 +142,11 @@ async function persistCandidate(
           : {
               action: "no_overlap_found",
               checked_at: checkedAt
-            },
+        },
         live_requested: options.live,
+        quality_gate: candidateDraft.quality_gate,
+        quality_gate_passed: candidateDraft.quality_gate_passed,
+        quality_gate_reasons: candidateDraft.quality_gate_reasons,
         report_draft: candidateDraft
       },
       report_type: candidateDraft.report_type,
@@ -173,11 +188,16 @@ async function insertAuditEvent(
       metadata: {
         api_call_count: report.model_metadata.api_call_count,
         candidate_signature: candidateSignature,
+        category_count: report.category_count,
         caveats_count: report.caveats.length,
+        citation_count: report.citation_count,
         citations_count: report.citations.length,
         data_source: report.data_source,
+        distinct_source_count: report.distinct_source_count,
         live_requested: options.live,
         missing_evidence_count: report.missing_evidence.length,
+        quality_gate_passed: report.quality_gate_passed,
+        quality_gate_reasons: report.quality_gate_reasons,
         source_item_count: report.source_item_ids.length,
         report_type: report.report_type
       },

@@ -1,0 +1,165 @@
+name: Radar Refresh Cloudflare
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Activation mode"
+        required: true
+        default: "mock"
+        type: choice
+        options:
+          - mock
+          - live
+      persist:
+        description: "Persist successful chunks and report candidates to Supabase"
+        required: true
+        default: false
+        type: boolean
+      limit:
+        description: "Maximum sources to activate"
+        required: true
+        default: "30"
+        type: string
+      chunk_size:
+        description: "Sources per activation chunk"
+        required: true
+        default: "5"
+        type: string
+      max_items_per_source:
+        description: "Maximum items collected from each source"
+        required: true
+        default: "3"
+        type: string
+      deploy_cloudflare:
+        description: "Deploy the Cloudflare Pages public mirror"
+        required: true
+        default: false
+        type: boolean
+      generate_reports:
+        description: "Generate daily and weekly report candidates"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: radar-refresh-cloudflare-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ENABLE_SUPABASE_RETRIEVAL: "true"
+  ENABLE_SUPABASE_WRITES: "false"
+  ENABLE_SCHEDULED_PERSISTENCE: "false"
+  ENABLE_LIVE_DEEPSEEK_IN_JOBS: "false"
+  ENABLE_X_API: "false"
+  ENABLE_WECHAT_AUTH: "false"
+  NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+  GITHUB_TOKEN: ${{ github.token }}
+
+jobs:
+  refresh:
+    name: Reviewed refresh and Cloudflare build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Validation preflight
+        run: |
+          npm run lint
+          npm run typecheck
+          npm run validate:data
+          npm run sensitive:scan
+
+      - name: Capture before counts
+        run: >
+          npm run ops:summary -- --stage before
+          --run-id "github_${{ github.run_id }}_${{ github.run_attempt }}"
+          --mode "${{ inputs.mode }}"
+          --persist "${{ inputs.persist }}"
+          --deploy-cloudflare "${{ inputs.deploy_cloudflare }}"
+          --generate-reports "${{ inputs.generate_reports }}"
+
+      - name: Check explicit write gate
+        if: ${{ inputs.persist }}
+        run: |
+          if [ "${RADAR_REFRESH_WRITE_GATE}" != "true" ]; then
+            echo "Persist requested, but RADAR_REFRESH_WRITE_GATE is not true. No Supabase writes were attempted."
+            exit 1
+          fi
+        env:
+          RADAR_REFRESH_WRITE_GATE: ${{ vars.RADAR_REFRESH_WRITE_GATE }}
+
+      - name: Run resumable activation
+        env:
+          ENABLE_SUPABASE_WRITES: ${{ inputs.persist && vars.RADAR_REFRESH_WRITE_GATE == 'true' && 'true' || 'false' }}
+        run: >
+          npm run data:activate:resumable:${{ inputs.mode }} --
+          --limit "${{ inputs.limit }}"
+          --chunk-size "${{ inputs.chunk_size }}"
+          --max-items-per-source "${{ inputs.max_items_per_source }}"
+          --reset
+          ${{ inputs.persist && '--persist' || '' }}
+
+      - name: Generate report candidates
+        if: ${{ inputs.generate_reports }}
+        env:
+          ENABLE_SUPABASE_WRITES: ${{ inputs.persist && vars.RADAR_REFRESH_WRITE_GATE == 'true' && 'true' || 'false' }}
+        run: |
+          if [ "${{ inputs.persist }}" = "true" ]; then
+            npm run report:candidate:daily:write
+            npm run report:candidate:weekly:write
+          else
+            npm run report:generate:daily
+            npm run report:generate:weekly
+          fi
+
+      - name: Build Cloudflare public snapshot
+        env:
+          ENABLE_SUPABASE_WRITES: "false"
+        run: npm run cloudflare:build
+
+      - name: Deploy Cloudflare Pages
+        if: ${{ inputs.deploy_cloudflare }}
+        env:
+          ENABLE_SUPABASE_WRITES: "false"
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler pages deploy dist/cloudflare-pages --project-name=ai-industry-radar --branch=main
+
+      - name: Write run summary
+        if: ${{ always() }}
+        run: >
+          npm run ops:summary -- --stage after
+          --run-id "github_${{ github.run_id }}_${{ github.run_attempt }}"
+          --mode "${{ inputs.mode }}"
+          --persist "${{ inputs.persist }}"
+          --deploy-cloudflare "${{ inputs.deploy_cloudflare }}"
+          --generate-reports "${{ inputs.generate_reports }}"
+          --cloudflare-url "https://ai-industry-radar.pages.dev"
+
+      - name: Upload run summary artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-refresh-cloudflare-summary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            data/ops/latest/radar-refresh-summary.json
+            data/ops/latest/radar-refresh-summary.md
+          if-no-files-found: warn

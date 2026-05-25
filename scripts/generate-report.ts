@@ -29,6 +29,9 @@ async function main() {
   console.log(`Retrieved items: ${report.retrieved_item_count}`);
   console.log(`Usable items: ${report.usable_item_count}`);
   console.log(`Citations: ${report.citations.length}`);
+  console.log(`Quality gate: ${report.quality_gate_passed ? "passed" : "needs_more_data"}`);
+  console.log(`Distinct sources: ${report.distinct_source_count}`);
+  console.log(`Categories: ${report.category_count}`);
   console.log(`Caveats: ${report.caveats.length}`);
   console.log(`Missing evidence: ${report.missing_evidence.length}`);
   console.log(`Live requested: ${options.live ? "yes" : "no"}`);
@@ -36,6 +39,12 @@ async function main() {
   console.log(`API calls: ${report.model_metadata.api_call_count}`);
   if (report.model_metadata.error) {
     console.log(`Live fallback reason: ${sanitizeLogValue(report.model_metadata.error)}`);
+  }
+  if (report.quality_gate_reasons.length > 0) {
+    console.log("Quality gate reasons:");
+    for (const reason of report.quality_gate_reasons) {
+      console.log(`- ${sanitizeLogValue(reason)}`);
+    }
   }
   console.log(`Markdown bytes: ${Buffer.byteLength(report.markdown, "utf8")}`);
   console.log(`Title: ${report.title}`);

@@ -1,4 +1,10 @@
 import { readCleanedSources } from "@/lib/ingestion/select-sources";
+import {
+  categorizeFailureFamily,
+  compactFailureFamilyCounts,
+  incrementFailureFamily,
+  type FailureFamilyCounts
+} from "@/lib/ops/failure-families";
 import { isSourceHealthEligible } from "@/lib/supabase/persistence";
 import { getSupabaseServiceClient, getSupabaseServiceStatus } from "@/lib/supabase/service";
 import type { UnderstandingStatus } from "@/lib/understanding/types";
@@ -34,6 +40,7 @@ export type PublicDataCompletenessSummary = {
   latestRefresh: string | null;
   latestIngestion: string | null;
   latestUnderstanding: string | null;
+  failureFamilies: FailureFamilyCounts;
   failedSourceReasons: Record<string, number>;
   skippedSourceReasons: Record<string, number>;
   rates: PublicCoverageRates;
@@ -171,6 +178,7 @@ export async function loadPublicDataCompletenessSummary(): Promise<PublicDataCom
     const skippedSourceReasons = countReasons(
       sourceResults.filter((result) => result.status === "skipped").map((result) => sourceSkipReason(result))
     );
+    const failureFamilies = buildFailureFamilies(sourceResults);
     const latestIngestionTimestamp = latestTimestamp(
       latestIngestionRows.map((row) => latestRunTimestamp(row, "finished_at"))
     );
@@ -188,6 +196,7 @@ export async function loadPublicDataCompletenessSummary(): Promise<PublicDataCom
       latestUnderstanding: latestUnderstandingTimestamp,
       needsReview: statusCounts.needs_review,
       excluded: statusCounts.excluded,
+      failureFamilies,
       failedRadarItems: statusCounts.failed,
       publicRadarItems: publicRows.rows.length,
       radarItems: radarRows.rows.length,
@@ -225,6 +234,7 @@ function emptySummary(input: {
     ...input,
     attemptedSources: 0,
     excluded: null,
+    failureFamilies: {},
     failedRadarItems: null,
     failedSourceReasons: {},
     failedSources: 0,
@@ -312,11 +322,21 @@ function sourceFailureReason(result: {
   warnings?: string[] | null;
   metadata?: Record<string, unknown> | null;
 }) {
-  return categorizeReason([result.error_message ?? "", ...(result.warnings ?? []), JSON.stringify(result.metadata ?? {})].join(" "));
+  return categorizeReason({
+    errorMessage: result.error_message,
+    metadata: result.metadata,
+    status: "failed",
+    warnings: result.warnings
+  });
 }
 
-function sourceSkipReason(result: { error_message?: string | null; warnings?: string[] | null }) {
-  return categorizeReason([result.error_message ?? "", ...(result.warnings ?? [])].join(" ")) || "skipped";
+function sourceSkipReason(result: { error_message?: string | null; warnings?: string[] | null; metadata?: Record<string, unknown> | null }) {
+  return categorizeReason({
+    errorMessage: result.error_message,
+    metadata: result.metadata,
+    status: "skipped",
+    warnings: result.warnings
+  }) || "no_items";
 }
 
 function countReasons(reasons: string[]) {
@@ -342,30 +362,27 @@ function activationRunBase(localRunId: string | null | undefined) {
   return match?.[1] ?? null;
 }
 
-function categorizeReason(value: string) {
-  const lowered = value.toLowerCase();
+function categorizeReason(input: Parameters<typeof categorizeFailureFamily>[0]) {
+  return categorizeFailureFamily(input) ?? "no_items";
+}
 
-  if (lowered.includes("rate limit")) {
-    return "failed_rate_limit";
+function buildFailureFamilies(
+  sourceResults: NonNullable<NonNullable<IngestionRunRow["metadata"]>["source_results"]> = []
+) {
+  const counts: FailureFamilyCounts = {};
+
+  for (const result of sourceResults ?? []) {
+    const family = categorizeFailureFamily({
+      errorMessage: result.error_message,
+      itemCount: result.item_count,
+      metadata: result.metadata,
+      status: result.status,
+      warnings: result.warnings
+    });
+    incrementFailureFamily(counts, family);
   }
 
-  if (lowered.includes("403") || lowered.includes("forbidden")) {
-    return "failed_403";
-  }
-
-  if (lowered.includes("timeout") || lowered.includes("aborted") || lowered.includes("timed out")) {
-    return "failed_timeout";
-  }
-
-  if (lowered.includes("parse") || lowered.includes("invalid json") || lowered.includes("invalid xml")) {
-    return "failed_parse";
-  }
-
-  if (lowered.includes("fetch failed")) {
-    return "failed_timeout";
-  }
-
-  return "needs_review";
+  return compactFailureFamilyCounts(counts);
 }
 
 function latestRunTimestamp(

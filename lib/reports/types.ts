@@ -103,6 +103,25 @@ export type SafeReportModelMetadata = {
   error?: string;
 };
 
+export type ReportQualityGateThresholds = {
+  usable_items: number;
+  citations: number;
+  distinct_sources: number;
+  categories: number;
+};
+
+export type ReportQualityGate = {
+  report_type: ReportPreviewType;
+  passed: boolean;
+  reasons: string[];
+  usable_item_count: number;
+  citation_count: number;
+  distinct_source_count: number;
+  category_count: number;
+  category_gate_applicable: boolean;
+  thresholds: ReportQualityGateThresholds;
+};
+
 export type GeneratedReportDraft = {
   id?: string;
   report_type: ReportPreviewType;
@@ -125,6 +144,12 @@ export type GeneratedReportDraft = {
   source_item_ids: string[];
   retrieved_item_count: number;
   usable_item_count: number;
+  citation_count: number;
+  distinct_source_count: number;
+  category_count: number;
+  quality_gate_passed: boolean;
+  quality_gate_reasons: string[];
+  quality_gate: ReportQualityGate;
 };
 
 export type ReportWorkflowReadSource = "supabase" | "generated_preview";

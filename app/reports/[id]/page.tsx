@@ -27,6 +27,7 @@ export default async function ReportDetailPage({
         <div className="flex flex-wrap gap-2">
           <DataSourceChip detail={modeLabel(report)} source={report.data_source} />
           <StatusChip label="状态" tone={statusTone(report.status)} value={statusLabel(report.status)} />
+          <StatusChip label="质量门禁" tone={qualityTone(report)} value={qualityLabel(report)} />
           <StatusChip label="发布状态" tone={publicationTone(report)} value={publicationLabel(report)} />
           <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="引用" />
         </div>
@@ -53,6 +54,7 @@ export default async function ReportDetailPage({
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <DetailMetric label="类型" value={reportTypeLabel(report.report_type)} />
         <DetailMetric label="模式" value={modeLabel(report)} />
+        <DetailMetric label="质量门禁" value={qualityLabel(report)} />
         <DetailMetric label="保存时间" value={formatTimestamp(report.saved_at)} />
         <DetailMetric label="生成时间" value={formatTimestamp(report.generated_at)} />
       </section>
@@ -61,11 +63,17 @@ export default async function ReportDetailPage({
         <div className="flex flex-wrap gap-2">
           <EvidenceBadge kind="evidence" label="摘要" />
           <EvidenceBadge detail={`${report.usable_item_count}/${report.retrieved_item_count}`} kind="evidence" label="可用条目" />
+          <EvidenceBadge detail={String(report.citation_count)} kind="citation" label="引用" />
+          <EvidenceBadge detail={`${report.distinct_source_count}/${report.category_count}`} kind="freshness" label="来源/类别" />
         </div>
         <p className="mt-4 text-lg leading-8 text-radar-ink">
           {publicText(report.one_sentence_summary)}
         </p>
       </section>
+
+      {!report.quality_gate_passed ? (
+        <DetailList items={report.quality_gate_reasons} title="为什么报告偏薄" tone="caution" />
+      ) : null}
 
       <section className="space-y-4">
         <h2 className="text-lg font-semibold text-radar-ink">报告章节</h2>
@@ -209,6 +217,14 @@ function statusTone(status: ReportWorkflowDocument["status"]): StatusTone {
   return "neutral";
 }
 
+function qualityTone(report: ReportWorkflowDocument): StatusTone {
+  return report.quality_gate_passed ? "success" : "caution";
+}
+
+function qualityLabel(report: ReportWorkflowDocument) {
+  return report.quality_gate_passed ? "质量通过" : "需要更多数据";
+}
+
 function publicationTone(report: ReportWorkflowDocument): StatusTone {
   if (report.status === "published") {
     return "success";
@@ -316,6 +332,14 @@ function publicText(value: string) {
       "More independent items are needed for a broad daily or weekly synthesis.",
       "需要更多独立条目才能形成宽口径日报或周报综合。"
     )
+    .replace(
+      "Report quality gate did not pass; keep this candidate in needs_review until more data is available.",
+      "报告质量门禁未通过；在补充更多数据前，该候选应保持待复核。"
+    )
+    .replace(/usable_items (\d+) is below (daily|weekly) minimum (\d+)/g, (_, count: string, type: string, minimum: string) => `${count} 条可用条目低于${reportTypeLabel(type)}最低要求 ${minimum} 条`)
+    .replace(/citations (\d+) is below (daily|weekly) minimum (\d+)/g, (_, count: string, type: string, minimum: string) => `${count} 条引用低于${reportTypeLabel(type)}最低要求 ${minimum} 条`)
+    .replace(/distinct_sources (\d+) is below (daily|weekly) minimum (\d+)/g, (_, count: string, type: string, minimum: string) => `${count} 个独立来源低于${reportTypeLabel(type)}最低要求 ${minimum} 个`)
+    .replace(/categories (\d+) is below (daily|weekly) minimum (\d+)/g, (_, count: string, type: string, minimum: string) => `${count} 个类别低于${reportTypeLabel(type)}最低要求 ${minimum} 个`)
     .replace(
       "Human review is needed before treating any item as confirmed.",
       "任何条目在视为确认前都需要人工复核。"

@@ -16,7 +16,12 @@ import type {
   RetrievalLanguage,
   RetrievalRadarItem
 } from "@/lib/retrieval/types";
-import type { ReportPreviewType } from "@/lib/reports/types";
+import {
+  distinctSourcesFromCitations,
+  normalizeReportQualityGate,
+  reportQualityGateFields
+} from "@/lib/reports/quality-gates";
+import type { ReportPreviewType, ReportQualityGate } from "@/lib/reports/types";
 import { getSupabaseServerReadClient } from "@/lib/supabase/server-read";
 import { getSupabaseServiceClient, getSupabaseServiceStatus } from "@/lib/supabase/service";
 import { RADAR_CATEGORIES, type RadarCategory, type UnderstandingStatus } from "@/lib/understanding/types";
@@ -74,6 +79,13 @@ export type PublicReportSnapshot = {
   generated_at?: string;
   saved_at?: string;
   source_item_count: number;
+  usable_item_count: number;
+  citation_count: number;
+  distinct_source_count: number;
+  category_count: number;
+  quality_gate_passed: boolean;
+  quality_gate_reasons: string[];
+  quality_gate: ReportQualityGate;
   confidence?: number;
   sections: Array<{
     title: string;
@@ -176,6 +188,7 @@ export type PublicMirrorSnapshot = {
     raw_to_radar_conversion: number | null;
     radar_to_public_visibility: number | null;
     source_public_visibility: number | null;
+    failure_families: Record<string, number>;
     failed_source_reasons: Record<string, number>;
     skipped_source_reasons: Record<string, number>;
   };
@@ -523,6 +536,7 @@ function buildSnapshot(input: {
       automated_eligible_sources: input.publicCoverage.automatedEligibleSources,
       failed_source_reasons: input.publicCoverage.failedSourceReasons,
       failed_sources: input.publicCoverage.failedSources,
+      failure_families: input.publicCoverage.failureFamilies,
       fetched_sources: input.publicCoverage.fetchedSources,
       label: "public snapshot",
       latest_refresh: input.publicCoverage.latestRefresh,
@@ -733,11 +747,21 @@ function normalizeCandidateReportRow(row: SupabaseReportRow): PublicReportSnapsh
   const draft = record(row.report_draft);
   const sourceItemIds = stringArray(row.source_item_ids, 100, 120);
   const draftSourceItemIds = stringArray(draft.source_item_ids, 100, 120);
+  const citations = normalizeReportCitations(draft.citations);
+  const sourceItemCount = sourceItemIds.length || draftSourceItemIds.length;
+  const qualityGate = normalizeReportQualityGate(draft.quality_gate, {
+    categoryCount: integer(draft.category_count),
+    categoryGateApplicable: integer(draft.category_count) > 0,
+    citationCount: integer(draft.citation_count, citations.length),
+    distinctSourceCount: integer(draft.distinct_source_count, distinctSourcesFromCitations(citations)),
+    reportType,
+    usableItemCount: integer(draft.usable_item_count, sourceItemCount)
+  });
 
   return {
     id,
     caveats: stringArray(draft.caveats, 8, 700),
-    citations: normalizeReportCitations(draft.citations),
+    citations,
     confidence: optionalScore(row.confidence),
     data_source: dataSourceValue(draft.data_source) ?? "supabase_radar_items",
     executive_summary: optionalText(draft.executive_summary),
@@ -747,8 +771,9 @@ function normalizeCandidateReportRow(row: SupabaseReportRow): PublicReportSnapsh
     report_type: reportType,
     saved_at: optionalText(row.created_at),
     sections: normalizeReportSections(draft.sections),
-    source_item_count: sourceItemIds.length || draftSourceItemIds.length,
-    status: text(row.status) || "draft",
+    source_item_count: sourceItemCount,
+    ...reportQualityGateFields(qualityGate),
+    status: qualityGate.passed ? text(row.status) || "draft" : "needs_review",
     summary:
       text(row.summary, 1200) ||
       text(draft.one_sentence_summary, 1200) ||
@@ -770,11 +795,20 @@ function normalizeSavedReportRow(row: SupabaseReportRow): PublicReportSnapshot |
 
   const draft = record(row.report_draft);
   const draftSourceItemIds = stringArray(draft.source_item_ids, 100, 120);
+  const citations = normalizeReportCitations(draft.citations);
+  const qualityGate = normalizeReportQualityGate(draft.quality_gate, {
+    categoryCount: integer(draft.category_count),
+    categoryGateApplicable: integer(draft.category_count) > 0,
+    citationCount: integer(draft.citation_count, citations.length),
+    distinctSourceCount: integer(draft.distinct_source_count, distinctSourcesFromCitations(citations)),
+    reportType,
+    usableItemCount: integer(draft.usable_item_count, draftSourceItemIds.length)
+  });
 
   return {
     id,
     caveats: stringArray(draft.caveats, 8, 700),
-    citations: normalizeReportCitations(draft.citations),
+    citations,
     data_source: dataSourceValue(draft.data_source) ?? "supabase_radar_items",
     executive_summary: text(draft.executive_summary, 2200) || text(row.body, 2200) || undefined,
     generated_at: optionalText(draft.generated_at) ?? optionalText(row.published_at) ?? optionalText(row.created_at),
@@ -784,6 +818,7 @@ function normalizeSavedReportRow(row: SupabaseReportRow): PublicReportSnapshot |
     saved_at: optionalText(row.published_at) ?? optionalText(row.created_at),
     sections: normalizeReportSections(draft.sections),
     source_item_count: draftSourceItemIds.length,
+    ...reportQualityGateFields(qualityGate),
     status: text(row.status) || "draft",
     summary:
       text(draft.one_sentence_summary, 1200) ||
@@ -1033,6 +1068,15 @@ function optionalScore(value: unknown) {
   }
 
   return Math.max(0, Math.min(1, numberValue));
+}
+
+function integer(value: unknown, fallback = 0) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue < 0) {
+    return fallback;
+  }
+
+  return Math.floor(numberValue);
 }
 
 function isPublicHttpUrl(value: string) {

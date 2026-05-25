@@ -39,6 +39,7 @@ export default async function ReportsPage({
           <div className="flex flex-wrap gap-2">
             <DataSourceChip detail={modeLabel(selectedReport)} source={selectedReport.data_source} />
             <StatusChip label="报告状态" tone={statusTone(selectedReport.status)} value={statusLabel(selectedReport.status)} />
+            <StatusChip label="质量门禁" tone={qualityTone(selectedReport)} value={qualityLabel(selectedReport)} />
             <StatusChip label="保存模式" tone={selectedReport.read_source === "supabase" ? "success" : "caution"} value={readSourceLabel(selectedReport)} />
             <StatusChip label="发布状态" tone={publicationTone(selectedReport)} value={publicationLabel(selectedReport)} />
           </div>
@@ -56,6 +57,7 @@ export default async function ReportsPage({
             <RailRow label="选中类型" value={reportTypeLabel(selectedReport.report_type)} />
             <RailRow label="候选数量" value={String(coverage.reportCandidates ?? data.reports.length)} />
             <RailRow label="保存/生成" value={readSourceLabel(selectedReport)} />
+            <RailRow label="质量门禁" value={qualityLabel(selectedReport)} />
             <RailRow label="生成时间" value={selectedReport.generated_at} />
             <RailRow label="时间窗口" value={`${selectedReport.time_window.start} 至 ${selectedReport.time_window.end}`} />
           </dl>
@@ -129,10 +131,12 @@ export default async function ReportsPage({
             <DataSourceChip source={selectedReport.data_source} />
             <EvidenceBadge detail={`${selectedReport.usable_item_count}/${selectedReport.retrieved_item_count}`} kind="evidence" label="可用" />
             <EvidenceBadge detail={String(selectedReport.citations.length)} kind="citation" label="引用" />
+            <EvidenceBadge detail={`${selectedReport.distinct_source_count}/${selectedReport.category_count}`} kind="freshness" label="来源/类别" />
             <EvidenceBadge detail={String(selectedReport.missing_evidence.length)} kind="uncertainty" label="缺口" />
           </div>
           <dl className="space-y-3 text-sm">
             <RailRow label="状态" value={statusLabel(selectedReport.status)} />
+            <RailRow label="质量门禁" value={qualityLabel(selectedReport)} />
             <RailRow label="模式" value={modeLabel(selectedReport)} />
             <RailRow label="发布" value={publicationLabel(selectedReport)} />
             <RailRow label="保存时间" value={selectedReport.saved_at ?? "未保存"} />
@@ -162,6 +166,7 @@ export default async function ReportsPage({
             <div className="flex flex-wrap gap-2">
               <EvidenceBadge kind="evidence" label="摘要" />
               <StatusChip label="报告状态" tone={statusTone(selectedReport.status)} value={statusLabel(selectedReport.status)} />
+              <StatusChip label="质量门禁" tone={qualityTone(selectedReport)} value={qualityLabel(selectedReport)} />
               <StatusChip label="Supabase 写入" tone="neutral" value={selectedReport.read_source === "supabase" ? "已保存记录" : "无"} />
             </div>
             <p className="mt-4 text-lg leading-8 text-radar-ink">
@@ -171,6 +176,10 @@ export default async function ReportsPage({
               {selectedReport.executive_summary ? publicText(selectedReport.executive_summary) : selectedReport.executive_summary}
             </p>
           </section>
+
+          {!selectedReport.quality_gate_passed ? (
+            <PlanningList items={selectedReport.quality_gate_reasons} tone="caution" title="为什么报告偏薄" />
+          ) : null}
 
           <section className="space-y-4">
             <div>
@@ -246,8 +255,10 @@ function ReportCoverageRow({
         <>
           <h3 className="mt-2 text-sm font-semibold leading-6 text-radar-ink">{publicText(report.title)}</h3>
           <div className="mt-2 flex flex-wrap gap-2">
+            <StatusChip label={qualityLabel(report)} tone={qualityTone(report)} />
             <EvidenceBadge detail={String(report.usable_item_count)} kind="evidence" label="条目数" />
             <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="引用数" />
+            <EvidenceBadge detail={`${report.distinct_source_count}/${report.category_count}`} kind="freshness" label="来源/类别" />
             <StatusChip label={statusLabel(report.status)} tone={statusTone(report.status)} />
           </div>
         </>
@@ -273,10 +284,12 @@ function ReportOverviewCard({
     >
       <div className="flex flex-wrap gap-2">
         <StatusChip label={reportTypeLabel(report.report_type)} tone="evidence" />
+        <StatusChip label={qualityLabel(report)} tone={qualityTone(report)} />
         <StatusChip label={statusLabel(report.status)} tone={statusTone(report.status)} />
         <StatusChip label={readSourceLabel(report)} tone={report.read_source === "supabase" ? "success" : "caution"} />
         <EvidenceBadge detail={String(report.usable_item_count)} kind="evidence" label="可用" />
         <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="引用" />
+        <EvidenceBadge detail={`${report.distinct_source_count}/${report.category_count}`} kind="freshness" label="来源/类别" />
         <EvidenceBadge detail={String(report.caveats.length)} kind="uncertainty" label="局限" />
       </div>
       <h3 className="mt-4 text-xl font-semibold leading-7 text-radar-ink">{publicText(report.title)}</h3>
@@ -284,6 +297,7 @@ function ReportOverviewCard({
       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
         <RailRow label="生成时间" value={report.generated_at} />
         <RailRow label="时间窗口" value={`${report.time_window.start} 至 ${report.time_window.end}`} />
+        <RailRow label="质量门禁" value={qualityLabel(report)} />
         <RailRow label="缺失证据" value={String(report.missing_evidence.length)} />
         <RailRow label="Markdown 字节" value={String(report.markdown.length)} />
       </dl>
@@ -326,6 +340,7 @@ function ReportTabCard({
     >
       <div className="flex flex-wrap gap-2">
         <StatusChip label={reportTypeLabel(report.report_type)} tone={isSelected ? "evidence" : "neutral"} />
+        <StatusChip label={qualityLabel(report)} tone={qualityTone(report)} />
         <StatusChip label={statusLabel(report.status)} tone={statusTone(report.status)} />
         <StatusChip label={modeLabel(report)} tone={publicationTone(report)} />
         <StatusChip label={readSourceLabel(report)} tone={report.read_source === "supabase" ? "success" : "caution"} />
@@ -450,6 +465,14 @@ function readReportType(value: string | undefined): ReportPreviewType {
 
 function firstParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function qualityTone(report: ReportWorkflowDocument): StatusTone {
+  return report.quality_gate_passed ? "success" : "caution";
+}
+
+function qualityLabel(report: ReportWorkflowDocument) {
+  return report.quality_gate_passed ? "质量通过" : "需要更多数据";
 }
 
 function statusTone(status: GeneratedReportStatus): StatusTone {
@@ -614,6 +637,14 @@ function publicText(value: string) {
       "More independent items are needed for a broad daily or weekly synthesis.",
       "需要更多独立条目才能形成宽口径日报或周报综合。"
     )
+    .replace(
+      "Report quality gate did not pass; keep this candidate in needs_review until more data is available.",
+      "报告质量门禁未通过；在补充更多数据前，该候选应保持待复核。"
+    )
+    .replace(/usable_items (\d+) is below (daily|weekly) minimum (\d+)/g, (_, count: string, type: string, minimum: string) => `${count} 条可用条目低于${reportTypeLabel(type as ReportPreviewType)}最低要求 ${minimum} 条`)
+    .replace(/citations (\d+) is below (daily|weekly) minimum (\d+)/g, (_, count: string, type: string, minimum: string) => `${count} 条引用低于${reportTypeLabel(type as ReportPreviewType)}最低要求 ${minimum} 条`)
+    .replace(/distinct_sources (\d+) is below (daily|weekly) minimum (\d+)/g, (_, count: string, type: string, minimum: string) => `${count} 个独立来源低于${reportTypeLabel(type as ReportPreviewType)}最低要求 ${minimum} 个`)
+    .replace(/categories (\d+) is below (daily|weekly) minimum (\d+)/g, (_, count: string, type: string, minimum: string) => `${count} 个类别低于${reportTypeLabel(type as ReportPreviewType)}最低要求 ${minimum} 个`)
     .replace(
       "Human review is needed before treating any item as confirmed.",
       "任何条目在视为确认前都需要人工复核。"

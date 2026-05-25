@@ -1,6 +1,11 @@
 import { getDeepSeekConfig } from "@/lib/deepseek/provider";
 import type { RadarFeed } from "@/lib/radar/feed";
 import { generateReportPreview } from "@/lib/reports/generate-report-preview";
+import {
+  qualityGateCaveats,
+  reportQualityGateFields,
+  reportQualityGateFromPreview
+} from "@/lib/reports/quality-gates";
 import { buildReportSynthesisMessages, reportPromptVersion } from "@/lib/reports/report-prompts";
 import type {
   GeneratedReportDraft,
@@ -186,6 +191,7 @@ export function buildDeterministicReportDraft(
   language: ReportLanguage = "zh",
   audience?: string
 ): GeneratedReportDraft {
+  const qualityGate = reportQualityGateFromPreview(preview);
   const sections = preview.sections.map((section): GeneratedReportSection => ({
     caveats: section.caveats,
     citations: section.items.map((item) => item.id).filter((id) => citationIdSet(preview).has(id)),
@@ -203,7 +209,7 @@ export function buildDeterministicReportDraft(
   }));
   const draft: GeneratedReportDraft = {
     audience,
-    caveats: preview.caveats,
+    caveats: dedupe([...preview.caveats, ...qualityGateCaveats(qualityGate)]),
     citations: preview.citations,
     data_source: preview.data_source,
     executive_summary: deterministicExecutiveSummary(preview),
@@ -223,10 +229,10 @@ export function buildDeterministicReportDraft(
     retrieved_item_count: preview.retrieved_item_count,
     sections,
     source_item_ids: collectSourceItemIds(preview),
-    status: "draft",
+    status: qualityGate.passed ? "draft" : "needs_review",
     time_window: preview.time_window,
     title: preview.title,
-    usable_item_count: preview.usable_item_count,
+    ...reportQualityGateFields(qualityGate),
     markdown: ""
   };
 
@@ -247,6 +253,11 @@ export function formatMarkdownReport(report: GeneratedReportDraft): string {
     `- Generated at: ${report.generated_at}`,
     `- Model: ${report.model_metadata.provider}${report.model_metadata.model ? ` / ${report.model_metadata.model}` : ""}`,
     `- API calls: ${report.model_metadata.api_call_count}`,
+    `- Quality gate: ${report.quality_gate_passed ? "passed" : "needs_more_data"}`,
+    `- Usable items: ${report.usable_item_count}`,
+    `- Citations: ${report.citation_count}`,
+    `- Distinct sources: ${report.distinct_source_count}`,
+    `- Categories: ${report.category_count}`,
     "",
     "## One-sentence summary",
     "",
@@ -291,6 +302,15 @@ export function formatMarkdownReport(report: GeneratedReportDraft): string {
     lines.push(`- ${item}`);
   }
 
+  lines.push("", "## Quality gate");
+  if (report.quality_gate_passed) {
+    lines.push("- Passed.");
+  } else {
+    for (const reason of report.quality_gate_reasons.length > 0 ? report.quality_gate_reasons : ["Needs more data."]) {
+      lines.push(`- ${reason}`);
+    }
+  }
+
   lines.push("", "## Citations");
   for (const citation of report.citations) {
     lines.push(`- [${citation.id}] ${citation.title} - ${citation.source_name} - ${citation.url}`);
@@ -307,8 +327,13 @@ function normalizeLiveReport(
   modelMetadata: SafeReportModelMetadata
 ): GeneratedReportDraft {
   const validCitationIds = citationIdSet(preview);
+  const qualityGate = reportQualityGateFromPreview(preview);
   const normalizedSections = normalizeLiveSections(value.sections, preview, validCitationIds);
-  const caveats = liveCompatibleCaveats(dedupe([...stringArray(value.caveats), ...preview.caveats]));
+  const caveats = liveCompatibleCaveats(dedupe([
+    ...stringArray(value.caveats),
+    ...preview.caveats,
+    ...qualityGateCaveats(qualityGate)
+  ]));
   const missingEvidence = dedupe([...stringArray(value.missing_evidence), ...preview.missing_evidence]);
 
   return {
@@ -327,10 +352,10 @@ function normalizeLiveReport(
     retrieved_item_count: preview.retrieved_item_count,
     sections: normalizedSections,
     source_item_ids: collectSourceItemIds(preview),
-    status: "draft",
+    status: qualityGate.passed ? "draft" : "needs_review",
     time_window: preview.time_window,
     title: text(value.title) || preview.title,
-    usable_item_count: preview.usable_item_count,
+    ...reportQualityGateFields(qualityGate),
     markdown: ""
   };
 }
