@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     }
 
     const answer = await answerRadarQuestion(validation.value);
-    return NextResponse.json(answer);
+    return NextResponse.json(stripModelMetadata(answer));
   } catch (error) {
     if (isSafeGenerationError(error)) {
       return NextResponse.json({ error: error.message }, { status: error.status });
@@ -21,6 +21,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: "Unable to answer the question safely." }, { status: 500 });
   }
+}
+
+function stripModelMetadata<T extends { model_metadata?: unknown }>(value: T) {
+  const output = { ...value };
+  delete output.model_metadata;
+  return output;
 }
 
 function isSafeGenerationError(error: unknown): error is SafeGenerationError {

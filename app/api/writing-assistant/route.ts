@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     }
 
     const output = await generateWritingAssistantOutput(validation.value);
-    return NextResponse.json(output);
+    return NextResponse.json(stripModelMetadata(output));
   } catch (error) {
     if (isSafeGenerationError(error)) {
       return NextResponse.json({ error: error.message }, { status: error.status });
@@ -22,6 +22,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: "Unable to generate writing assistance safely." }, { status: 500 });
   }
+}
+
+function stripModelMetadata<T extends { model_metadata?: unknown }>(value: T) {
+  const output = { ...value };
+  delete output.model_metadata;
+  return output;
 }
 
 function isSafeGenerationError(error: unknown): error is SafeGenerationError {

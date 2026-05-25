@@ -133,3 +133,7 @@ npx wrangler pages deploy dist/cloudflare-pages --project-name=ai-industry-radar
 - No GitHub Pages deployment path.
 - No automatic migration application.
 - No automatic report publication.
+
+## Final RC Run
+
+The 2026-05-25 final RC run persisted 187 public radar rows, 203 raw items, 198 radar items, and 20 report candidates. The latest daily and weekly candidates both passed quality gates. The run met the 180-row minimum but did not reach the preferred 200+ target because the remaining automated-safe expansion was limited by unauthenticated GitHub rate limits and 226 manual/blocked sources.

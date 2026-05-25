@@ -21,6 +21,7 @@ import type {
 } from "@/lib/reports/types";
 import type { RetrievalCitation, RetrievalDataSource, ResolvedTimeWindow } from "@/lib/retrieval/types";
 import { getSupabaseServerReadClient } from "@/lib/supabase/server-read";
+import { getSupabaseServiceClient, getSupabaseServiceStatus } from "@/lib/supabase/service";
 
 type PublicCandidateRow = Record<string, unknown>;
 type PublicReportRow = Record<string, unknown>;
@@ -36,6 +37,10 @@ const publicReportCandidateSelect =
   "id, report_type, title, summary, time_window_start, time_window_end, source_item_ids, status, confidence, created_at, updated_at, report_draft";
 const publicReportSelect =
   "id, type, title, language, time_window_start, time_window_end, body, status, created_at, published_at, report_draft";
+const serviceReportCandidateSelect =
+  "id, report_type, title, summary, time_window_start, time_window_end, source_item_ids, status, confidence, created_at, updated_at, metadata";
+const serviceReportSelect =
+  "id, type, title, language, time_window_start, time_window_end, body, status, created_at, published_at, metadata";
 
 export async function loadReportWorkflowData(): Promise<ReportWorkflowData> {
   const [feed, saved] = await Promise.all([loadRadarFeed(), loadSavedReportDocuments()]);
@@ -96,24 +101,40 @@ async function loadSavedReportDocuments(): Promise<{
   const supabase = getSupabaseServerReadClient();
 
   if (!supabase) {
+    const service = await readServiceReportDocuments();
+
     return {
-      documents: [],
-      warnings: ["Supabase public read config is unavailable; reports are generated from radar items."]
+      documents: service.documents.sort(compareSavedDocuments),
+      warnings:
+        service.documents.length > 0
+          ? service.warnings
+          : ["Supabase public read config is unavailable; reports are generated from radar items.", ...service.warnings]
     };
   }
 
-  const [reports, candidates] = await Promise.all([
+  const [reports, candidates, service] = await Promise.all([
     readPublicReports(supabase),
-    readPublicReportCandidates(supabase)
+    readPublicReportCandidates(supabase),
+    readServiceReportDocuments()
   ]);
 
   return {
-    documents: [...reports.documents, ...candidates.documents].sort(compareSavedDocuments),
-    warnings: [...reports.warnings, ...candidates.warnings]
+    documents: mergeDocuments([
+      ...service.documents,
+      ...reports.documents,
+      ...candidates.documents
+    ]).sort(compareSavedDocuments),
+    warnings: [...reports.warnings, ...candidates.warnings, ...service.warnings]
   };
 }
 
 async function loadSavedReportDocumentById(id: string) {
+  const serviceDocument = await readServiceReportDocumentById(id);
+
+  if (serviceDocument) {
+    return serviceDocument;
+  }
+
   const supabase = getSupabaseServerReadClient();
 
   if (!supabase) {
@@ -126,6 +147,58 @@ async function loadSavedReportDocumentById(id: string) {
   ]);
 
   return candidate ?? report;
+}
+
+async function readServiceReportDocuments(): Promise<{
+  documents: ReportWorkflowDocument[];
+  warnings: string[];
+}> {
+  const status = getSupabaseServiceStatus();
+
+  if (!status.publicConfigConfigured || !status.serviceRoleConfigured) {
+    return {
+      documents: [],
+      warnings: []
+    };
+  }
+
+  try {
+    const supabase = getSupabaseServiceClient();
+    const [reports, candidates] = await Promise.all([
+      readServiceReports(supabase),
+      readServiceReportCandidates(supabase)
+    ]);
+
+    return {
+      documents: [...reports.documents, ...candidates.documents],
+      warnings: [...reports.warnings, ...candidates.warnings]
+    };
+  } catch (error) {
+    return {
+      documents: [],
+      warnings: [`service report read failed: ${sanitizeReadError(error)}`]
+    };
+  }
+}
+
+async function readServiceReportDocumentById(id: string) {
+  const status = getSupabaseServiceStatus();
+
+  if (!status.publicConfigConfigured || !status.serviceRoleConfigured) {
+    return null;
+  }
+
+  try {
+    const supabase = getSupabaseServiceClient();
+    const [candidate, report] = await Promise.all([
+      readServiceReportCandidateById(supabase, id),
+      readServiceReportById(supabase, id)
+    ]);
+
+    return candidate ?? report;
+  } catch {
+    return null;
+  }
 }
 
 async function readPublicReportCandidates(supabase: NonNullable<ReturnType<typeof getSupabaseServerReadClient>>) {
@@ -229,6 +302,113 @@ async function readPublicReportById(
   }
 }
 
+async function readServiceReportCandidates(supabase: ReturnType<typeof getSupabaseServiceClient>) {
+  try {
+    const { data, error } = await supabase
+      .from("report_candidates")
+      .select(serviceReportCandidateSelect)
+      .in("report_type", ["daily", "weekly"])
+      .in("status", ["draft", "needs_review", "approved", "deferred", "published"])
+      .order("created_at", { ascending: false, nullsFirst: false })
+      .limit(12);
+
+    if (error) {
+      return {
+        documents: [],
+        warnings: [`report_candidates service read failed: ${sanitizeReadError(error.message)}`]
+      };
+    }
+
+    return {
+      documents: ((data ?? []) as PublicCandidateRow[])
+        .map(withReportDraftFromMetadata)
+        .map(normalizeCandidateRow)
+        .filter((row): row is ReportWorkflowDocument => Boolean(row)),
+      warnings: []
+    };
+  } catch (error) {
+    return {
+      documents: [],
+      warnings: [`report_candidates service read failed: ${sanitizeReadError(error)}`]
+    };
+  }
+}
+
+async function readServiceReportCandidateById(
+  supabase: ReturnType<typeof getSupabaseServiceClient>,
+  id: string
+) {
+  try {
+    const { data, error } = await supabase
+      .from("report_candidates")
+      .select(serviceReportCandidateSelect)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error || !data) {
+      return null;
+    }
+
+    return normalizeCandidateRow(withReportDraftFromMetadata(data as PublicCandidateRow));
+  } catch {
+    return null;
+  }
+}
+
+async function readServiceReports(supabase: ReturnType<typeof getSupabaseServiceClient>) {
+  try {
+    const { data, error } = await supabase
+      .from("reports")
+      .select(serviceReportSelect)
+      .in("type", ["daily", "weekly"])
+      .in("status", ["draft", "reviewed", "published"])
+      .order("published_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false, nullsFirst: false })
+      .limit(12);
+
+    if (error) {
+      return {
+        documents: [],
+        warnings: [`reports service read failed: ${sanitizeReadError(error.message)}`]
+      };
+    }
+
+    return {
+      documents: ((data ?? []) as PublicReportRow[])
+        .map(withReportDraftFromMetadata)
+        .map(normalizeReportRow)
+        .filter((row): row is ReportWorkflowDocument => Boolean(row)),
+      warnings: []
+    };
+  } catch (error) {
+    return {
+      documents: [],
+      warnings: [`reports service read failed: ${sanitizeReadError(error)}`]
+    };
+  }
+}
+
+async function readServiceReportById(
+  supabase: ReturnType<typeof getSupabaseServiceClient>,
+  id: string
+) {
+  try {
+    const { data, error } = await supabase
+      .from("reports")
+      .select(serviceReportSelect)
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error || !data) {
+      return null;
+    }
+
+    return normalizeReportRow(withReportDraftFromMetadata(data as PublicReportRow));
+  } catch {
+    return null;
+  }
+}
+
 function normalizeCandidateRow(row: PublicCandidateRow): ReportWorkflowDocument | null {
   const id = text(row.id);
   const reportType = reportTypeValue(row.report_type);
@@ -259,6 +439,15 @@ function normalizeCandidateRow(row: PublicCandidateRow): ReportWorkflowDocument 
     saved_at: optionalText(row.created_at),
     source_item_ids: stringArray(row.source_item_ids),
     status: draft.quality_gate_passed ? candidateStatus(row.status) : "needs_review"
+  };
+}
+
+function withReportDraftFromMetadata<T extends Record<string, unknown>>(row: T): T {
+  const metadata = isRecord(row.metadata) ? row.metadata : {};
+
+  return {
+    ...row,
+    report_draft: isRecord(metadata.report_draft) ? metadata.report_draft : row.report_draft
   };
 }
 
@@ -317,7 +506,11 @@ function normalizeReportDraft(
   const reportType = reportTypeValue(value.report_type) ?? fallback.reportType;
   const timeWindowValue = normalizeTimeWindow(value.time_window) ?? fallback.timeWindow;
   const generatedAt = optionalText(value.generated_at) ?? fallback.generatedAt;
-  const modelMetadata = normalizeModelMetadata(value.model_metadata);
+  const modelMetadata: SafeReportModelMetadata = {
+    api_call_count: 0,
+    mode: fallback.mode,
+    provider: "supabase"
+  };
   const citations = normalizeCitations(value.citations);
   const usableItemCount = integer(value.usable_item_count);
   const citationCount = optionalInteger(value.citation_count) ?? citations.length;
@@ -423,6 +616,19 @@ function latestByType(documents: ReportWorkflowDocument[]) {
   }
 
   return byType;
+}
+
+function mergeDocuments(documents: ReportWorkflowDocument[]) {
+  const byId = new Map<string, ReportWorkflowDocument>();
+
+  for (const document of documents) {
+    const id = document.id ?? `${document.report_type}:${document.generated_at}`;
+    if (!byId.has(id)) {
+      byId.set(id, document);
+    }
+  }
+
+  return Array.from(byId.values());
 }
 
 function compareSavedDocuments(left: ReportWorkflowDocument, right: ReportWorkflowDocument) {
@@ -531,36 +737,6 @@ function normalizeCitations(value: unknown): RetrievalCitation[] {
     .filter((citation): citation is RetrievalCitation => Boolean(citation));
 }
 
-function normalizeModelMetadata(value: unknown): SafeReportModelMetadata {
-  if (!isRecord(value)) {
-    return {
-      api_call_count: 0,
-      mode: "saved_candidate",
-      provider: "supabase"
-    };
-  }
-
-  const provider = value.provider === "deepseek" || value.provider === "deterministic" ? value.provider : "supabase";
-  const mode = modeValue(value.mode) ?? "saved_candidate";
-
-  return {
-    api_call_count: integer(value.api_call_count),
-    error: optionalText(value.error),
-    live_requested: typeof value.live_requested === "boolean" ? value.live_requested : undefined,
-    mode,
-    model: optionalText(value.model),
-    prompt_version: optionalText(value.prompt_version),
-    provider,
-    token_usage: isRecord(value.token_usage)
-      ? {
-          completion_tokens: optionalInteger(value.token_usage.completion_tokens),
-          prompt_tokens: optionalInteger(value.token_usage.prompt_tokens),
-          total_tokens: optionalInteger(value.token_usage.total_tokens)
-        }
-      : undefined
-  };
-}
-
 function timeWindow(start: unknown, end: unknown): ResolvedTimeWindow {
   const startText = optionalText(start) ?? new Date(0).toISOString();
   const endText = optionalText(end) ?? new Date().toISOString();
@@ -650,10 +826,6 @@ function sectionId(value: unknown) {
     "business_ecosystem",
     "weak_signals_needs_review"
   ]);
-}
-
-function modeValue(value: unknown) {
-  return isOneOf(value, ["deterministic_preview", "live_deepseek", "saved_candidate", "saved_report"]);
 }
 
 function statusForCitation(value: unknown): RetrievalCitation["status"] {

@@ -124,8 +124,11 @@ Milestone M adds a manual GitHub Actions workflow for bounded data refresh, opti
 - Workflow: `.github/workflows/radar-refresh-cloudflare.yml`
 - Runbook: [Milestone M Reviewed Refresh and Cloudflare Workflow](./docs/ops-refresh-cloudflare-milestone-m.md)
 - Report gates: [Milestone M Report Quality Gates](./docs/report-quality-gates-milestone-m.md)
+- Final RC: [Final Release Candidate](./docs/release-candidate-final.md)
 
 The workflow is `workflow_dispatch` only. It has no schedule. Supabase writes require both `persist=true` and `RADAR_REFRESH_WRITE_GATE=true`; deployed/default `ENABLE_SUPABASE_WRITES` stays `false`.
+
+Final RC public site is Cloudflare-first at `https://ai-industry-radar.pages.dev`. Vercel remains the reference/dynamic app. Public API responses and Cloudflare snapshots do not expose `model_metadata`.
 
 ## Source Registry
 

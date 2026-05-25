@@ -180,7 +180,6 @@ function WritingOutputView({ output }: { output: WritingAssistantOutput }) {
           generationMode={output.mode}
           itemCount={output.candidate_topics.length}
           itemCountLabel="候选选题"
-          modelMetadata={output.model_metadata}
           timeWindow={output.resolved_time_window}
           title="数据来源与时间窗口"
         />

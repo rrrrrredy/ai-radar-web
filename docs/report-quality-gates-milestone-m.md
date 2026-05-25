@@ -73,6 +73,8 @@ supabase/migrations/202605250001_report_quality_gate_public_views.sql
 
 It refreshes `public_report_candidates` and `public_reports` to expose only the allowlisted report quality fields in `report_draft`. It does not grant write access and does not expose raw model metadata, private notes, operational logs, secrets, or service-role data.
 
+The final RC also strips `model_metadata` from public API responses and Cloudflare snapshot output. When the database public report view has not yet been refreshed, the server/build path reads saved report rows with service access and projects only the same public-safe report fields before rendering or exporting.
+
 ## Failure-Family Categories
 
 Milestone M standardizes source problem families:

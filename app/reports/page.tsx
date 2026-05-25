@@ -140,7 +140,6 @@ export default async function ReportsPage({
             <RailRow label="模式" value={modeLabel(selectedReport)} />
             <RailRow label="发布" value={publicationLabel(selectedReport)} />
             <RailRow label="保存时间" value={selectedReport.saved_at ?? "未保存"} />
-            <RailRow label="模型/API 调用" value={`${selectedReport.model_metadata.provider}; ${selectedReport.model_metadata.api_call_count} 次`} />
             <RailRow label="时间窗口规则" value={selectedReport.time_window.explanation} />
           </dl>
           <div className="flex flex-wrap gap-2">
@@ -607,6 +606,14 @@ function publicText(value: string) {
     .replace(
       "Snapshot data came from Supabase public-safe read views using anon read access.",
       "快照数据来自 Supabase 公开安全只读视图，并使用 anon 只读访问。"
+    )
+    .replace(
+      "Radar rows came from Supabase public-safe read views. Report candidates are projected to the same public-safe field allowlist during export.",
+      "雷达条目来自 Supabase 公开安全只读视图；报告候选在导出时投影到同一组公开安全字段。"
+    )
+    .replace(
+      "Full article text or original announcements are needed beyond metadata-level evidence.",
+      "除了元数据级证据外，仍需要完整文章正文或原始公告。"
     )
     .replace(
       "Read-only Supabase public radar retrieval was used; no Supabase write path ran.",

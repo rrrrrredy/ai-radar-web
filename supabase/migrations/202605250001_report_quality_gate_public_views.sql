@@ -60,21 +60,6 @@ select
           ),
           'generated_at', coalesce(stored_report_draft ->> 'generated_at', updated_at::text, created_at::text),
           'language', stored_report_draft ->> 'language',
-          'model_metadata', jsonb_build_object(
-            'provider',
-              case
-                when stored_report_draft #>> '{model_metadata,provider}' in ('deterministic', 'deepseek', 'supabase')
-                  then stored_report_draft #>> '{model_metadata,provider}'
-                else 'supabase'
-              end,
-            'mode', 'saved_candidate',
-            'api_call_count',
-              case
-                when stored_report_draft #>> '{model_metadata,api_call_count}' ~ '^[0-9]+$'
-                  then (stored_report_draft #>> '{model_metadata,api_call_count}')::integer
-                else 0
-              end
-          ),
           'markdown', stored_report_draft ->> 'markdown',
           'source_item_ids', coalesce(stored_report_draft -> 'source_item_ids', to_jsonb(source_item_ids)),
           'retrieved_item_count',
@@ -184,21 +169,6 @@ select
           ),
           'generated_at', coalesce(stored_report_draft ->> 'generated_at', published_at::text, created_at::text),
           'language', coalesce(nullif(stored_report_draft ->> 'language', ''), language),
-          'model_metadata', jsonb_build_object(
-            'provider',
-              case
-                when stored_report_draft #>> '{model_metadata,provider}' in ('deterministic', 'deepseek', 'supabase')
-                  then stored_report_draft #>> '{model_metadata,provider}'
-                else 'supabase'
-              end,
-            'mode', 'saved_report',
-            'api_call_count',
-              case
-                when stored_report_draft #>> '{model_metadata,api_call_count}' ~ '^[0-9]+$'
-                  then (stored_report_draft #>> '{model_metadata,api_call_count}')::integer
-                else 0
-              end
-          ),
           'markdown', stored_report_draft ->> 'markdown',
           'source_item_ids', stored_report_draft -> 'source_item_ids',
           'retrieved_item_count',

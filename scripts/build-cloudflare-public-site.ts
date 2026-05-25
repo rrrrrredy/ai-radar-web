@@ -772,6 +772,14 @@ function publicText(value: string) {
       "快照数据来自 Supabase 公开安全只读视图，并使用 anon 只读访问。"
     )
     .replace(
+      "Radar rows came from Supabase public-safe read views. Report candidates are projected to the same public-safe field allowlist during export.",
+      "雷达条目来自 Supabase 公开安全只读视图；报告候选在导出时投影到同一组公开安全字段。"
+    )
+    .replace(
+      "Full article text or original announcements are needed beyond metadata-level evidence.",
+      "除了元数据级证据外，仍需要完整文章正文或原始公告。"
+    )
+    .replace(
       "Read-only Supabase public radar retrieval was used; no Supabase write path ran.",
       "使用 Supabase 公共雷达视图进行只读检索；未运行 Supabase 写入路径。"
     )

@@ -372,16 +372,17 @@ async function readSupabaseRadarItems(supabase: SupabaseClient): Promise<Supabas
 }
 
 async function readSupabaseReports(supabase: SupabaseClient): Promise<SupabaseReportRead> {
-  const [candidates, reports] = await Promise.all([
+  const [candidates, reports, service] = await Promise.all([
     readPublicReportCandidates(supabase),
-    readPublicReports(supabase)
+    readPublicReports(supabase),
+    readServiceReports()
   ]);
 
   return {
-    reports: [...candidates.reports, ...reports.reports]
+    reports: mergeReports([...service.reports, ...candidates.reports, ...reports.reports])
       .sort(compareReports)
       .slice(0, reportLimit),
-    warnings: [...candidates.warnings, ...reports.warnings]
+    warnings: [...candidates.warnings, ...reports.warnings, ...service.warnings]
   };
 }
 
@@ -442,6 +443,102 @@ async function readPublicReports(supabase: SupabaseClient): Promise<SupabaseRepo
     return {
       reports: [],
       warnings: [`public_reports read failed: ${sanitizeError(error)}`]
+    };
+  }
+}
+
+async function readServiceReports(): Promise<SupabaseReportRead> {
+  const serviceStatus = getSupabaseServiceStatus();
+
+  if (!serviceStatus.publicConfigConfigured || !serviceStatus.serviceRoleConfigured) {
+    return {
+      reports: [],
+      warnings: []
+    };
+  }
+
+  try {
+    const supabase = getSupabaseServiceClient();
+    const [candidates, reports] = await Promise.all([
+      readServiceReportCandidates(supabase),
+      readServiceSavedReports(supabase)
+    ]);
+
+    return {
+      reports: [...candidates.reports, ...reports.reports],
+      warnings: [...candidates.warnings, ...reports.warnings]
+    };
+  } catch (error) {
+    return {
+      reports: [],
+      warnings: [`service report read failed: ${sanitizeError(error)}`]
+    };
+  }
+}
+
+async function readServiceReportCandidates(supabase: SupabaseClient): Promise<SupabaseReportRead> {
+  try {
+    const { data, error } = await supabase
+      .from("report_candidates")
+      .select(
+        "id, report_type, title, summary, time_window_start, time_window_end, source_item_ids, status, confidence, created_at, updated_at, metadata"
+      )
+      .in("report_type", ["daily", "weekly"])
+      .in("status", ["draft", "needs_review", "approved", "deferred", "published"])
+      .order("created_at", { ascending: false, nullsFirst: false })
+      .limit(reportLimit);
+
+    if (error) {
+      return {
+        reports: [],
+        warnings: [`report_candidates service read failed: ${sanitizeError(error.message)}`]
+      };
+    }
+
+    return {
+      reports: ((data ?? []) as unknown as SupabaseReportRow[])
+        .map(withReportDraftFromMetadata)
+        .map(normalizeCandidateReportRow)
+        .filter((report): report is PublicReportSnapshot => Boolean(report)),
+      warnings: []
+    };
+  } catch (error) {
+    return {
+      reports: [],
+      warnings: [`report_candidates service read failed: ${sanitizeError(error)}`]
+    };
+  }
+}
+
+async function readServiceSavedReports(supabase: SupabaseClient): Promise<SupabaseReportRead> {
+  try {
+    const { data, error } = await supabase
+      .from("reports")
+      .select("id, type, title, language, time_window_start, time_window_end, body, status, created_at, published_at, metadata")
+      .in("type", ["daily", "weekly"])
+      .in("status", ["draft", "reviewed", "published"])
+      .order("published_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false, nullsFirst: false })
+      .limit(reportLimit);
+
+    if (error) {
+      return {
+        reports: [],
+        warnings: [`reports service read failed: ${sanitizeError(error.message)}`]
+      };
+    }
+
+    return {
+      reports: ((data ?? []) as unknown as SupabaseReportRow[])
+        .map(withReportDraftFromMetadata)
+        .map(normalizeSavedReportRow)
+        .filter((report): report is PublicReportSnapshot => Boolean(report)),
+      warnings: []
+    };
+  } catch (error) {
+    return {
+      reports: [],
+      warnings: [`reports service read failed: ${sanitizeError(error)}`]
     };
   }
 }
@@ -560,7 +657,7 @@ function buildSnapshot(input: {
       "Only public-safe radar and report fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
       input.fallbackUsed
         ? "This snapshot used local generated data because Supabase public reads were unavailable to the export process."
-        : "Snapshot data came from Supabase public-safe read views using anon read access.",
+        : "Radar rows came from Supabase public-safe read views. Report candidates are projected to the same public-safe field allowlist during export.",
       ...input.caveats,
       ...input.warnings,
       ...input.operationalCounts.warnings
@@ -784,6 +881,15 @@ function normalizeCandidateReportRow(row: SupabaseReportRow): PublicReportSnapsh
   };
 }
 
+function withReportDraftFromMetadata(row: SupabaseReportRow): SupabaseReportRow {
+  const metadata = record(row.metadata);
+
+  return {
+    ...row,
+    report_draft: isRecord(metadata.report_draft) ? metadata.report_draft : row.report_draft
+  };
+}
+
 function normalizeSavedReportRow(row: SupabaseReportRow): PublicReportSnapshot | null {
   const id = text(row.id);
   const reportType = reportTypeValue(row.type);
@@ -981,6 +1087,18 @@ function compareReports(left: PublicReportSnapshot, right: PublicReportSnapshot)
   const rightTime = Date.parse(right.saved_at ?? right.generated_at ?? right.time_window.end);
 
   return (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0);
+}
+
+function mergeReports(reports: PublicReportSnapshot[]) {
+  const byId = new Map<string, PublicReportSnapshot>();
+
+  for (const report of reports) {
+    if (!byId.has(report.id)) {
+      byId.set(report.id, report);
+    }
+  }
+
+  return Array.from(byId.values());
 }
 
 function labelize(value: string) {

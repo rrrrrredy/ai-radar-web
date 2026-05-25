@@ -182,7 +182,6 @@ function AnswerView({ answer }: { answer: AskAnswer }) {
           freshnessNote={answer.freshness_note}
           generationMode={answer.mode}
           itemCount={answer.retrieved_item_count}
-          modelMetadata={answer.model_metadata}
           timeWindow={answer.resolved_time_window}
           title="数据来源与时间窗口"
         />

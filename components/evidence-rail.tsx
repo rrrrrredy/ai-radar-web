@@ -18,7 +18,6 @@ export function EvidenceRail({
   generationMode,
   itemCount,
   itemCountLabel = "已检索条目",
-  modelMetadata,
   timeWindow,
   title = "证据栏"
 }: {
@@ -29,12 +28,6 @@ export function EvidenceRail({
   generationMode: GenerationMode;
   itemCount?: number;
   itemCountLabel?: string;
-  modelMetadata?: {
-    provider: string;
-    model?: string;
-    prompt_version: string;
-    api_call_count: number;
-  };
   timeWindow: ResolvedTimeWindow;
   title?: string;
 }) {
@@ -89,14 +82,6 @@ export function EvidenceRail({
         ) : null}
         <RailRow label="引用数量" value={String(citationsCount)} />
         <RailRow label="生成模式" value={generationMode} />
-        {modelMetadata ? (
-          <>
-            <RailRow label="模型提供方" value={modelMetadata.provider} />
-            <RailRow label="API 调用" value={String(modelMetadata.api_call_count)} />
-            <RailRow label="提示词版本" value={modelMetadata.prompt_version} />
-            {modelMetadata.model ? <RailRow label="模型" value={modelMetadata.model} /> : null}
-          </>
-        ) : null}
         {context.map((item) => (
           <RailRow key={item.label} label={item.label} tone={item.tone} value={String(item.value)} />
         ))}
