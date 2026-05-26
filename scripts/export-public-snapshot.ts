@@ -9,6 +9,12 @@ import {
   loadPublicDataCompletenessSummary,
   type PublicDataCompletenessSummary
 } from "@/lib/data-completeness/public-summary";
+import {
+  buildEventLayer,
+  type PublicEventCluster,
+  type PublicEventClusterItem,
+  type PublicTimelineEntry
+} from "@/lib/events/clustering";
 import { buildRadarFeed } from "@/lib/radar/feed";
 import { loadRadarItems } from "@/lib/retrieval/load-radar-items";
 import type {
@@ -172,6 +178,7 @@ export type PublicMirrorSnapshot = {
     entities: number | null;
     item_entities: number | null;
     scores: number | null;
+    event_clusters: number;
   };
   coverage: {
     label: "public snapshot";
@@ -195,8 +202,59 @@ export type PublicMirrorSnapshot = {
   top_categories: CountEntry[];
   top_sources: CountEntry[];
   top_source_tiers: CountEntry[];
+  event_clusters: PublicEventCluster[];
+  event_cluster_items: PublicEventClusterItem[];
+  event_count: number;
+  curated_events: PublicEventCluster[];
+  timeline: PublicTimelineEntry[];
+  source_health_summary: {
+    succeeded: number;
+    failed: number;
+    timeout: number;
+    "403": number;
+    rate_limit: number;
+    no_items: number;
+    duplicate_only: number;
+    manual_blocked: number;
+    unsupported_source: number;
+    low_relevance_excluded: number;
+  };
+  failure_family_summary: Record<string, number>;
+  report_quality_summary: {
+    daily: ReportQualitySummary | null;
+    weekly: ReportQualitySummary | null;
+  };
+  data_completeness_summary: {
+    sources_total: number;
+    automated_eligible_sources: number;
+    attempted_sources: number;
+    fetched_sources: number;
+    failed_sources: number;
+    blocked_manual_sources: number;
+    sources_with_public_items: number | null;
+    raw_items: number | null;
+    radar_items: number | null;
+    public_radar_items: number | null;
+    raw_to_radar_conversion: number | null;
+    radar_to_public_visibility: number | null;
+    source_public_visibility: number | null;
+  };
   radar_items: PublicRadarSnapshotItem[];
   reports: PublicReportSnapshot[];
+  caveats: string[];
+};
+
+type ReportQualitySummary = {
+  id: string;
+  status: string;
+  quality_gate_passed: boolean;
+  usable_item_count: number;
+  citation_count: number;
+  distinct_source_count: number;
+  category_count: number;
+  quality_gate_reasons: string[];
+  top_event_ids: string[];
+  missing_evidence: string[];
   caveats: string[];
 };
 
@@ -581,6 +639,7 @@ function buildSnapshot(input: {
   const latest = latestTimestamp(input.items);
   const statusCounts = countStatuses(input.items);
   const reportCitationCount = input.reports.reduce((count, report) => count + report.citations.length, 0);
+  const eventLayer = buildEventLayer(input.items);
 
   return {
     schema_version: 1,
@@ -626,7 +685,8 @@ function buildSnapshot(input: {
       sources: input.operationalCounts.sources,
       snapshot_radar_items: input.items.length,
       understanding_runs: input.operationalCounts.understanding_runs,
-      visible_radar_items: input.exactVisibleRows
+      visible_radar_items: input.exactVisibleRows,
+      event_clusters: eventLayer.event_count
     },
     coverage: {
       attempted_sources: input.publicCoverage.attemptedSources,
@@ -650,8 +710,45 @@ function buildSnapshot(input: {
     top_categories: countEntries(input.items.flatMap((item) => item.categories.map(labelize))),
     top_source_tiers: countEntries(input.items.map((item) => item.source_tier)),
     top_sources: countEntries(input.items.map((item) => item.source_name)),
+    curated_events: eventLayer.curated_events,
+    data_completeness_summary: {
+      attempted_sources: input.publicCoverage.attemptedSources,
+      automated_eligible_sources: input.publicCoverage.automatedEligibleSources,
+      blocked_manual_sources: input.publicCoverage.blockedManualSources,
+      failed_sources: input.publicCoverage.failedSources,
+      fetched_sources: input.publicCoverage.fetchedSources,
+      public_radar_items: input.publicCoverage.publicRadarItems,
+      radar_items: input.publicCoverage.radarItems,
+      radar_to_public_visibility: input.publicCoverage.rates.radarPublicVisibility,
+      raw_items: input.publicCoverage.rawItems,
+      raw_to_radar_conversion: input.publicCoverage.rates.rawRadarConversion,
+      source_public_visibility: input.publicCoverage.rates.sourcePublicVisibility,
+      sources_total: input.publicCoverage.sourcesTotal,
+      sources_with_public_items: input.publicCoverage.sourcesWithPublicItems
+    },
+    event_cluster_items: eventLayer.event_cluster_items,
+    event_clusters: eventLayer.event_clusters,
+    event_count: eventLayer.event_count,
+    failure_family_summary: input.publicCoverage.failureFamilies,
+    report_quality_summary: {
+      daily: reportQualitySummary(input.reports, "daily", eventLayer.curated_events),
+      weekly: reportQualitySummary(input.reports, "weekly", eventLayer.curated_events)
+    },
     radar_items: input.items,
     reports: input.reports,
+    source_health_summary: {
+      "403": input.publicCoverage.failureFamilies["403"] ?? input.publicCoverage.failureFamilies.failed_403 ?? 0,
+      duplicate_only: input.publicCoverage.failureFamilies.duplicate_only ?? 0,
+      failed: input.publicCoverage.failedSources,
+      low_relevance_excluded: input.publicCoverage.failureFamilies.low_relevance_excluded ?? 0,
+      manual_blocked: input.publicCoverage.blockedManualSources,
+      no_items: input.publicCoverage.failureFamilies.no_items ?? input.publicCoverage.failureFamilies.no_new_items ?? 0,
+      rate_limit: input.publicCoverage.failureFamilies.rate_limit ?? 0,
+      succeeded: input.publicCoverage.fetchedSources,
+      timeout: input.publicCoverage.failureFamilies.timeout ?? 0,
+      unsupported_source: input.publicCoverage.failureFamilies.unsupported_source ?? 0
+    },
+    timeline: eventLayer.timeline,
     caveats: dedupe([
       "Cloudflare Pages is the primary public read surface. Auth, Admin, server actions, and write workflows remain outside this public Cloudflare surface.",
       "Only public-safe radar and report fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
@@ -662,6 +759,38 @@ function buildSnapshot(input: {
       ...input.warnings,
       ...input.operationalCounts.warnings
     ])
+  };
+}
+
+function reportQualitySummary(
+  reports: PublicReportSnapshot[],
+  reportType: ReportPreviewType,
+  curatedEvents: PublicEventCluster[]
+): ReportQualitySummary | null {
+  const report = reports.find((candidate) => candidate.report_type === reportType);
+
+  if (!report) {
+    return null;
+  }
+
+  const citationIds = new Set(report.citations.map((citation) => citation.id));
+  const topEventIds = curatedEvents
+    .filter((event) => event.related_item_ids.some((itemId) => citationIds.has(itemId)))
+    .map((event) => event.event_cluster_id)
+    .slice(0, 6);
+
+  return {
+    category_count: report.category_count,
+    caveats: report.caveats,
+    citation_count: report.citation_count,
+    distinct_source_count: report.distinct_source_count,
+    id: report.id,
+    missing_evidence: report.missing_evidence,
+    quality_gate_passed: report.quality_gate_passed,
+    quality_gate_reasons: report.quality_gate_reasons,
+    status: report.status,
+    top_event_ids: topEventIds,
+    usable_item_count: report.usable_item_count
   };
 }
 

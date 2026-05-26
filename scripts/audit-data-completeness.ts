@@ -30,6 +30,7 @@ type FinalSourceStatus =
   | "failed_rate_limit"
   | "failed_parse"
   | "blocked_requires_manual"
+  | "unsupported_source"
   | "needs_review";
 
 type SourceAuditRow = {
@@ -246,7 +247,7 @@ type DataCompletenessReport = {
   warnings: string[];
 };
 
-const docsPath = path.join(process.cwd(), "docs", "data-completeness-milestone-current.md");
+const docsPath = path.join(process.cwd(), "docs", "data-completeness-release-candidate.md");
 const jsonPath = path.join(process.cwd(), "data", "reports", "data-completeness.latest.json");
 const checkpointPath = path.join(process.cwd(), "data", "activation", "latest", "checkpoint.json");
 
@@ -1049,7 +1050,7 @@ function isString(value: string | null | undefined): value is string {
 
 function renderMarkdown(report: DataCompletenessReport) {
   return [
-    "# Data Completeness Milestone - Current",
+    "# Data Completeness Release Candidate",
     "",
     `Generated: ${report.generated_at}`,
     "",

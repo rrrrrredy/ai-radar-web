@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { loadPublicDataCompletenessSummary } from "@/lib/data-completeness/public-summary";
+import { buildEventLayer } from "@/lib/events/clustering";
 import { loadRadarFeed } from "@/lib/radar/feed";
 import { generateReportDraft } from "@/lib/reports/generate-live-report";
 import {
@@ -13,6 +14,7 @@ import {
 } from "@/lib/reports/quality-gates";
 import type { ReportPreviewType, ReportQualityGate } from "@/lib/reports/types";
 import { getSupabaseServerReadClient } from "@/lib/supabase/server-read";
+import { getSupabaseServiceClient, getSupabaseServiceStatus } from "@/lib/supabase/service";
 
 type CliOptions = {
   stage: "before" | "after";
@@ -21,6 +23,7 @@ type CliOptions = {
   persist: boolean;
   deployCloudflare: boolean;
   generateReports: boolean;
+  runEventsCluster: boolean;
   cloudflareUrl?: string;
   outputDir: string;
   warnings: string[];
@@ -96,6 +99,7 @@ async function main() {
     persist: options.persist,
     deploy_cloudflare: options.deployCloudflare,
     generate_reports: options.generateReports,
+    run_events_cluster: options.runEventsCluster,
     counts: {
       before: beforeCounts,
       after: counts
@@ -113,6 +117,7 @@ async function main() {
     },
     deepseek_api_calls: activation?.totals?.deepseek_api_calls ?? 0,
     failure_families: activation?.failure_families ?? coverage.failureFamilies,
+    event_clusters: await eventClusterCount(),
     source_problem_counts: {
       timeout: (activation?.failure_families ?? coverage.failureFamilies).timeout ?? 0,
       "403": (activation?.failure_families ?? coverage.failureFamilies)["403"] ?? 0,
@@ -148,6 +153,7 @@ function parseArgs(args: string[]): CliOptions {
     mode: "mock",
     outputDir: latestOpsDir,
     persist: false,
+    runEventsCluster: false,
     runId: process.env.GITHUB_RUN_ID ? `github_${process.env.GITHUB_RUN_ID}` : `local_${timestampForId(new Date().toISOString())}`,
     stage: "after",
     warnings: []
@@ -179,6 +185,10 @@ function parseArgs(args: string[]): CliOptions {
         break;
       case "--generate-reports":
         options.generateReports = booleanValue(readArg(args, index));
+        index += 1;
+        break;
+      case "--run-events-cluster":
+        options.runEventsCluster = booleanValue(readArg(args, index));
         index += 1;
         break;
       case "--cloudflare-url":
@@ -220,6 +230,24 @@ async function loadCounts(): Promise<OpsCounts> {
 }
 
 async function latestReportCandidate(reportType: ReportPreviewType): Promise<ReportCandidateSummary> {
+  const serviceStatus = getSupabaseServiceStatus();
+
+  if (serviceStatus.publicConfigConfigured && serviceStatus.serviceRoleConfigured) {
+    const { data } = await getSupabaseServiceClient()
+      .from("report_candidates")
+      .select("id, report_type, status, source_item_ids, metadata, created_at")
+      .eq("report_type", reportType)
+      .order("created_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (isRecord(data)) {
+      const metadata = record(data.metadata);
+      const draft = record(metadata.report_draft);
+      return summarizeCandidateDraft(data, draft, reportType);
+    }
+  }
+
   const supabase = getSupabaseServerReadClient();
 
   if (supabase) {
@@ -233,22 +261,7 @@ async function latestReportCandidate(reportType: ReportPreviewType): Promise<Rep
 
     if (isRecord(data)) {
       const draft = record(data.report_draft);
-      const citations = citationsFromDraft(draft.citations);
-      const sourceItemCount = stringArray(data.source_item_ids).length || stringArray(draft.source_item_ids).length;
-      const qualityGate = normalizeReportQualityGate(draft.quality_gate, {
-        categoryCount: integer(draft.category_count),
-        categoryGateApplicable: integer(draft.category_count) > 0,
-        citationCount: integer(draft.citation_count, citations.length),
-        distinctSourceCount: integer(draft.distinct_source_count, distinctSourcesFromCitations(citations)),
-        reportType,
-        usableItemCount: integer(draft.usable_item_count, sourceItemCount)
-      });
-
-      return {
-        id: text(data.id) || null,
-        quality_gate: qualityGate,
-        status: qualityGate.passed ? text(data.status) || "draft" : "needs_review"
-      };
+      return summarizeCandidateDraft(data, draft, reportType);
     }
   }
 
@@ -259,6 +272,63 @@ async function latestReportCandidate(reportType: ReportPreviewType): Promise<Rep
     quality_gate: draft.quality_gate,
     status: draft.status
   };
+}
+
+function summarizeCandidateDraft(
+  data: Record<string, unknown>,
+  draft: Record<string, unknown>,
+  reportType: ReportPreviewType
+): ReportCandidateSummary {
+  const citations = citationsFromDraft(draft.citations);
+  const sourceItemCount = stringArray(data.source_item_ids).length || stringArray(draft.source_item_ids).length;
+  const qualityGate = normalizeReportQualityGate(draft.quality_gate, {
+    categoryCount: integer(draft.category_count),
+    categoryGateApplicable: integer(draft.category_count) > 0,
+    citationCount: integer(draft.citation_count, citations.length),
+    distinctSourceCount: integer(draft.distinct_source_count, distinctSourcesFromCitations(citations)),
+    reportType,
+    usableItemCount: integer(draft.usable_item_count, sourceItemCount)
+  });
+
+  return {
+    id: text(data.id) || null,
+    quality_gate: qualityGate,
+    status: qualityGate.passed ? text(data.status) || "draft" : "needs_review"
+  };
+}
+
+async function eventClusterCount() {
+  const feed = await loadRadarFeed();
+  return buildEventLayer(
+    feed.items.map((item) => ({
+      categories: item.categories,
+      collected_at: item.collected_at,
+      confidence: item.confidence,
+      entities: item.entities,
+      evidence_notes: item.evidence_notes,
+      id: item.id,
+      language: item.language,
+      processed_at: item.processed_at,
+      published_at: item.published_at,
+      scores: {
+        ai_relevance: item.ai_relevance_score,
+        credibility: item.credibility_score,
+        freshness: item.freshness_score,
+        importance: item.importance_score,
+        novelty: item.novelty_score,
+        overall: item.overall_score
+      },
+      source_name: item.source_name,
+      source_tier: item.source_tier,
+      status: item.status,
+      summary_en: item.summary_en,
+      summary_zh: item.summary_zh,
+      tags: item.tags,
+      title: item.title,
+      url: item.url,
+      why_it_matters: item.why_it_matters
+    }))
+  ).event_count;
 }
 
 function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never ? never : Record<string, unknown>) {
@@ -272,6 +342,7 @@ function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never 
     status_counts: Record<string, number | null>;
     chunks: Record<string, number>;
     deepseek_api_calls: number;
+    event_clusters: number;
     failure_families: Record<string, number>;
     daily_candidate: ReportCandidateSummary;
     weekly_candidate: ReportCandidateSummary;
@@ -302,6 +373,7 @@ function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never 
     `- Chunks attempted/succeeded/failed: ${value.chunks.attempted} / ${value.chunks.succeeded} / ${value.chunks.failed}`,
     `- DeepSeek API calls: ${value.deepseek_api_calls}`,
     `- Failure families: ${formatDistribution(value.failure_families)}`,
+    `- Event clusters: ${value.event_clusters}`,
     "",
     "## Reports",
     "",

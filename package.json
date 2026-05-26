@@ -39,6 +39,7 @@
     "source-health:check": "tsx scripts/check-source-health.ts",
     "source-health:dry-run": "tsx scripts/check-source-health.ts --dry-run",
     "data:completeness:audit": "tsx scripts/audit-data-completeness.ts",
+    "events:cluster": "tsx scripts/cluster-events.ts",
     "report:generate:daily": "tsx scripts/generate-report.ts --type daily",
     "report:generate:weekly": "tsx scripts/generate-report.ts --type weekly",
     "report:generate:daily:live": "tsx scripts/generate-report.ts --type daily --live",

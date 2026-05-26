@@ -1,107 +1,102 @@
 # Final Release Candidate
 
-Date: 2026-05-25
+Date: 2026-05-26
 
 ## Status
 
-Internally reviewable RC is ready on the Cloudflare primary site:
+Release candidate is internally reviewable, with a documented blocker against the preferred data target.
 
 - Cloudflare primary: https://ai-industry-radar.pages.dev
-- Immutable Cloudflare deployment: https://5a5609c3.ai-industry-radar.pages.dev
+- Cloudflare immutable deployment: https://6e1b6141.ai-industry-radar.pages.dev
 - Vercel reference/dynamic app: https://ai-radar-web-luosongred-5507s-projects.vercel.app
-
-Cloudflare is the primary public path. Vercel remains the reference dynamic app for `/api/ask` and `/api/writing-assistant`.
+- Branch: `codex/release-candidate-event-radar`
 
 ## Data Readiness
 
-Current persisted Supabase counts:
+Current persisted Supabase/public counts:
 
 | metric | count |
 | --- | ---: |
 | sources | 312 |
 | automated eligible sources | 86 |
-| raw_items | 203 |
-| radar_items | 198 |
-| public_radar_items | 187 |
-| included / needs_review / excluded / failed | 177 / 13 / 8 / 0 |
-| entities / item_entities / scores | 1047 / 1347 / 3409 |
-| ingestion_runs / understanding_runs | 68 / 68 |
-| report_candidates | 20 |
+| attempted sources | 86 |
+| fetched sources | 62 |
+| failed sources | 24 |
+| blocked/manual sources | 226 |
+| raw_items | 205 |
+| radar_items | 201 |
+| public_radar_items | 183 |
+| included / needs_review / excluded / failed | 176 / 9 / 16 / 0 |
+| report_candidates | 22 |
 
-The run met the minimum `public_radar_items >= 180` target. It did not reach the preferred 200+ target.
+The minimum `public_radar_items >= 180` target is met. The preferred 200+ target is not met because 226 configured sources are manual/blocked, 24 automated sources failed in the latest run, and 16 radar rows were excluded for low AI relevance.
 
-## Refresh And Writes
+Conversion:
 
-What ran:
+- source to raw coverage: 90.7%
+- raw to radar conversion: 98.0%
+- radar to public visibility: 91.0%
+- public visible sources over total configured sources: 19.9%
 
-- Real live reviewed refresh over the automated eligible source set.
-- Additional bounded refresh on 17 capped public sources with `max-items-per-source=5` to clear the 180 public-row target.
-- Controlled Supabase persistence with temporary process-level `ENABLE_SUPABASE_WRITES=true`.
-- Fresh daily and weekly candidate writes.
+## Event Layer
 
-Blocked or incomplete source coverage:
+- event clustering implemented: yes
+- event clusters exported in Cloudflare snapshot: yes
+- event cluster count: 159
+- multi-item merged events: 12
+- average items per cluster: about 1.15
+- `行业精选` visible: yes
+- timeline visible: yes
+- source health visible: yes
+- source diversity scoring visible: yes
 
-- 226 sources remain manual/blocked.
-- Latest bounded follow-up attempted 17 sources, fetched 10, failed 7.
-- Failures were GitHub unauthenticated rate limits: `rate_limit=11`.
-- Public visibility gaps: 11 total, from 8 low-relevance exclusions and 3 source risk flags.
+Raw signal view remains available under `全部信号`.
 
 ## Reports
 
-Latest saved candidates:
+Latest written candidates:
 
 | type | candidate ID | status | gate | usable | citations | sources | categories |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| daily | `3cdf5d5d-b8b1-4f93-8ac7-781da04b34ef` | needs_review | passed | 59 | 12 | 12 | 8 |
-| weekly | `29ca7e17-ae18-43a5-9210-ab913ad0df6b` | needs_review | passed | 130 | 12 | 11 | 8 |
+| daily | `201ed3b3-a2e8-47aa-afa8-f64d14513db0` | needs_review | passed | 61 | 12 | 17 | 9 |
+| weekly | `7f5e7074-3cb5-470b-aa68-0b89e9641f4c` | needs_review | passed | 125 | 12 | 13 | 8 |
 
-Daily now passes, so the Cloudflare reports page does not show `今日数据不足`.
+Daily now passes, so the insufficient-data warning is not shown as the primary state. If a future daily candidate fails, the Cloudflare reports page renders `今日数据不足，需补充信源或等待下一轮刷新`.
 
-## Frontend Surface
+## Public Surface
 
-Cloudflare public routes are Chinese-first and product-ready:
+Cloudflare is Chinese-first and event-first:
 
-- `/`: shows AI 行业雷达 / 行业情报台, counts, source coverage, latest refresh, and real Radar Pulse.
-- `/radar/`: shows 187 public rows, search, category/status/source-family filters, distributions, freshness, and citation rail.
-- `/reports/`: shows latest daily/weekly candidates, quality gates, usable/citation/source/category counts, caveats, missing evidence, and Markdown export.
-- `/ask/` and `/write/`: show Chinese query/write hubs, real category examples, source freshness, caveats, and no fake live-chat claim.
-- `/data/radar-snapshot.json`: includes public-safe quality metadata and excludes raw/private fields.
+- `/`: status strip, `今日行业精选`, industry pulse, source health, coverage caveats, query/write entry.
+- `/radar/`: defaults to `行业精选`; tabs include `行业精选`, `全部事件`, `全部信号`, `最新时间线`, `待复核`, `来源健康`.
+- `/reports/`: event-aware report quality cards and included curated events.
+- `/ask/`: event-aware query hub.
+- `/write/`: event-aware writing hub.
+- `/data/radar-snapshot.json`: public-safe radar/report/event/source-health/data-completeness snapshot.
 
-The Supabase public-view migration file for quality-gate fields is present. The Supabase app connector required reauthentication during this sprint, so the deployed Cloudflare/Vercel surfaces also use a server-side public-safe report projection for saved candidates. Public outputs strip `model_metadata`.
+Wrong-domain AI Model Radar / LLM Ecosystem data is not read by public routes.
 
-## Manual Refresh
+## Operations
 
-Use the manual workflow:
+Manual workflow:
 
 ```text
 .github/workflows/radar-refresh-cloudflare.yml
 ```
 
-It is `workflow_dispatch` only. There is no schedule.
+It is `workflow_dispatch` only. There is no schedule. Inputs support mock/live, persist true/false, Cloudflare deploy true/false, report generation true/false, and event clustering true/false. The workflow uploads a safe run summary artifact.
 
-Local equivalent:
+## Safety
 
-```powershell
-npm run data:activate:resumable:live -- --limit 120 --chunk-size 5 --max-items-per-source 3 --reset
-$env:ENABLE_SUPABASE_WRITES="true"
-npm run data:activate:resumable:live:persist -- --persist --resume
-npm run report:candidate:daily:write
-npm run report:candidate:weekly:write
-Remove-Item Env:ENABLE_SUPABASE_WRITES
-npm run cloudflare:build
-npx wrangler pages deploy dist/cloudflare-pages --project-name=ai-industry-radar --branch=main
-```
-
-## Not Automated
-
-- No scheduled writes.
-- No scheduled report publication.
-- No X automatic crawl.
-- No WeChat automatic crawl.
-- No source-health writes.
-- No automatic report approval/publishing.
-- No automatic completion of manual/blocked sources.
+- Supabase writes were run only with temporary process-level `ENABLE_SUPABASE_WRITES=true`.
+- Deployed environments keep writes disabled.
+- No scheduled jobs were run.
+- No X or WeChat automatic crawl was run.
+- No source-health writes were run.
+- No secrets were printed.
+- `.env.local` was not read back or committed.
+- Cloudflare snapshot excludes private raw/model/provider fields.
 
 ## Recommendation
 
-Ready for internal review. Next milestone only: source coverage expansion and authenticated GitHub-source refresh to move public rows past 200 without relying on manual/blocked sources.
+Ready for internal review. Next milestone only: authenticated source expansion and public-source repair to cross 200 public rows without adding scheduled writes.

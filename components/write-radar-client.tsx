@@ -19,6 +19,7 @@ export type WriteRadarClientProps = {
   dataSummary: {
     attemptedSources: number;
     dataSource: RetrievalDataSource;
+    eventCount: number;
     latestRadarTime: string;
     sourcesWithPublicItems: number;
     topCategories: Array<{ label: string; count: number }>;
@@ -77,15 +78,16 @@ export function WriteRadarClient({
         <div>
           <div className="flex flex-wrap gap-2">
             <DataSourceChip detail="当前检索面" source={dataSummary.dataSource} />
+            <EvidenceBadge detail={`${dataSummary.eventCount} 个`} kind="evidence" label="事件" />
             <EvidenceBadge detail={`${dataSummary.visibleRows} 条`} kind="evidence" label="雷达条目" />
             <EvidenceBadge detail={dataSummary.latestRadarTime} kind="freshness" label="更新时间" />
             <StatusChip label="已尝试来源" tone="evidence" value={dataSummary.attemptedSources} />
             <StatusChip label="公开来源" tone="success" value={dataSummary.sourcesWithPublicItems} />
             <StatusChip label="生成模式" tone="caution" value="mock API" />
           </div>
-          <h1 className="mt-4 text-3xl font-semibold text-radar-ink">写作</h1>
+          <h1 className="mt-4 text-3xl font-semibold text-radar-ink">事件写作</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-            从当前雷达证据生成编辑选题候选。入口会使用实时类别，并在工作流中保留局限、反方观点、缺失证据和引用。
+            从行业精选、多源确认和弱信号生成编辑选题候选，并在工作流中保留局限、反方观点、缺失证据和引用。
           </p>
         </div>
 

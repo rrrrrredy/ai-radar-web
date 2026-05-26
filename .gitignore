@@ -53,6 +53,9 @@ data/understanding/tmp/
 data/activation/latest/*.json
 data/activation/runs/*.json
 data/activation/tmp/
+data/events/latest/*.json
+data/events/runs/*.json
+data/events/tmp/
 data/reports/latest/*.json
 data/reports/runs/*.json
 data/reports/tmp/

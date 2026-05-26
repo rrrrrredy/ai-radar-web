@@ -15,6 +15,7 @@ export type AskRadarClientProps = {
   dataSummary: {
     attemptedSources: number;
     dataSource: RetrievalDataSource;
+    eventCount: number;
     latestRadarTime: string;
     sourcesWithPublicItems: number;
     topCategories: Array<{ label: string; count: number }>;
@@ -71,15 +72,16 @@ export function AskRadarClient({
         <div>
           <div className="flex flex-wrap gap-2">
             <DataSourceChip detail="当前检索面" source={dataSummary.dataSource} />
+            <EvidenceBadge detail={`${dataSummary.eventCount} 个`} kind="evidence" label="事件" />
             <EvidenceBadge detail={`${dataSummary.visibleRows} 条`} kind="evidence" label="雷达条目" />
             <EvidenceBadge detail={dataSummary.latestRadarTime} kind="freshness" label="更新时间" />
             <StatusChip label="已尝试来源" tone="evidence" value={dataSummary.attemptedSources} />
             <StatusChip label="公开来源" tone="success" value={dataSummary.sourcesWithPublicItems} />
             <StatusChip label="生成模式" tone="caution" value="mock API" />
           </div>
-          <h1 className="mt-4 text-3xl font-semibold text-radar-ink">提问</h1>
+          <h1 className="mt-4 text-3xl font-semibold text-radar-ink">事件提问</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-            基于当前 AI 行业雷达证据提问。示例问题来自实时类别分布，回答会保留来源、时间窗口、不确定性和引用。
+            基于当前 AI 行业雷达事件提问。示例问题围绕行业精选、多源确认、弱信号和来源健康，回答会保留来源、时间窗口、不确定性和引用。
           </p>
         </div>
 

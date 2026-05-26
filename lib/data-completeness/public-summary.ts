@@ -62,6 +62,7 @@ type RawItemRow = {
 };
 
 type RadarItemRow = {
+  exclusion_reason?: string | null;
   raw_item_id: string | null;
   source_id: string | null;
   understanding_status: string | null;
@@ -126,7 +127,7 @@ export async function loadPublicDataCompletenessSummary(): Promise<PublicDataCom
       await Promise.all([
         selectAll<SourceRow>("sources", "id, slug"),
         selectAll<RawItemRow>("raw_items", "source_id, source_snapshot"),
-        selectAll<RadarItemRow>("radar_items", "raw_item_id, source_id, understanding_status"),
+        selectAll<RadarItemRow>("radar_items", "raw_item_id, source_id, understanding_status, exclusion_reason"),
         selectAll<PublicRadarItemRow>("public_radar_items", "source_id"),
         exactCount("report_candidates"),
         supabase
@@ -178,7 +179,7 @@ export async function loadPublicDataCompletenessSummary(): Promise<PublicDataCom
     const skippedSourceReasons = countReasons(
       sourceResults.filter((result) => result.status === "skipped").map((result) => sourceSkipReason(result))
     );
-    const failureFamilies = buildFailureFamilies(sourceResults);
+    const failureFamilies = buildFailureFamilies(sourceResults, radarRows.rows);
     const latestIngestionTimestamp = latestTimestamp(
       latestIngestionRows.map((row) => latestRunTimestamp(row, "finished_at"))
     );
@@ -367,7 +368,8 @@ function categorizeReason(input: Parameters<typeof categorizeFailureFamily>[0]) 
 }
 
 function buildFailureFamilies(
-  sourceResults: NonNullable<NonNullable<IngestionRunRow["metadata"]>["source_results"]> = []
+  sourceResults: NonNullable<NonNullable<IngestionRunRow["metadata"]>["source_results"]> = [],
+  radarRows: RadarItemRow[] = []
 ) {
   const counts: FailureFamilyCounts = {};
 
@@ -380,6 +382,21 @@ function buildFailureFamilies(
       warnings: result.warnings
     });
     incrementFailureFamily(counts, family);
+  }
+
+  for (const row of radarRows) {
+    const status = normalizeStatus(row.understanding_status);
+    if (status !== "excluded" && status !== "failed") {
+      continue;
+    }
+
+    incrementFailureFamily(
+      counts,
+      categorizeFailureFamily({
+        exclusionReason: row.exclusion_reason,
+        status
+      })
+    );
   }
 
   return compactFailureFamilyCounts(counts);

@@ -10,6 +10,9 @@ import {
 } from "@/lib/product/data-summary";
 import type { ReportWorkflowDocument } from "@/lib/reports/types";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function HomePage() {
   const summary = await loadProductDataSummary();
 
@@ -23,10 +26,10 @@ export default async function HomePage() {
             <StatusChip label="覆盖率" tone="caution" value="持续补齐" />
           </div>
           <h1 className="mt-4 max-w-4xl text-4xl font-semibold leading-tight tracking-normal text-radar-ink sm:text-5xl">
-            AI 行业雷达
+            今日行业精选
           </h1>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-radar-muted">
-            面向 AI 信号的行业情报台：把来源覆盖、检索证据、报告候选和局限放在同一个公开数据界面。
+            把重复 AI 信号合并成事件，优先展示多源确认、来源健康、时间线、引用和局限。
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
             <Link
@@ -53,6 +56,8 @@ export default async function HomePage() {
         <ProductionStatusPanel summary={summary} />
       </section>
 
+      <CuratedEvents summary={summary} />
+
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <RadarPulse summary={summary} />
         <LatestReports summary={summary} />
@@ -73,6 +78,7 @@ function ProductionStatusPanel({ summary }: { summary: ProductDataSummary }) {
   const metrics = [
     { label: "来源总数", value: coverage.sourcesTotal, tone: "evidence" as const },
     { label: "已尝试", value: coverage.attemptedSources, tone: "freshness" as const },
+    { label: "事件", value: summary.eventCount, tone: "evidence" as const },
     { label: "公开来源", value: formatCount(coverage.sourcesWithPublicItems), tone: "success" as const },
     { label: "公开条目", value: formatCount(coverage.publicRadarItems), tone: "success" as const },
     { label: "失败/跳过", value: coverage.failedSources + coverage.skippedSources, tone: "risk" as const },
@@ -110,6 +116,45 @@ function ProductionStatusPanel({ summary }: { summary: ProductDataSummary }) {
         <RailRow label="来源到原始覆盖率" value={formatRate(coverage.rates.sourceRawCoverage)} />
       </div>
     </aside>
+  );
+}
+
+function CuratedEvents({ summary }: { summary: ProductDataSummary }) {
+  const events = summary.curatedEvents.slice(0, 6);
+
+  return (
+    <section className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-semibold text-radar-ink">今日行业精选</h2>
+          <p className="mt-2 text-sm leading-6 text-radar-muted">
+            事件卡合并同一主题的相关信号，并保留来源数、来源家族、时间线和引用。
+          </p>
+        </div>
+        <Link className="text-sm font-semibold text-radar-evidence" href="/radar">
+          打开事件雷达
+        </Link>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {events.map((event) => (
+          <article className="rounded-lg border border-radar-line bg-white p-5 shadow-soft" key={event.event_cluster_id}>
+            <div className="flex flex-wrap gap-2">
+              <StatusChip label={event.event_score_label} tone={event.event_score_label === "高优先级" ? "success" : "evidence"} />
+              <EvidenceBadge detail={String(event.event_score)} kind="evidence" label="分数" />
+              <EvidenceBadge detail={String(event.source_count)} kind="citation" label="来源" />
+              <EvidenceBadge detail={String(event.related_item_ids.length)} kind="freshness" label="信号" />
+            </div>
+            <h3 className="mt-3 text-lg font-semibold leading-7 text-radar-ink">{event.canonical_title}</h3>
+            <p className="mt-2 text-sm leading-6 text-radar-muted">{event.summary_zh}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {event.source_families.slice(0, 4).map((family) => (
+                <StatusChip key={family} label={family} tone="neutral" />
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 

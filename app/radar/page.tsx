@@ -4,6 +4,7 @@ import { EmptyState } from "@/components/empty-state";
 import { EvidenceBadge } from "@/components/evidence-badge";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { citationFromItem } from "@/lib/retrieval/citations";
+import { buildEventLayer } from "@/lib/events/clustering";
 import {
   loadPublicDataCompletenessSummary,
   type PublicDataCompletenessSummary
@@ -22,6 +23,9 @@ import {
   type UnderstandingStatus
 } from "@/lib/understanding/types";
 import { formatPercent, formatScore } from "@/lib/utils";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -55,6 +59,36 @@ export default async function RadarPage({
   ]);
   const filters = readFilters(params, feed);
   const filteredItems = filterItems(feed.items, filters, feed);
+  const eventLayer = buildEventLayer(
+    feed.items.map((item) => ({
+      categories: item.categories,
+      collected_at: item.collected_at,
+      confidence: item.confidence,
+      entities: item.entities,
+      evidence_notes: item.evidence_notes,
+      id: item.id,
+      language: item.language,
+      processed_at: item.processed_at,
+      published_at: item.published_at,
+      scores: {
+        ai_relevance: item.ai_relevance_score,
+        credibility: item.credibility_score,
+        freshness: item.freshness_score,
+        importance: item.importance_score,
+        novelty: item.novelty_score,
+        overall: item.overall_score
+      },
+      source_name: item.source_name,
+      source_tier: item.source_tier,
+      status: item.status,
+      summary_en: item.summary_en,
+      summary_zh: item.summary_zh,
+      tags: item.tags,
+      title: item.title,
+      url: item.url,
+      why_it_matters: item.why_it_matters
+    }))
+  );
   const filteredCitations = filteredItems
     .filter((item) => item.status === "included" || item.status === "needs_review")
     .map(citationFromItem)
@@ -74,9 +108,9 @@ export default async function RadarPage({
             <StatusChip label="Live DeepSeek" tone="caution" value="未运行" />
             <StatusChip label="Supabase 写入" tone="risk" value="未运行" />
           </div>
-          <h1 className="mt-4 text-3xl font-semibold text-radar-ink">雷达</h1>
+          <h1 className="mt-4 text-3xl font-semibold text-radar-ink">事件雷达</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-            当前可用检索证据的雷达列表。每条信号在进入报告前都展示来源、新鲜度、不确定性、复核状态和引用。
+            默认先看事件层，再进入全部信号。每个事件展示来源数、来源家族、分数、时间线和引用。
           </p>
         </div>
 
@@ -99,8 +133,40 @@ export default async function RadarPage({
               label="当前筛选结果"
               value={`${filteredItems.length} / ${feed.counts.total} 条`}
             />
+            <RailRow label="事件聚类" value={`${eventLayer.event_count} 个事件`} />
           </dl>
         </aside>
+      </section>
+
+      <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-semibold text-radar-ink">行业精选</h2>
+            <p className="mt-2 text-sm leading-6 text-radar-muted">
+              事件层合并相似信号；原始条目仍在下方“全部信号”保留。
+            </p>
+          </div>
+          <StatusChip label="事件数" tone="evidence" value={eventLayer.event_count} />
+        </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          {eventLayer.curated_events.slice(0, 8).map((event) => (
+            <article className="rounded-lg border border-radar-line bg-radar-panel p-4" key={event.event_cluster_id}>
+              <div className="flex flex-wrap gap-2">
+                <StatusChip label={event.event_score_label} tone={event.event_score_label === "高优先级" ? "success" : "evidence"} />
+                <EvidenceBadge detail={String(event.event_score)} kind="evidence" label="分数" />
+                <EvidenceBadge detail={String(event.source_count)} kind="citation" label="来源" />
+                <EvidenceBadge detail={String(event.related_item_ids.length)} kind="freshness" label="信号" />
+              </div>
+              <h3 className="mt-3 text-base font-semibold leading-7 text-radar-ink">{event.canonical_title}</h3>
+              <p className="mt-2 text-sm leading-6 text-radar-muted">{event.summary_zh}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {event.source_families.slice(0, 4).map((family) => (
+                  <StatusChip key={family} label={family} tone="neutral" />
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
       </section>
 
       <CountRail coverage={coverage} feed={feed} filteredCount={filteredItems.length} />

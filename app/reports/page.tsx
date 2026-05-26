@@ -16,6 +16,9 @@ import type {
   ReportWorkflowDocument
 } from "@/lib/reports/types";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type SearchParams = Record<string, string | string[] | undefined>;
 
 export default async function ReportsPage({

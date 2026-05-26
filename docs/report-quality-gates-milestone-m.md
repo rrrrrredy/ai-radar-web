@@ -1,6 +1,7 @@
 # Milestone M Report Quality Gates
 
 Date: 2026-05-25
+Updated for final RC: 2026-05-26
 
 ## Problem
 
@@ -54,6 +55,7 @@ Surfaces that show report quality:
 - Cloudflare `/reports/`
 - Cloudflare `data/radar-snapshot.json`
 - ops summary artifact
+- event-aware Cloudflare report cards
 
 The UI shows:
 
@@ -62,6 +64,20 @@ The UI shows:
 - citation count
 - distinct source and category diversity
 - quality-gate reasons for thin reports
+- included curated event count and top event references when citations overlap event clusters
+
+## Final RC Candidates
+
+| type | candidate ID | status | gate | usable | citations | sources | categories |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
+| daily | `201ed3b3-a2e8-47aa-afa8-f64d14513db0` | needs_review | passed | 61 | 12 | 17 | 9 |
+| weekly | `7f5e7074-3cb5-470b-aa68-0b89e9641f4c` | needs_review | passed | 125 | 12 | 13 | 8 |
+
+The daily gate passed in the final RC. The insufficient-data message remains implemented for future failed daily candidates:
+
+```text
+今日数据不足，需补充信源或等待下一轮刷新
+```
 
 ## Public View Migration
 

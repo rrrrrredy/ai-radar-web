@@ -1,6 +1,6 @@
 # Milestone M Reviewed Refresh and Cloudflare Workflow
 
-Date: 2026-05-25
+Date: 2026-05-26
 
 ## Purpose
 
@@ -33,6 +33,7 @@ Inputs:
 | `max_items_per_source` | `3` | maximum items collected from each source |
 | `deploy_cloudflare` | `false` | deploy `dist/cloudflare-pages` to Cloudflare Pages |
 | `generate_reports` | `true` | generate daily and weekly candidates or dry-run drafts |
+| `run_events_cluster` | `true` | generate the public-safe event layer used by Cloudflare and reports |
 
 Required secrets or variables:
 
@@ -77,10 +78,11 @@ The write gate is applied only to the activation/report candidate steps. Cloudfl
 5. Capture before counts with `npm run ops:summary`.
 6. Enforce the explicit write gate if `persist=true`.
 7. Run `npm run data:activate:resumable:<mode>` with bounded inputs.
-8. Generate report drafts or write report candidates, applying quality gates.
-9. Build the Cloudflare public snapshot with `npm run cloudflare:build`.
-10. Deploy Cloudflare only when `deploy_cloudflare=true`.
-11. Write and upload the ops summary artifact.
+8. Generate the event layer when `run_events_cluster=true`.
+9. Generate report drafts or write report candidates, applying quality gates.
+10. Build the Cloudflare public snapshot with `npm run cloudflare:build`.
+11. Deploy Cloudflare only when `deploy_cloudflare=true`.
+12. Write and upload the ops summary artifact.
 
 Artifact paths:
 
@@ -97,6 +99,7 @@ Mock validation:
 
 ```bash
 npm run data:activate:resumable:mock -- --limit 10 --chunk-size 5 --max-items-per-source 2
+npm run events:cluster
 npm run cloudflare:build
 ```
 
@@ -136,4 +139,4 @@ npx wrangler pages deploy dist/cloudflare-pages --project-name=ai-industry-radar
 
 ## Final RC Run
 
-The 2026-05-25 final RC run persisted 187 public radar rows, 203 raw items, 198 radar items, and 20 report candidates. The latest daily and weekly candidates both passed quality gates. The run met the 180-row minimum but did not reach the preferred 200+ target because the remaining automated-safe expansion was limited by unauthenticated GitHub rate limits and 226 manual/blocked sources.
+The 2026-05-26 final RC run persisted 183 public radar rows, 205 raw items, 201 radar items, 159 public event clusters, and 22 report candidates. The latest daily and weekly candidates both passed quality gates. The run met the 180-row minimum but did not reach the preferred 200+ target because the remaining automated-safe expansion was limited by 226 manual/blocked sources, 24 failed automated sources, rate limits, timeout/403 failures, and 16 low-relevance exclusions.

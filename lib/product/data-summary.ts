@@ -4,6 +4,7 @@ import {
   loadPublicDataCompletenessSummary,
   type PublicDataCompletenessSummary
 } from "@/lib/data-completeness/public-summary";
+import { buildEventLayer, type PublicEventCluster } from "@/lib/events/clustering";
 import { loadRadarFeed, type RadarFeed, itemEvidenceTimestamp } from "@/lib/radar/feed";
 import { loadReportWorkflowData } from "@/lib/reports/load-report-data";
 import type { ReportWorkflowDocument } from "@/lib/reports/types";
@@ -40,6 +41,8 @@ export type ProductDataSummary = {
   topCategories: CountEntry[];
   topSources: CountEntry[];
   topSourceFamilies: CountEntry[];
+  eventCount: number;
+  curatedEvents: PublicEventCluster[];
   latestSignals: Array<{
     id: string;
     title: string;
@@ -93,6 +96,36 @@ export async function loadProductDataSummary(): Promise<ProductDataSummary> {
     loadOperationalSummary(),
     loadPublicDataCompletenessSummary()
   ]);
+  const eventLayer = buildEventLayer(
+    feed.items.map((item) => ({
+      categories: item.categories,
+      collected_at: item.collected_at,
+      confidence: item.confidence,
+      entities: item.entities,
+      evidence_notes: item.evidence_notes,
+      id: item.id,
+      language: item.language,
+      processed_at: item.processed_at,
+      published_at: item.published_at,
+      scores: {
+        ai_relevance: item.ai_relevance_score,
+        credibility: item.credibility_score,
+        freshness: item.freshness_score,
+        importance: item.importance_score,
+        novelty: item.novelty_score,
+        overall: item.overall_score
+      },
+      source_name: item.source_name,
+      source_tier: item.source_tier,
+      status: item.status,
+      summary_en: item.summary_en,
+      summary_zh: item.summary_zh,
+      tags: item.tags,
+      title: item.title,
+      url: item.url,
+      why_it_matters: item.why_it_matters
+    }))
+  );
   const reportsByType = new Map(reportData.reports.map((report) => [report.report_type, report]));
   const caveats = Array.from(new Set([...feed.caveats, ...reportData.warnings]));
   const warnings = Array.from(new Set([...operational.warnings, ...reportData.warnings]));
@@ -123,6 +156,8 @@ export async function loadProductDataSummary(): Promise<ProductDataSummary> {
     })),
     topSources: countEntries(feed.counts.by_source),
     topSourceFamilies: countSourceFamilies(feed.items),
+    curatedEvents: eventLayer.curated_events,
+    eventCount: eventLayer.event_count,
     latestSignals: feed.items.slice(0, 6).map((item) => ({
       categories: item.categories.map(labelize),
       href: item.url,

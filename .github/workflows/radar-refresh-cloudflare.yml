@@ -41,6 +41,11 @@ on:
         required: true
         default: true
         type: boolean
+      run_events_cluster:
+        description: "Run deterministic event clustering after activation"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -95,6 +100,7 @@ jobs:
           --persist "${{ inputs.persist }}"
           --deploy-cloudflare "${{ inputs.deploy_cloudflare }}"
           --generate-reports "${{ inputs.generate_reports }}"
+          --run-events-cluster "${{ inputs.run_events_cluster }}"
 
       - name: Check explicit write gate
         if: ${{ inputs.persist }}
@@ -116,6 +122,12 @@ jobs:
           --max-items-per-source "${{ inputs.max_items_per_source }}"
           --reset
           ${{ inputs.persist && '--persist' || '' }}
+
+      - name: Cluster public events
+        if: ${{ inputs.run_events_cluster }}
+        env:
+          ENABLE_SUPABASE_WRITES: "false"
+        run: npm run events:cluster
 
       - name: Generate report candidates
         if: ${{ inputs.generate_reports }}
@@ -152,6 +164,7 @@ jobs:
           --persist "${{ inputs.persist }}"
           --deploy-cloudflare "${{ inputs.deploy_cloudflare }}"
           --generate-reports "${{ inputs.generate_reports }}"
+          --run-events-cluster "${{ inputs.run_events_cluster }}"
           --cloudflare-url "https://ai-industry-radar.pages.dev"
 
       - name: Upload run summary artifact
