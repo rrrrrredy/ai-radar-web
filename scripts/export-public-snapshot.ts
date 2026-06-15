@@ -306,12 +306,23 @@ async function createPublicSnapshot(): Promise<PublicMirrorSnapshot> {
       return supabaseSnapshot.snapshot;
     }
 
+    const previousSnapshot = await readPreviousPublicSnapshot(generatedAt, supabaseSnapshot.warnings);
+    if (previousSnapshot) {
+      return previousSnapshot;
+    }
+
     return readLocalFallbackSnapshot(generatedAt, supabaseSnapshot.warnings);
   }
 
-  return readLocalFallbackSnapshot(generatedAt, [
+  const warnings = [
     "Supabase public URL and anon key are not configured for this process; local generated radar data was used."
-  ]);
+  ];
+  const previousSnapshot = await readPreviousPublicSnapshot(generatedAt, warnings);
+  if (previousSnapshot) {
+    return previousSnapshot;
+  }
+
+  return readLocalFallbackSnapshot(generatedAt, warnings);
 }
 
 async function readSupabaseSnapshot(
@@ -621,6 +632,45 @@ async function readLocalFallbackSnapshot(
     sourceKind: "local_files",
     warnings: [...warnings, ...loaded.warnings]
   });
+}
+
+async function readPreviousPublicSnapshot(
+  generatedAt: string,
+  warnings: string[]
+): Promise<PublicMirrorSnapshot | null> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(outputPath, "utf8")) as Partial<PublicMirrorSnapshot>;
+    const items = Array.isArray(parsed.radar_items) ? parsed.radar_items : [];
+    const reports = Array.isArray(parsed.reports) ? parsed.reports : [];
+
+    if (parsed.schema_version !== 1 || items.length < 50) {
+      return null;
+    }
+
+    const previousWarnings = Array.isArray(parsed.source?.warnings) ? parsed.source.warnings : [];
+
+    return {
+      ...(parsed as PublicMirrorSnapshot),
+      generated_at: generatedAt,
+      source: {
+        ...(parsed.source as PublicMirrorSnapshot["source"]),
+        local_data_used: true,
+        warnings: dedupe([
+          ...warnings,
+          "Supabase public reads were unavailable during export; reused the previous public-safe Cloudflare snapshot instead of degrading to incomplete local data.",
+          ...previousWarnings
+        ])
+      },
+      counts: {
+        ...(parsed.counts as PublicMirrorSnapshot["counts"]),
+        report_snapshots: (parsed.counts?.report_snapshots ?? reports.length) as number,
+        snapshot_radar_items: (parsed.counts?.snapshot_radar_items ?? items.length) as number,
+        visible_radar_items: (parsed.counts?.visible_radar_items ?? items.length) as number
+      }
+    };
+  } catch {
+    return null;
+  }
 }
 
 function buildSnapshot(input: {

@@ -299,7 +299,7 @@ function renderHome(snapshot: Snapshot) {
         <div class="pill-row">
           ${pill("Cloudflare 主站", "success")}
           ${pill("事件雷达", "evidence")}
-          ${pill(snapshot.source.data_source, "neutral")}
+          ${pill(sourceLabel(snapshot.source.data_source), "neutral")}
         </div>
         <h1>今日行业精选</h1>
         <p class="lead">把重复信号合并成事件，优先展示多源确认、来源健康、时间线、引用和局限。</p>
@@ -334,7 +334,7 @@ function renderHome(snapshot: Snapshot) {
       <div class="panel">
         <div class="section-heading">
           <h2>行业脉冲</h2>
-          <a href="data/radar-snapshot.json">公开 JSON</a>
+          <a href="data/radar-snapshot.json">数据文件</a>
         </div>
         <div class="distribution">
           ${distribution("类别分布", snapshot.top_categories.slice(0, 8).map((entry) => [entry.label, entry.count]))}
@@ -385,7 +385,7 @@ function renderRadar(snapshot: Snapshot) {
           ${pill(`${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} 条公开`, "success")}
           ${pill(`${snapshot.event_count} 个事件`, "evidence")}
           ${pill(`${snapshot.coverage.attempted_sources} 个已尝试来源`, "neutral")}
-          ${pill(snapshot.source.data_source, "neutral")}
+          ${pill(sourceLabel(snapshot.source.data_source), "neutral")}
         </div>
         <h1>事件雷达</h1>
         <p class="lead">默认展示行业精选事件；全部信号仍保留在“全部信号”标签下，避免同一事件被重复阅读。</p>
@@ -477,9 +477,9 @@ function renderReports(snapshot: Snapshot) {
       <div>
         <div class="pill-row">
           ${pill(`${snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates} 个候选`, "success")}
-          ${pill(`${snapshot.counts.report_snapshots} 个公开快照`, "evidence")}
+          ${pill(`${snapshot.counts.report_snapshots} 个公开报告`, "evidence")}
           ${pill(`${snapshot.event_count} 个事件`, "neutral")}
-          ${pill(snapshot.source.data_source, "neutral")}
+          ${pill(sourceLabel(snapshot.source.data_source), "neutral")}
         </div>
         <h1>事件感知报告</h1>
         <p class="lead">报告候选会显示质量门禁、纳入事件、引用、来源多样性、缺失证据和局限；数据不足的日报不会被包装成完整报告。</p>
@@ -519,7 +519,7 @@ function renderAsk(snapshot: Snapshot) {
       <div class="panel">
         <h2>证据上下文</h2>
         <dl class="rail">
-          ${rail("数据来源", snapshot.source.data_source)}
+          ${rail("数据来源", sourceLabel(snapshot.source.data_source))}
           ${rail("最新雷达", formatDate(snapshot.freshness.latest_timestamp))}
           ${rail("事件数量", String(snapshot.event_count))}
           ${coverageRailRows(snapshot)}
@@ -566,7 +566,7 @@ function renderWrite(snapshot: Snapshot) {
       <div class="panel">
         <h2>数据上下文</h2>
         <dl class="rail">
-          ${rail("数据来源", snapshot.source.data_source)}
+          ${rail("数据来源", sourceLabel(snapshot.source.data_source))}
           ${rail("最新雷达", formatDate(snapshot.freshness.latest_timestamp))}
           ${rail("事件数量", String(snapshot.event_count))}
           ${coverageRailRows(snapshot)}
@@ -732,7 +732,7 @@ function renderReport(report: SnapshotReport, snapshot: Snapshot) {
     <p class="report-summary">${escapeHtml(publicText(report.summary))}</p>
     ${!report.quality_gate_passed && report.report_type === "daily" ? `<div class="callout warning"><strong>今日数据不足，需补充信源或等待下一轮刷新</strong></div>` : ""}
     ${report.executive_summary ? `<p>${escapeHtml(publicText(report.executive_summary))}</p>` : ""}
-    <dl class="inline-defs">${rail("质量门禁", qualityLabel(report))}${rail("事件数", String(includedEvents.length))}${rail("可用/引用/来源/类别", `${report.usable_item_count ?? report.source_item_count} / ${report.citation_count ?? report.citations.length} / ${report.distinct_source_count ?? 0} / ${report.category_count ?? 0}`)}${rail("时间窗口", `${formatDate(report.time_window.start)} 至 ${formatDate(report.time_window.end)}`)}${rail("数据来源", report.data_source)}${rail("缺失证据", String(report.missing_evidence.length))}</dl>
+    <dl class="inline-defs">${rail("质量门禁", qualityLabel(report))}${rail("事件数", String(includedEvents.length))}${rail("可用/引用/来源/类别", `${report.usable_item_count ?? report.source_item_count} / ${report.citation_count ?? report.citations.length} / ${report.distinct_source_count ?? 0} / ${report.category_count ?? 0}`)}${rail("时间窗口", `${formatDate(report.time_window.start)} 至 ${formatDate(report.time_window.end)}`)}${rail("数据来源", sourceLabel(report.data_source))}${rail("缺失证据", String(report.missing_evidence.length))}</dl>
     ${includedEvents.length > 0 ? `<h3>纳入的精选事件</h3><div class="event-mini-list">${includedEvents.map(renderEventMini).join("")}</div>` : ""}
     ${!report.quality_gate_passed && report.quality_gate_reasons.length > 0 ? `<h3>为什么报告偏薄</h3>${noteList(report.quality_gate_reasons)}` : ""}
     ${report.sections.map(renderReportSection).join("")}
@@ -844,7 +844,7 @@ function coveragePanel(snapshot: Snapshot) {
   return `
     <section class="panel">
       <div class="section-heading">
-        <h2>公开快照覆盖</h2>
+        <h2>公开数据覆盖</h2>
       </div>
       <dl class="rail">
         ${coverageRailRows(snapshot)}
@@ -881,7 +881,7 @@ function reportCoveragePanel(snapshot: Snapshot, reports: SnapshotReport[]) {
 
 function coverageRailRows(snapshot: Snapshot) {
   return [
-    rail("只读快照", "公开快照"),
+    rail("公开数据集", "公开只读"),
     rail("来源总数", String(snapshot.coverage.sources_total)),
     rail("自动合格来源", String(snapshot.coverage.automated_eligible_sources)),
     rail("已尝试来源", String(snapshot.coverage.attempted_sources)),
@@ -936,6 +936,24 @@ function option(value: string, label: string) {
 
 function pill(label: string, tone: "caution" | "evidence" | "neutral" | "success") {
   return `<span class="pill ${tone}">${escapeHtml(label)}</span>`;
+}
+
+function sourceLabel(value?: string | null) {
+  if (!value) return "公开数据源";
+
+  const labels: Record<string, string> = {
+    local_generated_files: "本地生成数据",
+    local_seed_data: "种子数据",
+    public_radar_items: "公开结构化数据",
+    supabase_radar_items: "公开结构化数据"
+  };
+
+  if (labels[value]) return labels[value];
+  if (value.startsWith("supabase_")) return "公开结构化数据";
+  if (value.startsWith("public_")) return "公开数据源";
+  if (value.startsWith("local_")) return "本地数据";
+
+  return labelize(value);
 }
 
 function tabButton(id: string, label: string, selected = false) {

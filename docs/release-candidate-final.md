@@ -11,6 +11,23 @@ Release candidate is internally reviewable, with a documented blocker against th
 - Vercel reference/dynamic app: https://ai-radar-web-luosongred-5507s-projects.vercel.app
 - Branch: `codex/release-candidate-event-radar`
 
+## Current Production Recovery
+
+Verified: 2026-06-15
+
+- Cloudflare primary restored: https://ai-industry-radar.pages.dev
+- Current immutable deployment: https://36d72d9d.ai-industry-radar.pages.dev
+- `/data/radar-snapshot.json` returns 200 with 183 public radar items, 159 event clusters, and 22 public reports.
+- The primary domain now serves the event-first AI Industry Radar surface, not the older AI Model Radar / LLM Ecosystem build.
+- Desktop and 390 px mobile checks passed for `/` and `/radar/`: HTTP 200, no console errors, no horizontal overflow, and no visible `AI Model Radar`, `公开快照`, `source-gated`, `dry-run`, `local key`, or internal table-name labels.
+- The static HTML uses reader-facing source labels such as `公开结构化数据`; the public JSON still preserves machine fields such as `source.data_source`.
+
+Current blocker:
+
+- Local Supabase reads failed with DNS resolution for the configured project host, so the Cloudflare export reused the previous public-safe snapshot instead of degrading to incomplete local data.
+- `source.local_data_used` is true in the current public JSON for that reason.
+- The minimum `public_radar_items >= 180` target remains met; the preferred 200+ public-row target remains unmet.
+
 ## Data Readiness
 
 Current persisted Supabase/public counts:
