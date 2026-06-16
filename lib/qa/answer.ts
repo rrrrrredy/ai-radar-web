@@ -51,7 +51,7 @@ async function generateLiveAskAnswer(question: string, retrieval: RetrievalResul
   if (!config.hasApiKey || !apiKey) {
     throw {
       status: 400,
-      message: "Live generation requires DEEPSEEK_API_KEY in the local server environment. Use generationMode: mock for local validation."
+      message: "DeepSeek live generation is not available in this server environment."
     } satisfies SafeGenerationError;
   }
 

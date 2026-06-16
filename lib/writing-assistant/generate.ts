@@ -21,18 +21,28 @@ export async function generateWritingAssistantOutput(
 
   const live = await generateLiveWriting(request, retrieval);
   const citationsById = new Map(retrieval.citations.map((citation) => [citation.id, citation]));
+  const deterministicFallback = live.output.candidate_topics.length === 0
+    ? generateMockWritingOutput({ ...request, generationMode: "mock" }, retrieval)
+    : null;
+  const candidateTopics = live.output.candidate_topics.length > 0
+    ? live.output.candidate_topics
+    : deterministicFallback?.candidate_topics ?? [];
 
   return {
     mode: "live",
     query: request.query,
     resolved_time_window: retrieval.resolvedTimeWindow,
     data_source: retrieval.dataSource,
-    candidate_topics: live.output.candidate_topics.map((candidate, index) => ({
+    candidate_topics: candidateTopics.map((candidate, index) => ({
       ...candidate,
       citations: retrieval.citations[index] ? [retrieval.citations[index]] : Array.from(citationsById.values()).slice(0, 1)
     })),
-    counterpoints: live.output.counterpoints,
-    missing_evidence: live.output.missing_evidence,
+    counterpoints: live.output.counterpoints.length > 0
+      ? live.output.counterpoints
+      : deterministicFallback?.counterpoints ?? [],
+    missing_evidence: live.output.missing_evidence.length > 0
+      ? live.output.missing_evidence
+      : deterministicFallback?.missing_evidence ?? [],
     citations: retrieval.citations,
     model_metadata: {
       provider: "deepseek",
@@ -57,7 +67,7 @@ async function generateLiveWriting(
   if (!config.hasApiKey || !apiKey) {
     throw {
       status: 400,
-      message: "Live generation requires DEEPSEEK_API_KEY in the local server environment. Use generationMode: mock for local validation."
+      message: "DeepSeek live generation is not available in this server environment."
     } satisfies SafeGenerationError;
   }
 

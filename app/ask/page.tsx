@@ -46,7 +46,7 @@ function firstParam(value: string | string[] | undefined) {
 
 function formatTimestamp(value: string | null | undefined) {
   if (!value) {
-    return "不可用";
+    return "待补证据";
   }
 
   const date = new Date(value);

@@ -54,7 +54,7 @@ export function WriteRadarClient({
           language: "zh",
           audience: WRITING_AUDIENCE,
           outputType: WRITING_OUTPUT_TYPE,
-          generationMode: "mock"
+          generationMode: "live"
         })
       });
       const body = (await response.json()) as WritingAssistantOutput | { error?: string };
@@ -83,7 +83,7 @@ export function WriteRadarClient({
             <EvidenceBadge detail={dataSummary.latestRadarTime} kind="freshness" label="更新时间" />
             <StatusChip label="已尝试来源" tone="evidence" value={dataSummary.attemptedSources} />
             <StatusChip label="公开来源" tone="success" value={dataSummary.sourcesWithPublicItems} />
-            <StatusChip label="生成模式" tone="caution" value="mock API" />
+            <StatusChip label="生成" tone="evidence" value="DeepSeek" />
           </div>
           <h1 className="mt-4 text-3xl font-semibold text-radar-ink">事件写作</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
@@ -136,7 +136,7 @@ export function WriteRadarClient({
         <aside className="rounded-lg border border-radar-line bg-radar-panel p-4">
           <h2 className="text-sm font-semibold text-radar-ink">行业观察流程</h2>
           <p className="mt-2 text-xs leading-5 text-radar-muted">
-            每个快捷项都会填入同一个提示框，并保持 mock 生成作为默认模式。
+            每个快捷项都会填入同一个提示框，并用当前证据生成可复核写作种子。
           </p>
           <div className="mt-4 space-y-2">
             {suggestedPrompts.map((prompt, index) => (

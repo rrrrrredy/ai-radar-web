@@ -21,7 +21,7 @@ export default async function HomePage() {
       <section className="grid gap-8 border-b border-radar-line pb-8 lg:grid-cols-[minmax(0,1fr)_420px]">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <DataSourceChip detail="生产只读路径" source={summary.dataSource} />
+            <DataSourceChip detail="公开证据面" source={summary.dataSource} />
             <StatusChip label="仅基于公开信息" tone="evidence" />
             <StatusChip label="覆盖率" tone="caution" value="持续补齐" />
           </div>
@@ -107,7 +107,7 @@ function ProductionStatusPanel({ summary }: { summary: ProductDataSummary }) {
         ))}
       </dl>
       <div className="mt-4 grid gap-2 text-sm">
-        <RailRow label="数据来源" value={summary.dataSource} />
+        <RailRow label="数据来源" value={dataSourceLabel(summary.dataSource)} />
         <RailRow label="自动合格来源" value={String(coverage.automatedEligibleSources)} />
         <RailRow label="已纳入 / 待复核 / 已排除" value={`${summary.counts.included} / ${summary.counts.needsReview} / ${summary.counts.excluded}`} />
         <RailRow label="更新时间" value={formatTimestamp(coverage.latestRefresh ?? summary.latest.radar)} />
@@ -165,7 +165,7 @@ function RadarPulse({ summary }: { summary: ProductDataSummary }) {
         <div>
           <h2 className="text-2xl font-semibold text-radar-ink">雷达脉冲</h2>
           <p className="mt-2 text-sm leading-6 text-radar-muted">
-            展示公开检索计数、类别集中度、来源结构和 Supabase 中最新可见信号。
+            展示公开检索计数、类别集中度、来源结构和最新可见信号。
           </p>
         </div>
         <Link className="text-sm font-semibold text-radar-evidence" href="/radar">
@@ -275,7 +275,7 @@ function RelationshipPreview({ summary }: { summary: ProductDataSummary }) {
         <div>
           <h2 className="text-2xl font-semibold text-radar-ink">关系预览</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
-            轻量关系图展示当前 Supabase 雷达条目如何连接来源、类别和已保存报告候选。
+            轻量关系图展示当前公开雷达条目如何连接来源、类别和已保存报告候选。
           </p>
         </div>
         <StatusChip label="关系图预览" tone="admin" value="真实计数" />
@@ -302,9 +302,9 @@ function RelationshipPreview({ summary }: { summary: ProductDataSummary }) {
             <NodeColumn entries={categories} label="类别" tone="freshness" />
             <div className="rounded-full border border-radar-evidence bg-white px-5 py-6 shadow-soft">
               <p className="text-xs font-semibold uppercase tracking-normal text-radar-muted">
-                数据来源
+                证据集合
               </p>
-              <p className="mt-2 text-sm font-semibold text-radar-ink">supabase_radar_items</p>
+              <p className="mt-2 text-sm font-semibold text-radar-ink">公开结构化数据</p>
               <p className="mt-1 text-2xl font-semibold text-radar-evidence">
                 {summary.counts.visibleRadarItems}
               </p>
@@ -406,11 +406,11 @@ function publicText(value: string) {
     )
     .replace(
       "Snapshot data came from Supabase public-safe read views using anon read access.",
-      "快照数据来自 Supabase 公开安全只读视图，并使用 anon 只读访问。"
+      "快照数据来自公开安全只读证据面。"
     )
     .replace(
       "Read-only Supabase public radar retrieval was used; no Supabase write path ran.",
-      "使用 Supabase 公共雷达视图进行只读检索；未运行 Supabase 写入路径。"
+      "使用公开证据库进行检索；只展示可公开引用的结构化字段。"
     )
     .replace(
       "This surface shows available AI Radar evidence only; it is not a claim of complete current AI industry coverage.",
@@ -418,7 +418,7 @@ function publicText(value: string) {
     )
     .replace(
       "Supabase coverage depends on rows already persisted into the public retrieval view.",
-      "Supabase 覆盖范围取决于已经持久化到公共检索视图的行。"
+      "覆盖范围取决于已经入库或快照化的公开证据。"
     );
 }
 
@@ -499,12 +499,12 @@ function RailRow({ label, value }: { label: string; value: string }) {
 }
 
 function formatCount(value: number | null) {
-  return value === null ? "不可用" : value;
+  return value === null ? "待补" : value;
 }
 
 function formatTimestamp(value: string | null | undefined) {
   if (!value) {
-    return "不可用";
+    return "待补证据";
   }
 
   const date = new Date(value);
@@ -523,7 +523,27 @@ function formatTimestamp(value: string | null | undefined) {
 }
 
 function formatRate(value: number | null) {
-  return value === null ? "不可用" : `${Math.round(value * 1000) / 10}%`;
+  return value === null ? "待补" : `${Math.round(value * 1000) / 10}%`;
+}
+
+function dataSourceLabel(value: string) {
+  if (value === "supabase_radar_items" || value.startsWith("supabase_")) {
+    return "公开结构化数据";
+  }
+
+  if (value === "local_understanding_output" || value.startsWith("local_")) {
+    return "本地理解输出";
+  }
+
+  if (value === "mock_data") {
+    return "演示数据";
+  }
+
+  if (value === "empty") {
+    return "暂无证据";
+  }
+
+  return value;
 }
 
 function statusTone(status: string): StatusTone {

@@ -152,7 +152,7 @@ export type GeneratedReportDraft = {
   quality_gate: ReportQualityGate;
 };
 
-export type ReportWorkflowReadSource = "supabase" | "generated_preview";
+export type ReportWorkflowReadSource = "supabase" | "public_snapshot" | "generated_preview";
 
 export type ReportWorkflowDocument = GeneratedReportDraft & {
   read_source: ReportWorkflowReadSource;

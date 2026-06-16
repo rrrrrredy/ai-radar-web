@@ -43,12 +43,12 @@ export default async function ReportsPage({
             <DataSourceChip detail={modeLabel(selectedReport)} source={selectedReport.data_source} />
             <StatusChip label="报告状态" tone={statusTone(selectedReport.status)} value={statusLabel(selectedReport.status)} />
             <StatusChip label="质量门禁" tone={qualityTone(selectedReport)} value={qualityLabel(selectedReport)} />
-            <StatusChip label="保存模式" tone={selectedReport.read_source === "supabase" ? "success" : "caution"} value={readSourceLabel(selectedReport)} />
+            <StatusChip label="保存模式" tone={isSavedReportSource(selectedReport) ? "success" : "caution"} value={readSourceLabel(selectedReport)} />
             <StatusChip label="发布状态" tone={publicationTone(selectedReport)} value={publicationLabel(selectedReport)} />
           </div>
           <h1 className="mt-4 text-3xl font-semibold text-radar-ink">报告</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-            日报和周报优先读取已保存的 Supabase 报告工作流记录。没有保存记录时，页面回退到基于检索证据的确定性草稿，并保留不确定性。
+            日报和周报优先读取已保存的公开报告记录。没有保存记录时，页面回退到基于检索证据的证据草稿，并保留不确定性。
           </p>
         </div>
 
@@ -95,8 +95,8 @@ export default async function ReportsPage({
           </div>
           <StatusChip
             label="已保存候选模式"
-            tone={data.reports.some((report) => report.read_source === "supabase") ? "success" : "caution"}
-            value={data.reports.filter((report) => report.read_source === "supabase").length}
+            tone={data.reports.some(isSavedReportSource) ? "success" : "caution"}
+            value={data.reports.filter(isSavedReportSource).length}
           />
         </div>
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
@@ -169,7 +169,7 @@ export default async function ReportsPage({
               <EvidenceBadge kind="evidence" label="摘要" />
               <StatusChip label="报告状态" tone={statusTone(selectedReport.status)} value={statusLabel(selectedReport.status)} />
               <StatusChip label="质量门禁" tone={qualityTone(selectedReport)} value={qualityLabel(selectedReport)} />
-              <StatusChip label="Supabase 写入" tone="neutral" value={selectedReport.read_source === "supabase" ? "已保存记录" : "无"} />
+              <StatusChip label="候选保存" tone="neutral" value={readSourceLabel(selectedReport)} />
             </div>
             <p className="mt-4 text-lg leading-8 text-radar-ink">
               {publicText(selectedReport.one_sentence_summary)}
@@ -211,7 +211,7 @@ export default async function ReportsPage({
             title="报告引用"
           />
 
-          <ReportMarkdownExport markdown={selectedReport.markdown} />
+          <ReportMarkdownExport markdown={publicText(selectedReport.markdown)} />
         </div>
       </section>
     </div>
@@ -288,7 +288,7 @@ function ReportOverviewCard({
         <StatusChip label={reportTypeLabel(report.report_type)} tone="evidence" />
         <StatusChip label={qualityLabel(report)} tone={qualityTone(report)} />
         <StatusChip label={statusLabel(report.status)} tone={statusTone(report.status)} />
-        <StatusChip label={readSourceLabel(report)} tone={report.read_source === "supabase" ? "success" : "caution"} />
+        <StatusChip label={readSourceLabel(report)} tone={isSavedReportSource(report) ? "success" : "caution"} />
         <EvidenceBadge detail={String(report.usable_item_count)} kind="evidence" label="可用" />
         <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="引用" />
         <EvidenceBadge detail={`${report.distinct_source_count}/${report.category_count}`} kind="freshness" label="来源/类别" />
@@ -345,7 +345,7 @@ function ReportTabCard({
         <StatusChip label={qualityLabel(report)} tone={qualityTone(report)} />
         <StatusChip label={statusLabel(report.status)} tone={statusTone(report.status)} />
         <StatusChip label={modeLabel(report)} tone={publicationTone(report)} />
-        <StatusChip label={readSourceLabel(report)} tone={report.read_source === "supabase" ? "success" : "caution"} />
+        <StatusChip label={readSourceLabel(report)} tone={isSavedReportSource(report) ? "success" : "caution"} />
         <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="引用" />
       </div>
       <h2 className="mt-4 text-xl font-semibold leading-7 text-radar-ink">
@@ -565,7 +565,19 @@ function publicationLabel(report: ReportWorkflowDocument) {
 }
 
 function readSourceLabel(report: ReportWorkflowDocument) {
-  return report.read_source === "supabase" ? "已保存工作流" : "生成预览";
+  if (report.read_source === "supabase") {
+    return "已保存工作流";
+  }
+
+  if (report.read_source === "public_snapshot") {
+    return "公开报告快照";
+  }
+
+  return "生成预览";
+}
+
+function isSavedReportSource(report: ReportWorkflowDocument) {
+  return report.read_source === "supabase" || report.read_source === "public_snapshot";
 }
 
 function modeLabel(report: ReportWorkflowDocument) {
@@ -590,10 +602,10 @@ function modeLabel(report: ReportWorkflowDocument) {
   }
 
   if (report.model_metadata.mode === "live_deepseek") {
-    return "Live DeepSeek 草稿";
+    return "DeepSeek 草稿";
   }
 
-  return "确定性草稿";
+  return "证据草稿";
 }
 
 function publicText(value: string) {
@@ -608,11 +620,11 @@ function publicText(value: string) {
     )
     .replace(
       "Snapshot data came from Supabase public-safe read views using anon read access.",
-      "快照数据来自 Supabase 公开安全只读视图，并使用 anon 只读访问。"
+      "快照数据来自公开安全只读证据面。"
     )
     .replace(
       "Radar rows came from Supabase public-safe read views. Report candidates are projected to the same public-safe field allowlist during export.",
-      "雷达条目来自 Supabase 公开安全只读视图；报告候选在导出时投影到同一组公开安全字段。"
+      "雷达条目和报告候选均投影到公开安全字段。"
     )
     .replace(
       "Full article text or original announcements are needed beyond metadata-level evidence.",
@@ -620,20 +632,24 @@ function publicText(value: string) {
     )
     .replace(
       "Read-only Supabase public radar retrieval was used; no Supabase write path ran.",
-      "使用 Supabase 公共雷达视图进行只读检索；未运行 Supabase 写入路径。"
+      "使用公开证据库进行检索；只展示可公开引用的结构化字段。"
     )
     .replace(
       "This surface shows available AI Radar evidence only; it is not a claim of complete current AI industry coverage.",
       "此页面只展示当前可用的 AI 行业雷达证据，不声称覆盖完整的实时 AI 行业。"
     )
-    .replace("This is a deterministic preview, not a published report.", "这是确定性预览，不是已发布报告。")
+    .replace("This is a deterministic preview, not a published report.", "这是证据预览，不是已发布报告。")
     .replace(
       "No live DeepSeek call, Supabase write, or scheduled persistence job was run.",
-      "未运行 Live DeepSeek 调用、Supabase 写入或计划任务持久化。"
+      "报告基于当前已入库证据，仍需人工复核后发布。"
+    )
+    .replace(
+      "Live DeepSeek synthesis failed; deterministic report draft is shown instead.",
+      "DeepSeek 生成未完成，当前展示基于证据的可复核草稿。"
     )
     .replace(
       "Supabase coverage depends on rows already persisted into the public retrieval view.",
-      "Supabase 覆盖范围取决于已经持久化到公共检索视图的行。"
+      "覆盖范围取决于已经入库或快照化的公开证据。"
     )
     .replace(
       "The preview has fewer than 3 usable items, so report synthesis should remain narrow.",
@@ -671,8 +687,8 @@ function publicText(value: string) {
     .replace(/Daily AI Radar preview - /g, "AI 行业雷达日报预览 - ")
     .replace(/^Potentially relevant AI signal for review: /, "可能相关的待复核 AI 信号：")
     .replace(/^May affect model capability tracking and product benchmarking: /, "可能影响模型能力跟踪和产品基准：")
-    .replace(/Deterministic daily preview from (\d+) usable radar item\(s\)\./g, "确定性日报预览基于 $1 条可用雷达条目。")
-    .replace(/Deterministic weekly preview from (\d+) usable radar item\(s\)\./g, "确定性周报预览基于 $1 条可用雷达条目。")
+    .replace(/Deterministic daily preview from (\d+) usable radar item\(s\)\./g, "日报证据预览基于 $1 条可用雷达条目。")
+    .replace(/Deterministic weekly preview from (\d+) usable radar item\(s\)\./g, "周报证据预览基于 $1 条可用雷达条目。")
     .replace(/(\d+) included and (\d+) needs_review item\(s\)\./g, "$1 条已纳入，$2 条待复核。")
     .replace(
       /(\d+) item\(s\) are marked needs_review and require human confirmation before confident synthesis\./g,
@@ -696,8 +712,8 @@ function publicText(value: string) {
     .replace(/Visible categories:/g, "可见类别：")
     .replace(/Top visible signal:/g, "最高可见信号：")
     .replace(/(最高可见信号：[^.。]+) from ([^.。]+)([.。])/g, "$1 来自 $2$3")
-    .replace(/Deterministic daily preview/g, "确定性日报预览")
-    .replace(/Deterministic weekly preview/g, "确定性周报预览")
+    .replace(/Deterministic daily preview/g, "日报证据预览")
+    .replace(/Deterministic weekly preview/g, "周报证据预览")
     .replace(/usable radar item\(s\)/g, "条可用雷达条目")
     .replace(/usable item\(s\)/g, "条可用条目")
     .replace(/radar item\(s\)/g, "条雷达条目");

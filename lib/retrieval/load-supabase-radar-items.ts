@@ -33,7 +33,7 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
   if (!publicConfig) {
     return {
       loaded: null,
-      warnings: ["Supabase retrieval is enabled but public Supabase config is missing."]
+      warnings: ["公开证据库配置暂不可读，已尝试切换到公开快照。"]
     };
   }
 
@@ -42,7 +42,7 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
     if (!supabase) {
       return {
         loaded: null,
-        warnings: ["Supabase retrieval is enabled but public Supabase config is missing."]
+        warnings: ["公开证据库配置暂不可读，已尝试切换到公开快照。"]
       };
     }
 
@@ -93,15 +93,13 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
       if (isMissingPublicRetrievalViewError(readError)) {
         return {
           loaded: null,
-          warnings: ["Supabase public retrieval view is not available; local fallback was used."]
+          warnings: ["公开证据库视图暂不可读，已尝试切换到公开快照。"]
         };
       }
 
       return {
         loaded: null,
-        warnings: [
-          `Supabase public retrieval view read failed and local fallback was used: ${sanitizeSupabaseReadError(readError.message)}`
-        ]
+        warnings: ["公开证据库读取失败，已尝试切换到公开快照。"]
       };
     }
 
@@ -111,7 +109,7 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
     if (rows.length === 0 || items.length === 0) {
       return {
         loaded: null,
-        warnings: ["Supabase public retrieval view returned zero usable rows; local fallback was used."]
+        warnings: ["公开证据库暂无可用条目，已尝试切换到公开快照。"]
       };
     }
 
@@ -127,11 +125,10 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
       },
       warnings: []
     };
-  } catch (error) {
-    const message = sanitizeSupabaseReadError(error instanceof Error ? error.message : String(error));
+  } catch {
     return {
       loaded: null,
-      warnings: [`Supabase public retrieval view threw an error and local fallback was used: ${message}`]
+      warnings: ["公开证据库读取异常，已尝试切换到公开快照。"]
     };
   }
 }
@@ -148,14 +145,6 @@ function isMissingPublicRetrievalViewError(error: SupabaseReadError) {
         haystack.includes("not found") ||
         haystack.includes("schema cache")))
   );
-}
-
-function sanitizeSupabaseReadError(value: string) {
-  return value
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
-    .replace(/\bsk-(?:proj-)?[A-Za-z0-9_-]{8,}/gi, "sk-[redacted]")
-    .replace(/\b(authorization|api[-_]?key|token|cookie)\b\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
-    .slice(0, 400);
 }
 
 function normalizeSupabaseRow(value: SupabaseRadarRow): RetrievalRadarItem | null {

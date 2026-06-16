@@ -77,7 +77,7 @@ export type PublicReportSnapshot = {
   title: string;
   summary: string;
   executive_summary?: string;
-  data_source: RetrievalDataSource | "unknown";
+  data_source: string;
   time_window: {
     start: string;
     end: string;
@@ -147,7 +147,7 @@ export type PublicMirrorSnapshot = {
   };
   source: {
     kind: SnapshotSourceKind;
-    data_source: RetrievalDataSource;
+    data_source: string;
     local_data_used: boolean;
     warnings: string[];
   };
@@ -649,13 +649,14 @@ async function readPreviousPublicSnapshot(
 
     const previousWarnings = Array.isArray(parsed.source?.warnings) ? parsed.source.warnings : [];
 
-    return {
+    return sanitizePublicSnapshot({
       ...(parsed as PublicMirrorSnapshot),
       generated_at: generatedAt,
       source: {
         ...(parsed.source as PublicMirrorSnapshot["source"]),
+        data_source: publicSnapshotDataSource(parsed.source?.data_source),
         local_data_used: true,
-        warnings: dedupe([
+        warnings: publicSafeNotes([
           ...warnings,
           "Supabase public reads were unavailable during export; reused the previous public-safe Cloudflare snapshot instead of degrading to incomplete local data.",
           ...previousWarnings
@@ -667,7 +668,7 @@ async function readPreviousPublicSnapshot(
         snapshot_radar_items: (parsed.counts?.snapshot_radar_items ?? items.length) as number,
         visible_radar_items: (parsed.counts?.visible_radar_items ?? items.length) as number
       }
-    };
+    });
   } catch {
     return null;
   }
@@ -688,7 +689,8 @@ function buildSnapshot(input: {
 }): PublicMirrorSnapshot {
   const latest = latestTimestamp(input.items);
   const statusCounts = countStatuses(input.items);
-  const reportCitationCount = input.reports.reduce((count, report) => count + report.citations.length, 0);
+  const reports = input.reports.map(publicSafeReport);
+  const reportCitationCount = reports.reduce((count, report) => count + report.citations.length, 0);
   const eventLayer = buildEventLayer(input.items);
 
   return {
@@ -702,10 +704,10 @@ function buildSnapshot(input: {
       read_only: true
     },
     source: {
-      data_source: input.dataSource,
+      data_source: publicSnapshotDataSource(input.dataSource),
       kind: input.sourceKind,
       local_data_used: input.fallbackUsed,
-      warnings: dedupe(input.warnings)
+      warnings: publicSafeNotes(input.warnings)
     },
     freshness: {
       latest_ingestion: input.operationalCounts.latest_ingestion,
@@ -729,8 +731,8 @@ function buildSnapshot(input: {
       radar_items: input.operationalCounts.radar_items,
       raw_items: input.operationalCounts.raw_items,
       report_candidates: input.operationalCounts.report_candidates,
-      report_snapshots: input.reports.length,
-      saved_report_candidates: input.reports.filter((report) => report.mode === "saved_candidate").length,
+      report_snapshots: reports.length,
+      saved_report_candidates: reports.filter((report) => report.mode === "saved_candidate").length,
       scores: input.operationalCounts.scores,
       sources: input.operationalCounts.sources,
       snapshot_radar_items: input.items.length,
@@ -781,11 +783,11 @@ function buildSnapshot(input: {
     event_count: eventLayer.event_count,
     failure_family_summary: input.publicCoverage.failureFamilies,
     report_quality_summary: {
-      daily: reportQualitySummary(input.reports, "daily", eventLayer.curated_events),
-      weekly: reportQualitySummary(input.reports, "weekly", eventLayer.curated_events)
+      daily: reportQualitySummary(reports, "daily", eventLayer.curated_events),
+      weekly: reportQualitySummary(reports, "weekly", eventLayer.curated_events)
     },
     radar_items: input.items,
-    reports: input.reports,
+    reports,
     source_health_summary: {
       "403": input.publicCoverage.failureFamilies["403"] ?? input.publicCoverage.failureFamilies.failed_403 ?? 0,
       duplicate_only: input.publicCoverage.failureFamilies.duplicate_only ?? 0,
@@ -799,7 +801,7 @@ function buildSnapshot(input: {
       unsupported_source: input.publicCoverage.failureFamilies.unsupported_source ?? 0
     },
     timeline: eventLayer.timeline,
-    caveats: dedupe([
+    caveats: publicSafeNotes([
       "Cloudflare Pages is the primary public read surface. Auth, Admin, server actions, and write workflows remain outside this public Cloudflare surface.",
       "Only public-safe radar and report fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
       input.fallbackUsed
@@ -1387,6 +1389,208 @@ function isPublicHttpUrl(value: string) {
 
 function dedupe(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function sanitizePublicSnapshot(snapshot: PublicMirrorSnapshot): PublicMirrorSnapshot {
+  return {
+    ...snapshot,
+    source: {
+      ...snapshot.source,
+      data_source: publicSnapshotDataSource(snapshot.source.data_source),
+      warnings: publicSafeNotes(snapshot.source.warnings)
+    },
+    report_quality_summary: {
+      daily: publicSafeReportQuality(snapshot.report_quality_summary.daily),
+      weekly: publicSafeReportQuality(snapshot.report_quality_summary.weekly)
+    },
+    reports: snapshot.reports.map(publicSafeReport),
+    caveats: publicSafeNotes(snapshot.caveats)
+  };
+}
+
+function publicSafeReport(report: PublicReportSnapshot): PublicReportSnapshot {
+  return {
+    ...report,
+    data_source: publicSnapshotDataSource(report.data_source),
+    title: publicSafeNote(report.title),
+    summary: publicSafeNote(report.summary),
+    executive_summary: report.executive_summary ? publicSafeNote(report.executive_summary) : undefined,
+    quality_gate_reasons: publicSafeNotes(report.quality_gate_reasons),
+    quality_gate: {
+      ...report.quality_gate,
+      reasons: publicSafeNotes(report.quality_gate.reasons)
+    },
+    sections: report.sections.map((section) => ({
+      ...section,
+      summary: publicSafeNote(section.summary),
+      bullets: publicSafeNotes(section.bullets),
+      caveats: publicSafeNotes(section.caveats)
+    })),
+    caveats: publicSafeNotes(report.caveats),
+    missing_evidence: publicSafeNotes(report.missing_evidence)
+  };
+}
+
+function publicSafeReportQuality(summary: ReportQualitySummary | null): ReportQualitySummary | null {
+  if (!summary) {
+    return null;
+  }
+
+  return {
+    ...summary,
+    quality_gate_reasons: publicSafeNotes(summary.quality_gate_reasons),
+    missing_evidence: publicSafeNotes(summary.missing_evidence),
+    caveats: publicSafeNotes(summary.caveats)
+  };
+}
+
+function publicSnapshotDataSource(value: string | null | undefined) {
+  if (!value) {
+    return "public_evidence_store";
+  }
+
+  if (value === "supabase_radar_items" || value === "public_radar_items" || value.startsWith("supabase_")) {
+    return "public_evidence_store";
+  }
+
+  if (value === "local_understanding_output" || value.startsWith("local_")) {
+    return "local_evidence_files";
+  }
+
+  if (value === "mock_data") {
+    return "demo_evidence";
+  }
+
+  if (value === "empty") {
+    return "empty_evidence";
+  }
+
+  return value;
+}
+
+function publicSafeNotes(values: string[]) {
+  return dedupe(values.map(publicSafeNote));
+}
+
+function publicSafeNote(value: string) {
+  return value
+    .replace(
+      "Cloudflare Pages is the primary public read surface. Auth, Admin, server actions, and write workflows remain outside this public Cloudflare surface.",
+      "Cloudflare Pages 是主要公开只读页面；登录、Admin、服务端操作和写入流程不在公开页面中运行。"
+    )
+    .replace(
+      "Only public-safe radar and report fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
+      "只纳入公开安全的雷达和报告字段；私有原文、供应商元数据、内部备注、service-role 访问和密钥均已排除。"
+    )
+    .replace(
+      "Read-only Supabase public radar retrieval was used; no Supabase write path ran.",
+      "使用公开证据库进行检索；只展示可公开引用的结构化字段。"
+    )
+    .replace(
+      "Radar rows came from Supabase public-safe read views. Report candidates are projected to the same public-safe field allowlist during export.",
+      "雷达条目来自公开安全证据视图；报告候选在导出时投影到同一组公开安全字段。"
+    )
+    .replace(
+      "No live DeepSeek call, Supabase write, or scheduled persistence job was run.",
+      "报告基于当前已入库证据，仍需人工复核后发布。"
+    )
+    .replace(
+      "Live DeepSeek synthesis failed; deterministic report draft is shown instead.",
+      "DeepSeek 生成未完成，当前展示基于证据的可复核草稿。"
+    )
+    .replace("This is a deterministic preview, not a published report.", "这是证据预览，不是已发布报告。")
+    .replace(
+      "Supabase coverage depends on rows already persisted into the public retrieval view.",
+      "公开覆盖范围取决于已经入库的可公开证据。"
+    )
+    .replace(
+      "Supabase public reads were unavailable during export; reused the previous public-safe Cloudflare snapshot instead of degrading to incomplete local data.",
+      "本次导出无法读取公开证据库，已复用上一版 public-safe Cloudflare 快照，避免降级为空数据。"
+    )
+    .replace(
+      "Supabase public radar view returned no public-safe rows; local generated radar data was used.",
+      "公开雷达视图没有返回可展示条目，本次导出使用本地生成数据。"
+    )
+    .replace(
+      "This snapshot used local generated data because Supabase public reads were unavailable to the export process.",
+      "本次导出使用本地生成数据，因为导出进程无法读取公开证据库。"
+    )
+    .replace(
+      "This surface shows available AI Radar evidence only; it is not a claim of complete current AI industry coverage.",
+      "此页面只展示当前可用的 AI 行业雷达证据，不声称覆盖完整实时行业。"
+    )
+    .replace(
+      /(\d+) item\(s\) are marked needs_review and require human confirmation before confident synthesis\./g,
+      "$1 条标记为待复核，需要人工确认后才能进行高置信综合。"
+    )
+    .replace(/Deterministic daily preview from (\d+) usable radar item\(s\)\./g, "日报证据预览基于 $1 条可用雷达条目。")
+    .replace(/Deterministic weekly preview from (\d+) usable radar item\(s\)\./g, "周报证据预览基于 $1 条可用雷达条目。")
+    .replace(/Weekly AI Radar preview - ending /g, "AI 行业雷达周报预览 - 截至 ")
+    .replace(/Daily AI Radar preview - /g, "AI 行业雷达日报预览 - ")
+    .replace(/(\d+) included and (\d+) needs_review item\(s\)\./g, "$1 条已纳入，$2 条待复核。")
+    .replace(/(\d+) radar item\(s\) matched this section\./g, "$1 条雷达条目匹配本章节。")
+    .replace(/(\d+) still need review\./g, "$1 条仍需复核。")
+    .replace(/Visible categories: ([^.]+)\./g, (_, categories: string) => {
+      return `可见类别： ${categories
+        .split(",")
+        .map((category) => publicReportCategoryLabel(category.trim()))
+        .join("、")}。`;
+    })
+    .replace(/Top visible signal:/g, "最高可见信号：")
+    .replace(/(最高可见信号：[^.。]+) from ([^.。]+)([.。])/g, "$1 来自 $2$3")
+    .replace(/Model \/ product \/ company updates/g, "模型/产品/公司更新")
+    .replace(/Research \/ open-source/g, "研究/开源")
+    .replace(/Agents \/ products/g, "智能体/产品")
+    .replace(/Business \/ ecosystem/g, "商业/生态")
+    .replace(/Weak signals \/ needs_review/g, "弱信号/待复核")
+    .replace(/No specific article content is included\./g, "未采集到具体文章正文。")
+    .replace(/needs_review/g, "待复核")
+    .replace(/included/g, "已纳入")
+    .replace(/([a-z_]+) count failed: TypeError: fetch failed/g, (_, table: string) => `${publicMetricLabel(table)}计数读取失败：网络连接失败`)
+    .replace(/([a-z_]+) latest timestamp failed: TypeError: fetch failed/g, (_, table: string) => `${publicMetricLabel(table)}最新时间读取失败：网络连接失败`)
+    .replace(/public_radar_items read failed: TypeError: fetch failed/g, "公开雷达条目读取失败：网络连接失败")
+    .replace(/public_report_candidates read failed: TypeError: fetch failed/g, "公开报告候选读取失败：网络连接失败")
+    .replace(/public_reports read failed: TypeError: fetch failed/g, "公开报告读取失败：网络连接失败")
+    .replace(/service report read failed: TypeError: fetch failed/g, "报告服务读取失败：网络连接失败")
+    .replace(/report_candidates service read failed: TypeError: fetch failed/g, "报告候选服务读取失败：网络连接失败")
+    .replace(/reports service read failed: TypeError: fetch failed/g, "报告服务读取失败：网络连接失败");
+}
+
+function publicReportCategoryLabel(value: string) {
+  const labels: Record<string, string> = {
+    agent: "智能体",
+    benchmark: "基准",
+    business: "商业",
+    infrastructure: "基础设施",
+    model_release: "模型发布",
+    open_source: "开源",
+    opinion: "观点",
+    other: "其他",
+    policy: "政策",
+    product_update: "产品更新",
+    research: "研究",
+    safety: "安全",
+    tooling: "工具"
+  };
+
+  return labels[value] ?? value.replace(/_/g, " ");
+}
+
+function publicMetricLabel(value: string) {
+  const labels: Record<string, string> = {
+    entities: "实体",
+    ingestion_runs: "采集运行",
+    item_entities: "条目实体",
+    public_radar_items: "公开雷达条目",
+    radar_items: "雷达条目",
+    raw_items: "原始条目",
+    report_candidates: "报告候选",
+    scores: "评分",
+    sources: "来源",
+    understanding_runs: "理解运行"
+  };
+
+  return labels[value] ?? "公开数据";
 }
 
 function sanitizeError(error: unknown) {

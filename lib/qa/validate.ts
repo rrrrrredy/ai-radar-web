@@ -80,7 +80,7 @@ export function stringArray(value: unknown) {
 
 function normalizeGenerationMode(value: unknown): GenerationMode | null {
   if (value === undefined || value === null || value === "") {
-    return "mock";
+    return "live";
   }
 
   return value === "mock" || value === "live" ? value : null;

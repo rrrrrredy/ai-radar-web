@@ -21,22 +21,22 @@ type SectionDefinition = {
 const sectionDefinitions: SectionDefinition[] = [
   {
     id: "model_product_company_updates",
-    title: "Model / product / company updates",
+    title: "模型 / 产品 / 公司动态",
     categories: ["model_release", "product_update", "benchmark", "business", "funding"]
   },
   {
     id: "research_open_source",
-    title: "Research / open-source",
+    title: "研究 / 开源",
     categories: ["research", "open_source", "benchmark"]
   },
   {
     id: "agents_products",
-    title: "Agents / products",
+    title: "智能体 / 产品",
     categories: ["agent", "product_update"]
   },
   {
     id: "business_ecosystem",
-    title: "Business / ecosystem",
+    title: "商业 / 生态",
     categories: ["business", "funding", "infrastructure", "regulation", "safety", "media_interview", "opinion", "other"]
   }
 ];
@@ -63,9 +63,9 @@ export function generateReportPreview(feed: RadarFeed, reportType: ReportPreview
       end: anchor.toISOString(),
       explanation:
         reportType === "daily"
-          ? "Daily preview window uses the 24 hours ending at the latest visible radar timestamp."
-          : "Weekly preview window uses the 7 days ending at the latest visible radar timestamp.",
-      matched_phrase: reportType === "daily" ? "daily preview" : "weekly preview"
+          ? "日报预览窗口使用截至最新可见雷达时间戳的 24 小时。"
+          : "周报预览窗口使用截至最新可见雷达时间戳的 7 天。",
+      matched_phrase: reportType === "daily" ? "日报预览" : "周报预览"
     },
     data_source: feed.data_source,
     summary: summaryForReport(reportType, usableItems, includedCount, needsReviewCount, feed.counts.total),
@@ -106,7 +106,7 @@ function buildSections(windowItems: RetrievalRadarItem[]): ReportPreviewSection[
 
   return [
     ...standardSections,
-    buildSection("weak_signals_needs_review", "Weak signals / needs_review", weakSignals)
+    buildSection("weak_signals_needs_review", "弱信号 / 待复核", weakSignals)
   ];
 }
 
@@ -124,18 +124,18 @@ function buildSection(
     title,
     summary:
       items.length === 0
-        ? "No retrieved radar items in this window support this section."
-        : `${items.length} radar item(s) matched this section. ${
-            needsReviewCount > 0 ? `${needsReviewCount} still need review. ` : ""
-          }${excludedCount > 0 ? `${excludedCount} are excluded or failed and are shown only as weak signals.` : ""}`.trim(),
+        ? "当前时间窗口没有雷达条目支撑本章节。"
+        : `${items.length} 条雷达条目匹配本章节。${
+            needsReviewCount > 0 ? `${needsReviewCount} 条仍需复核。` : ""
+          }${excludedCount > 0 ? `${excludedCount} 条已排除或失败，只作为弱信号展示。` : ""}`.trim(),
     items: items.map(mapPreviewItem),
     caveats: [
-      needsReviewCount > 0 ? "needs_review items should use cautious language and require confirmation." : "",
-      excludedCount > 0 ? "Excluded or failed rows are not report evidence." : ""
+      needsReviewCount > 0 ? "待复核条目需要谨慎措辞并确认。" : "",
+      excludedCount > 0 ? "已排除或失败记录不能作为报告证据。" : ""
     ].filter(Boolean),
     missing_evidence:
       usableItems.length === 0
-        ? ["No usable included or needs_review item currently supports this section."]
+        ? ["当前没有可用的已纳入或待复核条目支撑本章节。"]
         : sectionMissingEvidence(usableItems)
   };
 }
@@ -148,7 +148,7 @@ function mapPreviewItem(item: RetrievalRadarItem): ReportPreviewItem {
     source_name: item.source_name,
     url: item.url,
     timestamp: itemEvidenceTimestamp(item),
-    summary: item.summary_en || item.summary_zh || "No summary is available for this radar item.",
+    summary: item.summary_zh || item.summary_en || "当前条目暂无摘要。",
     categories: item.categories,
     tags: item.tags,
     source_tier: item.source_tier,
@@ -230,21 +230,21 @@ function summaryForReport(
   totalCount: number
 ) {
   if (totalCount === 0) {
-    return `No ${reportType} preview can be supported because no radar items were retrieved.`;
+    return `${reportType === "daily" ? "日报" : "周报"}暂时缺少可用雷达证据，不能形成可靠报告。`;
   }
 
   if (usableItems.length === 0) {
-    return `The ${reportType} preview has no usable included or needs_review radar evidence in the resolved window.`;
+    return `${reportType === "daily" ? "日报" : "周报"}时间窗口内没有可用或待复核证据。`;
   }
 
   const categories = Array.from(new Set(usableItems.flatMap((item) => item.categories))).slice(0, 5);
   const top = usableItems[0];
 
   return [
-    `Deterministic ${reportType} preview from ${usableItems.length} usable radar item(s).`,
-    `${includedCount} included and ${needsReviewCount} needs_review item(s).`,
-    `Top visible signal: "${top.title}" from ${top.source_name}.`,
-    `Visible categories: ${categories.join(", ") || "uncategorized"}.`
+    `${reportType === "daily" ? "日报" : "周报"}证据预览基于 ${usableItems.length} 条可用雷达条目。`,
+    `${includedCount} 条已纳入，${needsReviewCount} 条待复核。`,
+    `最高可见信号："${top.title}" 来自 ${top.source_name}。`,
+    `可见类别：${categories.join("、") || "未分类"}。`
   ].join(" ");
 }
 
@@ -257,25 +257,25 @@ function buildReportCaveats(
 
   return dedupe([
     ...feed.caveats,
-    "This is a deterministic preview, not a published report.",
-    "No live DeepSeek call, Supabase write, or scheduled persistence job was run.",
+    "这是证据预览，不是已发布报告。",
+    "本次预览未运行写入或定时任务。",
     feed.data_source === "mock_data"
-      ? "Mock data cannot support claims about current AI industry activity."
+      ? "演示数据不能支撑当前 AI 行业判断。"
       : "",
     feed.data_source === "local_understanding_output"
-      ? "Local output may be stale or metadata-only; verify source pages before publication."
+      ? "本地理解输出可能滞后或只含元数据，发布前需要复核原始来源。"
       : "",
     feed.data_source === "supabase_radar_items"
-      ? "Supabase coverage depends on rows already persisted into the public retrieval view."
+      ? "公开覆盖范围取决于已经入库或快照化的可公开证据。"
       : "",
     usableItems.length < 3
-      ? "The preview has fewer than 3 usable items, so report synthesis should remain narrow."
+      ? "可用条目少于 3 条，报告综合应保持窄范围。"
       : "",
     usableItems.every((item) => item.status !== "included") && usableItems.length > 0
-      ? "No usable item in this window is marked included; report language must remain provisional."
+      ? "当前窗口没有已纳入条目，报告措辞必须保持暂定。"
       : "",
     excludedOrFailed > 0
-      ? `${excludedOrFailed} excluded or failed row(s) are visible only as weak signals.`
+      ? `${excludedOrFailed} 条排除或失败记录只能作为弱信号。`
       : ""
   ]);
 }
@@ -286,25 +286,25 @@ function buildMissingEvidence(
   citations: RetrievalCitation[]
 ) {
   return dedupe([
-    usableItems.length === 0 ? "At least one included or reviewed radar item is needed." : "",
-    usableItems.length < 3 ? "More independent items are needed for a broad daily or weekly synthesis." : "",
+    usableItems.length === 0 ? "至少需要一条已纳入或待复核雷达条目。" : "",
+    usableItems.length < 3 ? "需要更多独立条目才能形成宽口径日报或周报。" : "",
     usableItems.every((item) => item.status !== "included") && usableItems.length > 0
-      ? "Human review is needed before treating any item as confirmed."
+      ? "在作为确认事实前需要人工复核。"
       : "",
     usableItems.some((item) => item.evidence_notes.some((note) => note.toLowerCase().includes("metadata-level")))
-      ? "Full article text or original announcements are needed beyond metadata-level evidence."
+      ? "除元数据级证据外，还需要完整原文或官方公告。"
       : "",
-    citations.length === 0 ? "No citations are available for this preview." : "",
-    feed.data_source === "mock_data" ? "Real local understanding output or Supabase retrieval data is needed." : "",
-    feed.data_source === "empty" ? "A populated retrieval source is needed." : ""
+    citations.length === 0 ? "当前预览没有可引用来源。" : "",
+    feed.data_source === "mock_data" ? "需要真实理解输出或公开证据库数据。" : "",
+    feed.data_source === "empty" ? "需要先补充可检索证据源。" : ""
   ]);
 }
 
 function sectionMissingEvidence(items: RetrievalRadarItem[]) {
   return dedupe([
-    items.some((item) => item.status === "needs_review") ? "Human confirmation for needs_review items." : "",
-    items.length < 2 ? "Additional independent evidence for section-level synthesis." : "",
-    items.some((item) => item.evidence_notes.length === 0) ? "Evidence notes or source excerpts for each item." : ""
+    items.some((item) => item.status === "needs_review") ? "待复核条目需要人工确认。" : "",
+    items.length < 2 ? "章节级综合需要更多独立证据。" : "",
+    items.some((item) => item.evidence_notes.length === 0) ? "每条证据需要补充证据说明或来源摘录。" : ""
   ]);
 }
 

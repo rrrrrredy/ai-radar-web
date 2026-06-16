@@ -6,10 +6,10 @@ export type DataSource =
   | "unknown";
 
 const sourceLabels: Record<DataSource, string> = {
-  supabase_radar_items: "Supabase",
-  local_understanding_output: "本地",
-  mock_data: "模拟",
-  empty: "空",
+  supabase_radar_items: "公开证据库",
+  local_understanding_output: "本地证据",
+  mock_data: "演示数据",
+  empty: "暂无证据",
   unknown: "未知"
 };
 

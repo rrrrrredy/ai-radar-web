@@ -697,6 +697,8 @@ function renderTimelineEntry(entry: SnapshotTimelineEntry) {
 function renderRadarItem(item: SnapshotItem) {
   const family = sourceFamily(item);
   const search = [item.title, item.source_name, item.status, item.categories.join(" "), item.tags.join(" "), item.summary_en, item.summary_zh].join(" ").toLowerCase();
+  const timestampLabel = item.published_at ? "发布时间" : item.collected_at ? "采集时间" : "处理时间";
+  const timestamp = item.published_at ?? item.collected_at ?? item.processed_at;
 
   return `<article class="radar-row" data-category="${escapeAttr(item.categories.join(" "))}" data-family="${escapeAttr(family)}" data-search="${escapeAttr(search)}" data-status="${escapeAttr(item.status)}">
     <div>
@@ -706,7 +708,7 @@ function renderRadarItem(item: SnapshotItem) {
       ${item.why_it_matters ? `<p class="note"><strong>为什么重要：</strong> ${escapeHtml(publicText(item.why_it_matters))}</p>` : ""}
       <div class="pill-row">${item.categories.map((category) => pill(labelize(category), "evidence")).join("")}${item.tags.slice(0, 5).map((tag) => pill(tag, "neutral")).join("")}</div>
     </div>
-    <aside><dl class="rail">${rail("来源", item.source_name)}${rail("层级", item.source_tier)}${rail("发布时间", formatDate(item.published_at))}${rail("处理时间", formatDate(item.processed_at))}</dl><a class="source-link" href="${escapeAttr(item.url)}">打开引用</a></aside>
+    <aside><dl class="rail">${rail("来源", item.source_name)}${rail("层级", item.source_tier)}${rail(timestampLabel, formatDate(timestamp))}${rail("处理时间", formatDate(item.processed_at))}</dl><a class="source-link" href="${escapeAttr(item.url)}">打开引用</a></aside>
   </article>`;
 }
 
@@ -866,12 +868,12 @@ function reportCoveragePanel(snapshot: Snapshot, reports: SnapshotReport[]) {
       <dl class="rail">
         ${rail("报告候选", String(snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates))}
         ${rail("候选数量", String(snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates))}
-        ${rail("最新日报候选", daily ? publicText(daily.title) : "不可用")}
-        ${rail("质量门禁", daily ? qualityLabel(daily) : "不可用")}
+        ${rail("最新日报候选", daily ? publicText(daily.title) : "待补")}
+        ${rail("质量门禁", daily ? qualityLabel(daily) : "待补")}
         ${rail("条目数", String(daily?.usable_item_count ?? daily?.source_item_count ?? 0))}
         ${rail("引用/来源/类别", `${daily?.citation_count ?? daily?.citations.length ?? 0} / ${daily?.distinct_source_count ?? 0} / ${daily?.category_count ?? 0}`)}
-        ${rail("最新周报候选", weekly ? publicText(weekly.title) : "不可用")}
-        ${rail("周报质量门禁", weekly ? qualityLabel(weekly) : "不可用")}
+        ${rail("最新周报候选", weekly ? publicText(weekly.title) : "待补")}
+        ${rail("周报质量门禁", weekly ? qualityLabel(weekly) : "待补")}
         ${rail("周报条目数", String(weekly?.usable_item_count ?? weekly?.source_item_count ?? 0))}
         ${rail("周报引用/来源/类别", `${weekly?.citation_count ?? weekly?.citations.length ?? 0} / ${weekly?.distinct_source_count ?? 0} / ${weekly?.category_count ?? 0}`)}
       </dl>
@@ -885,7 +887,7 @@ function coverageRailRows(snapshot: Snapshot) {
     rail("来源总数", String(snapshot.coverage.sources_total)),
     rail("自动合格来源", String(snapshot.coverage.automated_eligible_sources)),
     rail("已尝试来源", String(snapshot.coverage.attempted_sources)),
-    rail("有公开条目的来源", String(snapshot.coverage.sources_with_public_items ?? "不可用")),
+    rail("有公开条目的来源", String(snapshot.coverage.sources_with_public_items ?? "待补")),
     rail("公开条目", String(snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)),
     rail("失败/跳过来源", String(snapshot.coverage.failed_sources + snapshot.coverage.skipped_sources)),
     rail("来源到原始覆盖率", formatNullablePercent(snapshot.coverage.source_to_raw_coverage)),
@@ -919,15 +921,15 @@ function sourceHealthPanel(snapshot: Snapshot) {
 }
 
 function metric(label: string, value: number | null) {
-  return `<div><dt>${escapeHtml(label)}</dt><dd>${value === null ? "不可用" : value.toLocaleString("en-US")}</dd></div>`;
+  return `<div><dt>${escapeHtml(label)}</dt><dd>${value === null ? "待补" : value.toLocaleString("en-US")}</dd></div>`;
 }
 
 function metricMini(label: string, value: number | string | null) {
-  return `<div class="mini-metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value ?? "不可用"))}</strong></div>`;
+  return `<div class="mini-metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value ?? "待补"))}</strong></div>`;
 }
 
 function rail(label: string, value: string | number | null) {
-  return `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value ?? "不可用"))}</dd>`;
+  return `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value ?? "待补"))}</dd>`;
 }
 
 function option(value: string, label: string) {
@@ -1073,16 +1075,16 @@ function publicText(value: string) {
     )
     .replace(
       "Read-only Supabase public radar retrieval was used; no Supabase write path ran.",
-      "使用 Supabase 公共雷达视图进行只读检索；未运行 Supabase 写入路径。"
+      "使用公开证据库进行检索；只展示可公开引用的结构化字段。"
     )
     .replace(
       "This surface shows available AI Radar evidence only; it is not a claim of complete current AI industry coverage.",
       "此页面只展示当前可用的 AI 行业雷达证据，不声称覆盖完整的实时 AI 行业。"
     )
-    .replace("This is a deterministic preview, not a published report.", "这是确定性预览，不是已发布报告。")
+    .replace("This is a deterministic preview, not a published report.", "这是证据预览，不是已发布报告。")
     .replace(
       "No live DeepSeek call, Supabase write, or scheduled persistence job was run.",
-      "未运行 Live DeepSeek 调用、Supabase 写入或计划任务持久化。"
+      "报告基于当前已入库证据，仍需人工复核后发布。"
     )
     .replace(
       "Supabase coverage depends on rows already persisted into the public retrieval view.",
@@ -1124,8 +1126,8 @@ function publicText(value: string) {
     .replace(/Daily AI Radar preview - /g, "AI 行业雷达日报预览 - ")
     .replace(/^Potentially relevant AI signal for review: /, "可能相关的待复核 AI 信号：")
     .replace(/^May affect model capability tracking and product benchmarking: /, "可能影响模型能力跟踪和产品基准：")
-    .replace(/Deterministic daily preview from (\d+) usable radar item\(s\)\./g, "确定性日报预览基于 $1 条可用雷达条目。")
-    .replace(/Deterministic weekly preview from (\d+) usable radar item\(s\)\./g, "确定性周报预览基于 $1 条可用雷达条目。")
+    .replace(/Deterministic daily preview from (\d+) usable radar item\(s\)\./g, "日报证据预览基于 $1 条可用雷达条目。")
+    .replace(/Deterministic weekly preview from (\d+) usable radar item\(s\)\./g, "周报证据预览基于 $1 条可用雷达条目。")
     .replace(/(\d+) included and (\d+) needs_review item\(s\)\./g, "$1 条已纳入，$2 条待复核。")
     .replace(
       /(\d+) item\(s\) are marked needs_review and require human confirmation before confident synthesis\./g,
@@ -1149,8 +1151,8 @@ function publicText(value: string) {
     .replace(/Visible categories:/g, "可见类别：")
     .replace(/Top visible signal:/g, "最高可见信号：")
     .replace(/(最高可见信号：[^.。]+) from ([^.。]+)([.。])/g, "$1 来自 $2$3")
-    .replace(/Deterministic daily preview/g, "确定性日报预览")
-    .replace(/Deterministic weekly preview/g, "确定性周报预览")
+    .replace(/Deterministic daily preview/g, "日报证据预览")
+    .replace(/Deterministic weekly preview/g, "周报证据预览")
     .replace(/usable radar item\(s\)/g, "条可用雷达条目")
     .replace(/usable item\(s\)/g, "条可用条目")
     .replace(/radar item\(s\)/g, "条雷达条目");
@@ -1161,11 +1163,11 @@ function formatPercent(value: number) {
 }
 
 function formatNullablePercent(value: number | null) {
-  return value === null ? "不可用" : formatPercent(value);
+  return value === null ? "待补" : formatPercent(value);
 }
 
 function formatDate(value: string | null | undefined) {
-  if (!value) return "不可用";
+  if (!value) return "待补证据";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return `${new Intl.DateTimeFormat("zh-CN", {

@@ -104,7 +104,7 @@ function buildUncertainty(retrieval: RetrievalResult, isZh: boolean) {
   }
 
   if (retrieval.dataSource === "supabase_radar_items") {
-    uncertainty.push(isZh ? "当前答案基于 Supabase 雷达条目，覆盖范围取决于已持久化的数据。" : "This answer is based on Supabase radar items; coverage depends on persisted data.");
+    uncertainty.push(isZh ? "当前答案基于公开证据库，覆盖范围取决于已入库或快照化的数据。" : "This answer is based on the public evidence store; coverage depends on indexed public data.");
   }
 
   if (retrieval.dataSource === "local_understanding_output") {
@@ -134,7 +134,7 @@ function freshnessNote(retrieval: RetrievalResult, isZh: boolean) {
 
 function dataSourceLabel(dataSource: RetrievalResult["dataSource"], isZh: boolean) {
   if (dataSource === "supabase_radar_items") {
-    return isZh ? "答案基于 Supabase 雷达数据。" : "The answer is based on Supabase radar data.";
+    return isZh ? "答案基于公开证据库。" : "The answer is based on the public evidence store.";
   }
 
   if (dataSource === "mock_data") {

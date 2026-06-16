@@ -32,7 +32,7 @@ export function validateWritingRequest(value: unknown): ValidationResult<
     return invalid("query must be 1200 characters or fewer.");
   }
 
-  const generationMode = value.generationMode === undefined || value.generationMode === "" ? "mock" : value.generationMode;
+  const generationMode = value.generationMode === undefined || value.generationMode === "" ? "live" : value.generationMode;
   if (generationMode !== "mock" && generationMode !== "live") {
     return invalid("generationMode must be mock or live.");
   }

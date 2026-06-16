@@ -20,6 +20,7 @@ import type {
   SafeReportModelMetadata
 } from "@/lib/reports/types";
 import type { RetrievalCitation, RetrievalDataSource, ResolvedTimeWindow } from "@/lib/retrieval/types";
+import { loadPublicRadarSnapshot } from "@/lib/retrieval/load-radar-items";
 import { getSupabaseServerReadClient } from "@/lib/supabase/server-read";
 import { getSupabaseServiceClient, getSupabaseServiceStatus } from "@/lib/supabase/service";
 
@@ -99,16 +100,18 @@ async function loadSavedReportDocuments(): Promise<{
   warnings: string[];
 }> {
   const supabase = getSupabaseServerReadClient();
+  const snapshot = await readPublicSnapshotReportDocuments();
 
   if (!supabase) {
     const service = await readServiceReportDocuments();
+    const documents = mergeDocuments([...service.documents, ...snapshot.documents]).sort(compareSavedDocuments);
 
     return {
-      documents: service.documents.sort(compareSavedDocuments),
+      documents,
       warnings:
-        service.documents.length > 0
-          ? service.warnings
-          : ["Supabase public read config is unavailable; reports are generated from radar items.", ...service.warnings]
+        documents.length > 0
+          ? [...service.warnings, ...snapshot.warnings]
+          : ["公开报告库暂不可读，页面将基于当前雷达证据生成预览。", ...service.warnings, ...snapshot.warnings]
     };
   }
 
@@ -122,9 +125,10 @@ async function loadSavedReportDocuments(): Promise<{
     documents: mergeDocuments([
       ...service.documents,
       ...reports.documents,
-      ...candidates.documents
+      ...candidates.documents,
+      ...snapshot.documents
     ]).sort(compareSavedDocuments),
-    warnings: [...reports.warnings, ...candidates.warnings, ...service.warnings]
+    warnings: [...reports.warnings, ...candidates.warnings, ...service.warnings, ...snapshot.warnings]
   };
 }
 
@@ -138,7 +142,7 @@ async function loadSavedReportDocumentById(id: string) {
   const supabase = getSupabaseServerReadClient();
 
   if (!supabase) {
-    return null;
+    return readPublicSnapshotReportDocumentById(id);
   }
 
   const [candidate, report] = await Promise.all([
@@ -146,7 +150,34 @@ async function loadSavedReportDocumentById(id: string) {
     readPublicReportById(supabase, id)
   ]);
 
-  return candidate ?? report;
+  return candidate ?? report ?? readPublicSnapshotReportDocumentById(id);
+}
+
+async function readPublicSnapshotReportDocuments(): Promise<{
+  documents: ReportWorkflowDocument[];
+  warnings: string[];
+}> {
+  const snapshot = await loadPublicRadarSnapshot();
+  if (!snapshot || !Array.isArray(snapshot.reports)) {
+    return {
+      documents: [],
+      warnings: []
+    };
+  }
+
+  const documents = snapshot.reports
+    .map(normalizeSnapshotReportDocument)
+    .filter((report): report is ReportWorkflowDocument => Boolean(report));
+
+  return {
+    documents,
+    warnings: documents.length > 0 ? ["使用 Cloudflare 公开报告快照作为只读报告源。"] : []
+  };
+}
+
+async function readPublicSnapshotReportDocumentById(id: string) {
+  const snapshot = await readPublicSnapshotReportDocuments();
+  return snapshot.documents.find((report) => report.id === id) ?? null;
 }
 
 async function readServiceReportDocuments(): Promise<{
@@ -173,10 +204,10 @@ async function readServiceReportDocuments(): Promise<{
       documents: [...reports.documents, ...candidates.documents],
       warnings: [...reports.warnings, ...candidates.warnings]
     };
-  } catch (error) {
+  } catch {
     return {
       documents: [],
-      warnings: [`service report read failed: ${sanitizeReadError(error)}`]
+      warnings: ["报告服务读取异常，已尝试使用公开报告快照。"]
     };
   }
 }
@@ -222,10 +253,10 @@ async function readPublicReportCandidates(supabase: NonNullable<ReturnType<typeo
         .filter((row): row is ReportWorkflowDocument => Boolean(row)),
       warnings: []
     };
-  } catch (error) {
+  } catch {
     return {
       documents: [],
-      warnings: [`public_report_candidates read failed: ${sanitizeReadError(error)}`]
+      warnings: ["公开报告候选读取异常，已尝试使用公开报告快照。"]
     };
   }
 }
@@ -273,10 +304,10 @@ async function readPublicReports(supabase: NonNullable<ReturnType<typeof getSupa
         .filter((row): row is ReportWorkflowDocument => Boolean(row)),
       warnings: []
     };
-  } catch (error) {
+  } catch {
     return {
       documents: [],
-      warnings: [`public_reports read failed: ${sanitizeReadError(error)}`]
+      warnings: ["公开报告读取异常，已尝试使用公开报告快照。"]
     };
   }
 }
@@ -315,7 +346,7 @@ async function readServiceReportCandidates(supabase: ReturnType<typeof getSupaba
     if (error) {
       return {
         documents: [],
-        warnings: [`report_candidates service read failed: ${sanitizeReadError(error.message)}`]
+        warnings: ["报告候选服务读取失败，已尝试使用公开报告快照。"]
       };
     }
 
@@ -326,10 +357,10 @@ async function readServiceReportCandidates(supabase: ReturnType<typeof getSupaba
         .filter((row): row is ReportWorkflowDocument => Boolean(row)),
       warnings: []
     };
-  } catch (error) {
+  } catch {
     return {
       documents: [],
-      warnings: [`report_candidates service read failed: ${sanitizeReadError(error)}`]
+      warnings: ["报告候选服务读取异常，已尝试使用公开报告快照。"]
     };
   }
 }
@@ -369,7 +400,7 @@ async function readServiceReports(supabase: ReturnType<typeof getSupabaseService
     if (error) {
       return {
         documents: [],
-        warnings: [`reports service read failed: ${sanitizeReadError(error.message)}`]
+        warnings: ["报告服务读取失败，已尝试使用公开报告快照。"]
       };
     }
 
@@ -380,10 +411,10 @@ async function readServiceReports(supabase: ReturnType<typeof getSupabaseService
         .filter((row): row is ReportWorkflowDocument => Boolean(row)),
       warnings: []
     };
-  } catch (error) {
+  } catch {
     return {
       documents: [],
-      warnings: [`reports service read failed: ${sanitizeReadError(error)}`]
+      warnings: ["报告服务读取异常，已尝试使用公开报告快照。"]
     };
   }
 }
@@ -481,6 +512,71 @@ function normalizeReportRow(row: PublicReportRow): ReportWorkflowDocument | null
     read_source: "supabase",
     saved_at: optionalText(row.published_at) ?? optionalText(row.created_at),
     status: reportStatus(row.status)
+  };
+}
+
+function normalizeSnapshotReportDocument(row: unknown): ReportWorkflowDocument | null {
+  if (!isRecord(row)) {
+    return null;
+  }
+
+  const id = text(row.id);
+  const reportType = reportTypeValue(row.report_type);
+  const title = text(row.title);
+
+  if (!id || !reportType || !title) {
+    return null;
+  }
+
+  const citations = normalizeCitations(row.citations);
+  const usableItemCount = integer(row.usable_item_count);
+  const citationCount = optionalInteger(row.citation_count) ?? citations.length;
+  const distinctSourceCount =
+    optionalInteger(row.distinct_source_count) ?? distinctSourcesFromCitations(citations);
+  const categoryCount = optionalInteger(row.category_count) ?? 0;
+  const qualityGate = normalizeReportQualityGate(row.quality_gate, {
+    categoryCount,
+    categoryGateApplicable: categoryCount > 0,
+    citationCount,
+    distinctSourceCount,
+    reportType,
+    usableItemCount
+  });
+  const generatedAt = text(row.generated_at) || text(row.saved_at) || new Date().toISOString();
+  const summary = text(row.summary) || text(row.one_sentence_summary) || "公开报告快照";
+  const draft: GeneratedReportDraft = {
+    caveats: stringArray(row.caveats),
+    citations,
+    data_source: "supabase_radar_items",
+    executive_summary: text(row.executive_summary) || summary,
+    generated_at: generatedAt,
+    id,
+    language: languageValue(row.language),
+    missing_evidence: stringArray(row.missing_evidence),
+    mode: reportMode(row.mode),
+    model_metadata: {
+      api_call_count: 0,
+      mode: reportMode(row.mode),
+      provider: "supabase"
+    },
+    one_sentence_summary: summary,
+    report_type: reportType,
+    retrieved_item_count: optionalInteger(row.source_item_count) ?? usableItemCount,
+    sections: normalizeSections(row.sections),
+    source_item_ids: stringArray(row.source_item_ids),
+    status: candidateStatus(row.status),
+    time_window: normalizeTimeWindow(row.time_window) ?? timeWindow(row.time_window_start, row.time_window_end),
+    title,
+    ...reportQualityGateFields(qualityGate),
+    markdown: text(row.markdown)
+  };
+
+  return {
+    ...draft,
+    markdown: draft.markdown || formatMarkdownReport(draft),
+    read_source: "public_snapshot",
+    saved_at: optionalText(row.saved_at) ?? generatedAt,
+    status: draft.quality_gate_passed ? draft.status : "needs_review"
   };
 }
 
@@ -770,10 +866,10 @@ function normalizeTimeWindow(value: unknown): ResolvedTimeWindow | null {
 
 function readErrorMessage(tableName: string, error: SupabaseReadError) {
   if (isMissingPublicViewError(tableName, error)) {
-    return `${tableName} is not available yet; generated radar-item previews were used.`;
+    return `${reportTableLabel(tableName)}暂不可读，已尝试使用公开报告快照。`;
   }
 
-  return `${tableName} read failed: ${sanitizeReadError(error.message)}`;
+  return `${reportTableLabel(tableName)}读取失败，已尝试使用公开报告快照。`;
 }
 
 function isMissingPublicViewError(tableName: string, error: SupabaseReadError) {
@@ -800,6 +896,22 @@ function candidateStatus(value: unknown): GeneratedReportStatus {
 
 function reportStatus(value: unknown): GeneratedReportStatus {
   return isOneOf(value, ["draft", "reviewed", "published", "archived"]) ?? "draft";
+}
+
+function reportTableLabel(tableName: string) {
+  if (tableName === "public_report_candidates") {
+    return "公开报告候选";
+  }
+
+  if (tableName === "public_reports") {
+    return "公开报告";
+  }
+
+  return "公开报告数据";
+}
+
+function reportMode(value: unknown): GeneratedReportMode {
+  return isOneOf(value, ["deterministic_preview", "live_deepseek", "saved_candidate", "saved_report"]) ?? "saved_candidate";
 }
 
 function dataSourceValue(value: unknown): RetrievalDataSource | null {
@@ -882,14 +994,4 @@ function score(value: unknown) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function sanitizeReadError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-
-  return message
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
-    .replace(/\bsk-(?:proj-)?[A-Za-z0-9_-]{8,}/gi, "sk-[redacted]")
-    .replace(/\b(authorization|api[-_]?key|token|cookie)\b\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
-    .slice(0, 400);
 }

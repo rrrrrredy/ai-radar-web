@@ -11,7 +11,7 @@ export function resolveTimeWindow(
   const phrase = query.time_phrase_hints[0];
 
   if (raw.includes("过去24小时") || raw.includes("最近24小时") || raw.includes("last 24 hours")) {
-    return windowFromDuration(now, ONE_DAY_MS, phrase ?? "last 24 hours", "过去24小时 / last 24 hours");
+    return windowFromDuration(now, ONE_DAY_MS, phrase ?? "过去24小时", "过去 24 小时");
   }
 
   if (raw.includes("今天") || raw.includes("today")) {
@@ -20,8 +20,8 @@ export function resolveTimeWindow(
     return {
       start: start.toISOString(),
       end: now.toISOString(),
-      explanation: "Time window resolved to today, from local midnight through now.",
-      matched_phrase: phrase ?? "today"
+      explanation: "时间窗口解析为今天：从本地 0 点到当前证据时间。",
+      matched_phrase: phrase ?? "今天"
     };
   }
 
@@ -30,8 +30,8 @@ export function resolveTimeWindow(
     return {
       start: start.toISOString(),
       end: now.toISOString(),
-      explanation: "Time window resolved to this week, from Monday 00:00 local time through now.",
-      matched_phrase: phrase ?? "this week"
+      explanation: "时间窗口解析为本周：从周一 0 点到当前证据时间。",
+      matched_phrase: phrase ?? "本周"
     };
   }
 
@@ -42,8 +42,8 @@ export function resolveTimeWindow(
     return {
       start: lastWeekStart.toISOString(),
       end: lastWeekEnd.toISOString(),
-      explanation: "Time window resolved to last week, Monday through Sunday local time.",
-      matched_phrase: phrase ?? "last week"
+      explanation: "时间窗口解析为上周：周一到周日。",
+      matched_phrase: phrase ?? "上周"
     };
   }
 
@@ -53,12 +53,12 @@ export function resolveTimeWindow(
 
   if (raw.includes("最近") || raw.includes("recent")) {
     const duration = purpose === "writing_assistant" ? 7 * ONE_DAY_MS : ONE_DAY_MS;
-    const label = purpose === "writing_assistant" ? "最近7天 / recent 7 days" : "最近24小时 / recent 24 hours";
-    return windowFromDuration(now, duration, phrase ?? "recent", label);
+    const label = purpose === "writing_assistant" ? "最近 7 天" : "最近 24 小时";
+    return windowFromDuration(now, duration, phrase ?? "最近", label);
   }
 
   const defaultDuration = purpose === "writing_assistant" ? 7 * ONE_DAY_MS : ONE_DAY_MS;
-  const defaultLabel = purpose === "writing_assistant" ? "default last 7 days" : "default last 24 hours";
+  const defaultLabel = purpose === "writing_assistant" ? "默认最近 7 天" : "默认最近 24 小时";
   return windowFromDuration(now, defaultDuration, undefined, defaultLabel);
 }
 
@@ -71,7 +71,7 @@ function windowFromDuration(
   return {
     start: new Date(now.getTime() - durationMs).toISOString(),
     end: now.toISOString(),
-    explanation: `Time window resolved to ${label}.`,
+    explanation: `时间窗口解析为${label}。`,
     matched_phrase
   };
 }

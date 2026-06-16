@@ -2,6 +2,10 @@
 
 Generated: 2026-05-26T03:59:43.965Z
 
+## 2026-06-16 Follow-up Status
+
+The ledger below remains the latest successful audited source-completeness run. During the final release-candidate recovery pass, the configured Supabase project `phurrofgzqvawhookqbv` was inactive and the project host resolved as NXDOMAIN/ENOTFOUND, so a new live activation/persist cycle could not be run without risking fabricated coverage. Cloudflare production continues to serve the previous public-safe snapshot with 183 public radar items, 159 event clusters, and 22 reports.
+
 ## Gate Summary
 
 - Sources total: 312

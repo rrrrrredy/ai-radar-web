@@ -105,8 +105,8 @@ export default async function RadarPage({
               kind="evidence"
               label="已检索"
             />
-            <StatusChip label="Live DeepSeek" tone="caution" value="未运行" />
-            <StatusChip label="Supabase 写入" tone="risk" value="未运行" />
+            <StatusChip label="DeepSeek 理解" tone="evidence" value="证据摘要" />
+            <StatusChip label="公开字段" tone="success" value="已脱敏" />
           </div>
           <h1 className="mt-4 text-3xl font-semibold text-radar-ink">事件雷达</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
@@ -119,11 +119,11 @@ export default async function RadarPage({
             数据来源与新鲜度
           </h2>
           <dl className="mt-3 space-y-3 text-sm">
-            <RailRow label="数据来源" value={feed.data_source} />
+            <RailRow label="数据来源" value={dataSourceLabel(feed.data_source)} />
             <RailRow label="新鲜度" value={feed.freshness_note} />
             <RailRow
               label="最新处理"
-              value={feed.processed_at ?? "不可用"}
+              value={formatOptionalTimestamp(feed.processed_at)}
             />
             <RailRow
               label="生成时间"
@@ -355,7 +355,7 @@ function CountRail({
         <Metric label="自动合格" value={coverage.automatedEligibleSources} />
         <Metric label="已尝试来源" tone="evidence" value={coverage.attemptedSources} />
         <Metric label="公开来源" tone="evidence" value={coverage.sourcesWithPublicItems ?? 0} />
-        <Metric label="来源覆盖率" value={coverage.rates.sourcePublicVisibility === null ? "不可用" : formatPercent(coverage.rates.sourcePublicVisibility)} />
+        <Metric label="来源覆盖率" value={coverage.rates.sourcePublicVisibility === null ? "待补" : formatPercent(coverage.rates.sourcePublicVisibility)} />
         <Metric label="失败/跳过来源" tone="risk" value={coverage.failedSources + coverage.skippedSources} />
       </div>
       <div className="mt-4 grid gap-4 lg:grid-cols-4">
@@ -890,6 +890,30 @@ function formatTimestamp(value: string) {
   }).format(date)} UTC`;
 }
 
+function formatOptionalTimestamp(value: string | null | undefined) {
+  return value ? formatTimestamp(value) : "待补证据";
+}
+
+function dataSourceLabel(value: string) {
+  if (value === "supabase_radar_items" || value.startsWith("supabase_")) {
+    return "公开结构化数据";
+  }
+
+  if (value === "local_understanding_output" || value.startsWith("local_")) {
+    return "本地理解输出";
+  }
+
+  if (value === "mock_data") {
+    return "演示数据";
+  }
+
+  if (value === "empty") {
+    return "暂无证据";
+  }
+
+  return value;
+}
+
 function publicText(value: string) {
   return value
     .replace(
@@ -902,11 +926,11 @@ function publicText(value: string) {
     )
     .replace(
       "Snapshot data came from Supabase public-safe read views using anon read access.",
-      "快照数据来自 Supabase 公开安全只读视图，并使用 anon 只读访问。"
+      "快照数据来自公开安全只读证据面。"
     )
     .replace(
       "Read-only Supabase public radar retrieval was used; no Supabase write path ran.",
-      "使用 Supabase 公共雷达视图进行只读检索；未运行 Supabase 写入路径。"
+      "使用公开证据库进行检索；只展示可公开引用的结构化字段。"
     )
     .replace(
       "This surface shows available AI Radar evidence only; it is not a claim of complete current AI industry coverage.",
@@ -914,7 +938,7 @@ function publicText(value: string) {
     )
     .replace(
       "Supabase coverage depends on rows already persisted into the public retrieval view.",
-      "Supabase 覆盖范围取决于已经持久化到公共检索视图的行。"
+      "覆盖范围取决于已经入库或快照化的公开证据。"
     )
     .replace(/^Potentially relevant AI signal for review: /, "可能相关的待复核 AI 信号：")
     .replace(/^May affect model capability tracking and product benchmarking: /, "可能影响模型能力跟踪和产品基准：");

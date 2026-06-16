@@ -2,6 +2,12 @@
 
 Generated: 2026-05-26
 
+## 2026-06-16 Follow-up Status
+
+- The persisted counts below are from the last successful controlled activation and report write on 2026-05-26.
+- The configured Supabase project `phurrofgzqvawhookqbv` was reported inactive and its project host resolved as NXDOMAIN/ENOTFOUND during the release-candidate recovery pass, so no fresh Supabase read/write, live activation persistence, or report-candidate persistence was attempted.
+- Cloudflare production uses the previous public-safe snapshot, sanitized for public labels and private-field removal. The minimum 180 public-item gate remains met; the preferred 200 public-item target remains blocked until Supabase is reactivated and source failures are repaired.
+
 ## What Completed
 
 - Resumable live activation ran against 86 automated-eligible sources.

@@ -8,6 +8,7 @@ import type { LoadedRadarItems, RetrievalRadarItem } from "@/lib/retrieval/types
 import { RADAR_CATEGORIES, type RadarCategory } from "@/lib/understanding/types";
 
 const LATEST_RADAR_ITEMS_PATH = path.join(process.cwd(), "data", "understanding", "latest", "radar-items.json");
+export const DEFAULT_PUBLIC_SNAPSHOT_URL = "https://ai-industry-radar.pages.dev/data/radar-snapshot.json";
 
 export async function loadRadarItems(): Promise<LoadedRadarItems> {
   const supabase = await loadSupabaseRadarItems();
@@ -15,10 +16,36 @@ export async function loadRadarItems(): Promise<LoadedRadarItems> {
     return supabase.loaded;
   }
 
+  const preferPublicSnapshot = shouldPreferPublicSnapshot();
+  if (preferPublicSnapshot) {
+    const publicSnapshot = await loadPublicSnapshotRadarItems();
+    if (publicSnapshot) {
+      publicSnapshot.warnings = [...supabase.warnings, ...publicSnapshot.warnings];
+      return publicSnapshot;
+    }
+  }
+
   const local = await loadLocalRadarItems();
   if (local) {
     local.warnings = [...supabase.warnings, ...local.warnings];
     return local;
+  }
+
+  const publicSnapshot = preferPublicSnapshot ? null : await loadPublicSnapshotRadarItems();
+  if (publicSnapshot) {
+    publicSnapshot.warnings = [...supabase.warnings, ...publicSnapshot.warnings];
+    return publicSnapshot;
+  }
+
+  if (!allowSyntheticFallback()) {
+    return {
+      items: [],
+      dataSource: "empty",
+      freshness: {
+        itemCount: 0
+      },
+      warnings: [...supabase.warnings, "当前没有可用的公开雷达证据；请等待下一轮刷新或修复数据源。"]
+    };
   }
 
   const mockItems = mockRadarItems.map(mapMockRadarItem);
@@ -39,6 +66,14 @@ export async function loadRadarItems(): Promise<LoadedRadarItems> {
     freshness: freshnessFromItems(mockItems),
     warnings: [...supabase.warnings, "Using synthetic mock radar items because local understanding output is missing or invalid."]
   };
+}
+
+function shouldPreferPublicSnapshot() {
+  return process.env.NODE_ENV === "production" || process.env.PREFER_PUBLIC_RADAR_SNAPSHOT === "true";
+}
+
+function allowSyntheticFallback() {
+  return process.env.ALLOW_SYNTHETIC_RADAR_FALLBACK === "true" || process.env.NODE_ENV !== "production";
 }
 
 async function loadLocalRadarItems(): Promise<LoadedRadarItems | null> {
@@ -67,6 +102,58 @@ async function loadLocalRadarItems(): Promise<LoadedRadarItems | null> {
   } catch {
     return null;
   }
+}
+
+export async function loadPublicRadarSnapshot(): Promise<Record<string, unknown> | null> {
+  const snapshotUrl = process.env.PUBLIC_RADAR_SNAPSHOT_URL?.trim() || DEFAULT_PUBLIC_SNAPSHOT_URL;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(snapshotUrl, {
+      headers: {
+        accept: "application/json"
+      },
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const parsed = (await response.json()) as unknown;
+    if (!isRecord(parsed)) {
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function loadPublicSnapshotRadarItems(): Promise<LoadedRadarItems | null> {
+  const parsed = await loadPublicRadarSnapshot();
+  if (!parsed || !Array.isArray(parsed.radar_items)) {
+    return null;
+  }
+
+  const items = parsed.radar_items
+    .map(normalizeSnapshotItem)
+    .filter((item): item is RetrievalRadarItem => Boolean(item));
+
+  if (items.length === 0) {
+    return null;
+  }
+
+  return {
+    items,
+    dataSource: "supabase_radar_items",
+    freshness: freshnessFromItems(items, optionalText(parsed.generated_at)),
+    warnings: ["使用 Cloudflare 公开快照作为只读证据面；未读取私有原文或运行写入。"]
+  };
 }
 
 function normalizeLocalItem(value: unknown): RetrievalRadarItem | null {
@@ -119,6 +206,55 @@ function normalizeLocalItem(value: unknown): RetrievalRadarItem | null {
     why_it_matters: optionalText(value.why_it_matters),
     evidence_notes: stringArray(value.evidence_notes),
     model_metadata: isRecord(value.model_metadata) ? value.model_metadata : undefined
+  };
+}
+
+function normalizeSnapshotItem(value: unknown): RetrievalRadarItem | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = text(value.id);
+  const title = text(value.title);
+  const url = text(value.url);
+  const sourceName = text(value.source_name);
+  const collectedAt = text(value.collected_at);
+  const processedAt = text(value.processed_at);
+  const scores = isRecord(value.scores) ? value.scores : {};
+
+  if (!id || !title || !url || !sourceName || !collectedAt || !processedAt) {
+    return null;
+  }
+
+  return {
+    id,
+    raw_item_id: text(value.raw_item_id) || id,
+    source_id: text(value.source_id) || "public-snapshot",
+    source_name: sourceName,
+    title,
+    url,
+    published_at: optionalText(value.published_at),
+    collected_at: collectedAt,
+    processed_at: processedAt,
+    language: normalizeLanguage(value.language),
+    summary_zh: text(value.summary_zh),
+    summary_en: text(value.summary_en),
+    ai_relevance_score: score(scores.ai_relevance),
+    importance_score: score(scores.importance),
+    credibility_score: score(scores.credibility),
+    novelty_score: score(scores.novelty),
+    freshness_score: score(scores.freshness),
+    overall_score: score(scores.overall),
+    categories: categories(value.categories),
+    tags: stringArray(value.tags),
+    entities: [],
+    source_tier: text(value.source_tier) || "public",
+    source_weight: score(value.source_weight || 0.7),
+    confidence: score(value.confidence || 0.6),
+    status: normalizeStatus(value.status),
+    exclusion_reason: optionalText(value.exclusion_reason),
+    why_it_matters: optionalText(value.why_it_matters),
+    evidence_notes: stringArray(value.evidence_notes)
   };
 }
 

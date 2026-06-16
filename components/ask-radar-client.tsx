@@ -48,7 +48,7 @@ export function AskRadarClient({
         body: JSON.stringify({
           question,
           language: "zh",
-          generationMode: "mock"
+          generationMode: "live"
         })
       });
       const body = (await response.json()) as AskAnswer | { error?: string };
@@ -77,7 +77,7 @@ export function AskRadarClient({
             <EvidenceBadge detail={dataSummary.latestRadarTime} kind="freshness" label="更新时间" />
             <StatusChip label="已尝试来源" tone="evidence" value={dataSummary.attemptedSources} />
             <StatusChip label="公开来源" tone="success" value={dataSummary.sourcesWithPublicItems} />
-            <StatusChip label="生成模式" tone="caution" value="mock API" />
+            <StatusChip label="生成" tone="evidence" value="DeepSeek" />
           </div>
           <h1 className="mt-4 text-3xl font-semibold text-radar-ink">事件提问</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
@@ -97,7 +97,7 @@ export function AskRadarClient({
           <ol className="mt-4 space-y-2 text-sm leading-6 text-radar-muted">
             {[
               "选择一个基于当前数据的问题",
-              "用 mock 模式对检索结果生成回答",
+              "用 DeepSeek 基于检索证据生成回答",
               "检查事实、推断、不确定性和引用"
             ].map((item, index) => (
               <li className="flex gap-3" key={item}>
@@ -125,7 +125,7 @@ export function AskRadarClient({
 
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm leading-6 text-radar-muted">
-              公开安全检索仍是证据来源；API 请求结构保持不变。
+              公开安全检索是证据来源；回答由 DeepSeek 在当前引用边界内生成。
             </p>
             <button
               className="rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
@@ -198,8 +198,8 @@ function AnswerView({ answer }: { answer: AskAnswer }) {
               />
               <StatusChip
                 label="生成"
-                tone={answer.mode === "live" ? "risk" : "caution"}
-                value={answer.mode}
+                tone={answer.mode === "live" ? "evidence" : "caution"}
+                value={answer.mode === "live" ? "DeepSeek" : "证据草稿"}
               />
             </div>
             <p className="mt-4 text-lg leading-8 text-radar-ink">{answer.short_answer}</p>
@@ -237,7 +237,7 @@ function AnswerView({ answer }: { answer: AskAnswer }) {
           </AnswerSection>
 
           <AnswerSection
-            description="缺失、过期、本地、模拟或待复核证据会在引用前保持可见。"
+            description="缺失、过期、本地或待复核证据会在引用前保持可见。"
             title="不确定性"
             tone="caution"
           >

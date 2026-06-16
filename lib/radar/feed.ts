@@ -150,26 +150,26 @@ function buildCaveats(loaded: LoadedRadarItems, counts: RadarFeedCounts) {
       ? "Excluded or failed rows are surfaced for transparency and should not be used as report evidence."
       : "",
     counts.total === 0
-      ? "No radar items were retrieved from Supabase, local understanding output, or mock data."
+      ? "当前没有检索到可展示的雷达证据。"
       : "",
-    "This surface shows available AI Radar evidence only; it is not a claim of complete current AI industry coverage."
+    "此页面只展示当前可用的 AI 行业雷达证据，不声称覆盖完整实时行业。"
   ]);
 }
 
 function dataSourceCaveat(dataSource: RetrievalDataSource) {
   if (dataSource === "supabase_radar_items") {
-    return "Read-only Supabase public radar retrieval was used; no Supabase write path ran.";
+    return "使用公开证据库进行检索；只展示可公开引用的结构化字段。";
   }
 
   if (dataSource === "local_understanding_output") {
-    return "Local understanding output was used; freshness and coverage depend on generated local files.";
+    return "使用本地理解输出；覆盖范围和新鲜度取决于本地生成文件。";
   }
 
   if (dataSource === "mock_data") {
-    return "Synthetic mock radar data was used; it is workflow data, not production-current intelligence.";
+    return "当前只展示演示证据，不应视为生产情报。";
   }
 
-  return "No usable radar data source is currently available.";
+  return "当前没有可用的雷达证据源。";
 }
 
 function freshnessNote(loaded: LoadedRadarItems) {

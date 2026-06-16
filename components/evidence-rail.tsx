@@ -32,7 +32,7 @@ export function EvidenceRail({
   title?: string;
 }) {
   const dataSourceCaveat = getDataSourceCaveat(dataSource);
-  const liveModelLabel = generationMode === "live" ? "live" : "禁用/mock";
+  const liveModelLabel = generationMode === "live" ? "DeepSeek" : "证据草稿";
 
   return (
     <aside
@@ -59,8 +59,8 @@ export function EvidenceRail({
             label="引用"
           />
           <StatusChip
-            label="实时模型"
-            tone={generationMode === "live" ? "risk" : "caution"}
+            label="生成"
+            tone={generationMode === "live" ? "evidence" : "caution"}
             value={liveModelLabel}
           />
         </div>
@@ -81,7 +81,7 @@ export function EvidenceRail({
           <RailRow label={itemCountLabel} value={String(itemCount)} />
         ) : null}
         <RailRow label="引用数量" value={String(citationsCount)} />
-        <RailRow label="生成模式" value={generationMode} />
+        <RailRow label="生成方式" value={liveModelLabel} />
         {context.map((item) => (
           <RailRow key={item.label} label={item.label} tone={item.tone} value={String(item.value)} />
         ))}
@@ -115,7 +115,7 @@ function getDataSourceCaveat(source: DataSource) {
   if (source === "supabase_radar_items") {
     return {
       className: "border-radar-success/30 bg-white text-radar-success",
-      copy: "使用 Supabase 公共雷达视图进行只读检索，不代表执行任何 Supabase 写入。"
+      copy: "使用公开安全证据库检索，只展示可公开引用、可复核的结构化字段。"
     };
   }
 
@@ -129,7 +129,7 @@ function getDataSourceCaveat(source: DataSource) {
   if (source === "mock_data") {
     return {
       className: "border-radar-caution/30 bg-white text-radar-caution",
-      copy: "使用模拟数据。请将其视为工作流证据，而非当前生产情报。"
+      copy: "当前只展示演示证据，不应视为生产情报。"
     };
   }
 

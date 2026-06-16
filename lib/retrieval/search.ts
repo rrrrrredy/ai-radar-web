@@ -11,8 +11,9 @@ export async function retrieveRadarEvidence(
   options: { limit?: number; now?: Date } = {}
 ): Promise<RetrievalResult> {
   const normalizedQuery = normalizeQuery(rawQuery);
-  const resolvedTimeWindow = resolveTimeWindow(normalizedQuery, purpose, options.now);
   const loaded = await loadRadarItems();
+  const anchor = options.now ?? retrievalAnchorDate(loaded.freshness.latestTimestamp);
+  const resolvedTimeWindow = resolveTimeWindow(normalizedQuery, purpose, anchor);
   const filtered = filterItems(loaded.items, normalizedQuery, resolvedTimeWindow);
   const baseFiltered = filterItems(loaded.items, normalizedQuery, resolvedTimeWindow, { useHints: false });
   const searchPool = filtered.length > 0 ? filtered : baseFiltered;
@@ -27,6 +28,17 @@ export async function retrieveRadarEvidence(
     rankedItems,
     citations: buildCitations(rankedItems)
   };
+}
+
+function retrievalAnchorDate(latestTimestamp?: string) {
+  if (latestTimestamp) {
+    const parsed = new Date(latestTimestamp);
+    if (Number.isFinite(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  return new Date();
 }
 
 function filterItems(

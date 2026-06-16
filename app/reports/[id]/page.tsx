@@ -96,7 +96,7 @@ export default async function ReportDetailPage({
         title="报告引用"
       />
 
-      <ReportMarkdownExport markdown={report.markdown} />
+      <ReportMarkdownExport markdown={publicText(report.markdown)} />
     </div>
   );
 }
@@ -283,10 +283,10 @@ function modeLabel(report: ReportWorkflowDocument) {
   }
 
   if (report.model_metadata.mode === "live_deepseek") {
-    return "Live DeepSeek 草稿";
+    return "DeepSeek 草稿";
   }
 
-  return "确定性草稿";
+  return "证据草稿";
 }
 
 function publicText(value: string) {
@@ -301,11 +301,11 @@ function publicText(value: string) {
     )
     .replace(
       "Snapshot data came from Supabase public-safe read views using anon read access.",
-      "快照数据来自 Supabase 公开安全只读视图，并使用 anon 只读访问。"
+      "快照数据来自公开安全只读证据面。"
     )
     .replace(
       "Radar rows came from Supabase public-safe read views. Report candidates are projected to the same public-safe field allowlist during export.",
-      "雷达条目来自 Supabase 公开安全只读视图；报告候选在导出时投影到同一组公开安全字段。"
+      "雷达条目和报告候选均投影到公开安全字段。"
     )
     .replace(
       "Full article text or original announcements are needed beyond metadata-level evidence.",
@@ -313,20 +313,24 @@ function publicText(value: string) {
     )
     .replace(
       "Read-only Supabase public radar retrieval was used; no Supabase write path ran.",
-      "使用 Supabase 公共雷达视图进行只读检索；未运行 Supabase 写入路径。"
+      "使用公开证据库进行检索；只展示可公开引用的结构化字段。"
     )
     .replace(
       "This surface shows available AI Radar evidence only; it is not a claim of complete current AI industry coverage.",
       "此页面只展示当前可用的 AI 行业雷达证据，不声称覆盖完整的实时 AI 行业。"
     )
-    .replace("This is a deterministic preview, not a published report.", "这是确定性预览，不是已发布报告。")
+    .replace("This is a deterministic preview, not a published report.", "这是证据预览，不是已发布报告。")
     .replace(
       "No live DeepSeek call, Supabase write, or scheduled persistence job was run.",
-      "未运行 Live DeepSeek 调用、Supabase 写入或计划任务持久化。"
+      "报告基于当前已入库证据，仍需人工复核后发布。"
+    )
+    .replace(
+      "Live DeepSeek synthesis failed; deterministic report draft is shown instead.",
+      "DeepSeek 生成未完成，当前展示基于证据的可复核草稿。"
     )
     .replace(
       "Supabase coverage depends on rows already persisted into the public retrieval view.",
-      "Supabase 覆盖范围取决于已经持久化到公共检索视图的行。"
+      "覆盖范围取决于已经入库或快照化的公开证据。"
     )
     .replace(
       "The preview has fewer than 3 usable items, so report synthesis should remain narrow.",
@@ -364,8 +368,8 @@ function publicText(value: string) {
     .replace(/Daily AI Radar preview - /g, "AI 行业雷达日报预览 - ")
     .replace(/^Potentially relevant AI signal for review: /, "可能相关的待复核 AI 信号：")
     .replace(/^May affect model capability tracking and product benchmarking: /, "可能影响模型能力跟踪和产品基准：")
-    .replace(/Deterministic daily preview from (\d+) usable radar item\(s\)\./g, "确定性日报预览基于 $1 条可用雷达条目。")
-    .replace(/Deterministic weekly preview from (\d+) usable radar item\(s\)\./g, "确定性周报预览基于 $1 条可用雷达条目。")
+    .replace(/Deterministic daily preview from (\d+) usable radar item\(s\)\./g, "日报证据预览基于 $1 条可用雷达条目。")
+    .replace(/Deterministic weekly preview from (\d+) usable radar item\(s\)\./g, "周报证据预览基于 $1 条可用雷达条目。")
     .replace(/(\d+) included and (\d+) needs_review item\(s\)\./g, "$1 条已纳入，$2 条待复核。")
     .replace(
       /(\d+) item\(s\) are marked needs_review and require human confirmation before confident synthesis\./g,
@@ -389,8 +393,8 @@ function publicText(value: string) {
     .replace(/Visible categories:/g, "可见类别：")
     .replace(/Top visible signal:/g, "最高可见信号：")
     .replace(/(最高可见信号：[^.。]+) from ([^.。]+)([.。])/g, "$1 来自 $2$3")
-    .replace(/Deterministic daily preview/g, "确定性日报预览")
-    .replace(/Deterministic weekly preview/g, "确定性周报预览")
+    .replace(/Deterministic daily preview/g, "日报证据预览")
+    .replace(/Deterministic weekly preview/g, "周报证据预览")
     .replace(/usable radar item\(s\)/g, "条可用雷达条目")
     .replace(/usable item\(s\)/g, "条可用条目")
     .replace(/radar item\(s\)/g, "条雷达条目");
