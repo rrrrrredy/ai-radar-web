@@ -51,6 +51,10 @@ export function resolveTimeWindow(
     return windowFromDuration(now, 7 * ONE_DAY_MS, phrase ?? "最近一周", "最近一周");
   }
 
+  if (raw.includes("行业精选") || raw.includes("精选") || raw.includes("重点事件") || raw.includes("important events")) {
+    return windowFromDuration(now, 7 * ONE_DAY_MS, phrase ?? "行业精选", "最近 7 天的行业精选证据");
+  }
+
   if (raw.includes("最近") || raw.includes("recent")) {
     const duration = purpose === "writing_assistant" ? 7 * ONE_DAY_MS : ONE_DAY_MS;
     const label = purpose === "writing_assistant" ? "最近 7 天" : "最近 24 小时";

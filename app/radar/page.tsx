@@ -4,7 +4,11 @@ import { EmptyState } from "@/components/empty-state";
 import { EvidenceBadge } from "@/components/evidence-badge";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { citationFromItem } from "@/lib/retrieval/citations";
-import { buildEventLayer } from "@/lib/events/clustering";
+import {
+  buildEventLayer,
+  filterPublicDisplayEventLayer,
+  type PublicEventCluster
+} from "@/lib/events/clustering";
 import {
   loadPublicDataCompletenessSummary,
   type PublicDataCompletenessSummary
@@ -15,6 +19,7 @@ import {
   type RadarFeed
 } from "@/lib/radar/feed";
 import { labelize, sourceFamily } from "@/lib/product/data-summary";
+import { evidenceFreshnessStatus } from "@/lib/product/freshness";
 import type { RetrievalLanguage, RetrievalRadarItem } from "@/lib/retrieval/types";
 import {
   RADAR_CATEGORIES,
@@ -58,8 +63,8 @@ export default async function RadarPage({
     loadPublicDataCompletenessSummary()
   ]);
   const filters = readFilters(params, feed);
-  const filteredItems = filterItems(feed.items, filters, feed);
-  const eventLayer = buildEventLayer(
+  const rawFilteredItems = filterItems(feed.items, filters, feed);
+  const eventLayer = filterPublicDisplayEventLayer(buildEventLayer(
     feed.items.map((item) => ({
       categories: item.categories,
       collected_at: item.collected_at,
@@ -88,11 +93,15 @@ export default async function RadarPage({
       url: item.url,
       why_it_matters: item.why_it_matters
     }))
-  );
+  ));
+  const eventItemIds = new Set(eventLayer.event_cluster_items.map((item) => item.radar_item_id));
+  const filteredItems = rawFilteredItems.filter((item) => eventItemIds.has(item.id));
+  const downgradedFilteredCount = rawFilteredItems.length - filteredItems.length;
   const filteredCitations = filteredItems
     .filter((item) => item.status === "included" || item.status === "needs_review")
     .map(citationFromItem)
     .slice(0, 12);
+  const freshness = evidenceFreshnessStatus(feed.freshness.latestTimestamp ?? feed.processed_at);
 
   return (
     <div className="space-y-8">
@@ -131,12 +140,14 @@ export default async function RadarPage({
             />
             <RailRow
               label="当前筛选结果"
-              value={`${filteredItems.length} / ${feed.counts.total} 条`}
+              value={`${filteredItems.length} 条事件信号 / ${rawFilteredItems.length} 条公开信号`}
             />
             <RailRow label="事件聚类" value={`${eventLayer.event_count} 个事件`} />
           </dl>
         </aside>
       </section>
+
+      {freshness.warning ? <DataFreshnessAlert warning={freshness.warning} /> : null}
 
       <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -159,6 +170,14 @@ export default async function RadarPage({
               </div>
               <h3 className="mt-3 text-base font-semibold leading-7 text-radar-ink">{event.canonical_title}</h3>
               <p className="mt-2 text-sm leading-6 text-radar-muted">{event.summary_zh}</p>
+              <p className="mt-2 text-sm leading-6 text-radar-muted">
+                <strong className="text-radar-ink">产业影响：</strong>
+                {eventImpactNote(event)}
+              </p>
+              <p className="mt-1 text-sm leading-6 text-radar-muted">
+                <strong className="text-radar-ink">观察点：</strong>
+                {eventWatchNote(event)}
+              </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {event.source_families.slice(0, 4).map((family) => (
                   <StatusChip key={family} label={family} tone="neutral" />
@@ -298,7 +317,7 @@ export default async function RadarPage({
               证据条目
             </h2>
             <p className="mt-2 text-sm leading-6 text-radar-muted">
-              紧凑条目把来源、状态、置信度、时间和引用放在信号旁边。
+              只展示能进入事件层的信号；目录页、文档入口、仓库元数据等低事件性内容会被折叠。
             </p>
           </div>
           <StatusChip
@@ -307,6 +326,12 @@ export default async function RadarPage({
             value={filteredItems.length}
           />
         </div>
+
+        {downgradedFilteredCount > 0 ? (
+          <div className="rounded-lg border border-radar-caution/40 bg-radar-caution/5 p-4 text-sm leading-6 text-radar-muted">
+            已降级 {downgradedFilteredCount} 条低事件性信号。它们保留在公开快照用于审计，但不进入事件列表、报告正文或引用栏。
+          </div>
+        ) : null}
 
         {filteredItems.length > 0 ? (
           <div className="overflow-hidden rounded-lg border border-radar-line bg-white shadow-soft">
@@ -888,6 +913,54 @@ function formatTimestamp(value: string) {
     timeZone: "UTC",
     year: "numeric"
   }).format(date)} UTC`;
+}
+
+function DataFreshnessAlert({ warning }: { warning: string }) {
+  return (
+    <section className="rounded-lg border border-radar-caution/40 bg-radar-caution/10 p-4 text-sm leading-6 text-radar-caution">
+      <strong className="text-radar-ink">数据新鲜度提示：</strong>
+      <span className="ml-1">{warning}</span>
+      <span className="ml-1">“最近 24 小时/今日”筛选会以当前可见证据时间为锚点，不代表真实今天。</span>
+    </section>
+  );
+}
+
+function eventImpactNote(event: PublicEventCluster) {
+  const text = `${event.canonical_title} ${event.summary_zh} ${event.category} ${event.source_families.join(" ")}`.toLowerCase();
+
+  if (/model|模型|api|context|benchmark|基准/.test(text)) {
+    return "可能影响模型选型、API 成本、能力评估或基准对比。";
+  }
+
+  if (/agent|智能体|codex|developer|tool|工具|workflow/.test(text)) {
+    return "可能影响开发者工作流、企业自动化落地和工具链迁移。";
+  }
+
+  if (/github|release|开源|repository|llama|transformers|semantic kernel/.test(text)) {
+    return "可能改变开源实现、部署兼容性或工程团队的升级节奏。";
+  }
+
+  if (/partner|partnership|合作|enterprise|business|融资|收购/.test(text)) {
+    return "可能影响企业采购、生态合作、渠道分发或竞争格局。";
+  }
+
+  if (/research|paper|arxiv|论文|研究/.test(text)) {
+    return "可能提供新的技术路线、评测方法或后续产品化信号。";
+  }
+
+  return "作为弱到中等强度产业信号，适合继续跟踪是否出现独立来源确认。";
+}
+
+function eventWatchNote(event: PublicEventCluster) {
+  if (event.source_count <= 1) {
+    return "等待第二来源、官方更新或社区复现实证后再扩大解读。";
+  }
+
+  if (event.source_families.length <= 1) {
+    return "继续观察是否有跨来源家族确认，避免同源转载放大。";
+  }
+
+  return "跟踪后续时间线、引用来源变化和相关实体的新动作。";
 }
 
 function formatOptionalTimestamp(value: string | null | undefined) {

@@ -20,6 +20,7 @@ export type WriteRadarClientProps = {
     attemptedSources: number;
     dataSource: RetrievalDataSource;
     eventCount: number;
+    freshnessWarning: string | null;
     latestRadarTime: string;
     sourcesWithPublicItems: number;
     topCategories: Array<{ label: string; count: number }>;
@@ -105,6 +106,14 @@ export function WriteRadarClient({
           </p>
         </aside>
       </section>
+
+      {dataSummary.freshnessWarning ? (
+        <section className="rounded-lg border border-radar-caution/40 bg-radar-caution/10 p-4 text-sm leading-6 text-radar-caution">
+          <strong className="text-radar-ink">数据新鲜度提示：</strong>
+          <span className="ml-1">{dataSummary.freshnessWarning}</span>
+          <span className="ml-1">写作种子只基于当前公开证据，不应写成今日实时结论。</span>
+        </section>
+      ) : null}
 
       <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
         <div className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">

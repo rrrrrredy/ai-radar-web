@@ -11,6 +11,7 @@ import {
 } from "@/lib/data-completeness/public-summary";
 import {
   buildEventLayer,
+  type PublicEventLayer,
   type PublicEventCluster,
   type PublicEventClusterItem,
   type PublicTimelineEntry
@@ -689,9 +690,10 @@ function buildSnapshot(input: {
 }): PublicMirrorSnapshot {
   const latest = latestTimestamp(input.items);
   const statusCounts = countStatuses(input.items);
-  const reports = input.reports.map(publicSafeReport);
+  const rawEventLayer = buildEventLayer(input.items);
+  const eventLayer = publicDisplayEventLayer(rawEventLayer);
+  const reports = buildEventAwareReports(input.reports.map(publicSafeReport), eventLayer, latest?.value ?? null);
   const reportCitationCount = reports.reduce((count, report) => count + report.citations.length, 0);
-  const eventLayer = buildEventLayer(input.items);
 
   return {
     schema_version: 1,
@@ -844,6 +846,204 @@ function reportQualitySummary(
     top_event_ids: topEventIds,
     usable_item_count: report.usable_item_count
   };
+}
+
+function publicDisplayEventLayer(layer: PublicEventLayer): PublicEventLayer {
+  const events = layer.event_clusters.filter(isPublicDisplayEvent).sort(comparePublicEvents);
+  const eventIds = new Set(events.map((event) => event.event_cluster_id));
+  const curated = layer.curated_events.filter((event) => eventIds.has(event.event_cluster_id));
+  const fallbackCurated = events.filter((event) => event.event_score >= 64).slice(0, 8);
+  const curatedEvents = (curated.length > 0 ? curated : fallbackCurated).slice(0, 8);
+
+  return {
+    curated_events: curatedEvents,
+    event_cluster_items: layer.event_cluster_items.filter((item) => eventIds.has(item.event_cluster_id)),
+    event_clusters: events,
+    event_count: events.length,
+    timeline: layer.timeline.filter((entry) => eventIds.has(entry.event_cluster_id)).slice(0, 80)
+  };
+}
+
+function isPublicDisplayEvent(event: PublicEventCluster) {
+  return event.event_score_label !== "噪音/低相关" && event.event_score >= 45;
+}
+
+function comparePublicEvents(left: PublicEventCluster, right: PublicEventCluster) {
+  return right.event_score - left.event_score ||
+    right.source_count - left.source_count ||
+    Date.parse(right.latest_seen_at) - Date.parse(left.latest_seen_at) ||
+    left.canonical_title.localeCompare(right.canonical_title, "zh-CN");
+}
+
+function buildEventAwareReports(
+  reports: PublicReportSnapshot[],
+  eventLayer: PublicEventLayer,
+  latestTimestamp: string | null
+): PublicReportSnapshot[] {
+  if (reports.length === 0 || eventLayer.event_clusters.length === 0) {
+    return reports;
+  }
+
+  return reports.map((report) => eventAwareReport(report, selectReportEvents(report.report_type, eventLayer), latestTimestamp));
+}
+
+function selectReportEvents(reportType: ReportPreviewType, eventLayer: PublicEventLayer) {
+  const preferred = reportType === "daily"
+    ? [...eventLayer.curated_events, ...eventLayer.event_clusters]
+    : eventLayer.event_clusters;
+  const seen = new Set<string>();
+  const limit = reportType === "daily" ? 8 : 24;
+
+  return preferred
+    .filter((event) => {
+      if (seen.has(event.event_cluster_id)) return false;
+      seen.add(event.event_cluster_id);
+      return true;
+    })
+    .slice(0, limit);
+}
+
+function eventAwareReport(
+  report: PublicReportSnapshot,
+  selectedEvents: PublicEventCluster[],
+  latestTimestamp: string | null
+): PublicReportSnapshot {
+  if (selectedEvents.length === 0) {
+    return report;
+  }
+
+  const citations = reportEventCitations(selectedEvents);
+  const relatedItemIds = dedupe(selectedEvents.flatMap((event) => event.related_item_ids));
+  const categories = dedupe(selectedEvents.map((event) => event.category).filter(Boolean));
+  const sourceNames = dedupe(citations.map((citation) => citation.source_name));
+  const gate = eventReportQualityGate(report.report_type, {
+    category_count: categories.length,
+    citation_count: citations.length,
+    distinct_source_count: sourceNames.length,
+    usable_item_count: relatedItemIds.length
+  });
+  const reportLabel = report.report_type === "daily" ? "日报" : "周报";
+  const multiSourceEvents = selectedEvents.filter((event) => event.source_count > 1);
+  const latestLabel = latestTimestamp ? formatPublicDate(latestTimestamp) : "未知时间";
+  const evidenceBoundary = `公开证据最新到 ${latestLabel}；当前页面展示的是公开快照，不代表今日实时全网覆盖。`;
+  const summary = `${reportLabel}事件预览基于 ${selectedEvents.length} 个公开事件、${relatedItemIds.length} 条相关信号、${citations.length} 条引用和 ${sourceNames.length} 个来源生成；已过滤目录页、文档首页、仓库元数据等低事件性内容。`;
+
+  return {
+    ...report,
+    category_count: categories.length,
+    caveats: publicSafeNotes(dedupe([
+      evidenceBoundary,
+      "这是事件感知的公开报告视图；原始信号仍可在“全部信号”中审计。",
+      multiSourceEvents.length === 0 ? "当前精选事件多为单源信号，写作时需要保留不确定性。" : "",
+      ...report.caveats
+    ])),
+    citation_count: citations.length,
+    citations,
+    distinct_source_count: sourceNames.length,
+    executive_summary: summary,
+    missing_evidence: publicSafeNotes(dedupe([
+      multiSourceEvents.length < 3 ? "多源确认事件数量仍偏少，需要补充官方博客、研究源、开源 release 与媒体/分析源的交叉证据。" : "",
+      "X 和 WeChat 未自动抓取；相关信号只能通过人工或合规来源补充。",
+      evidenceBoundary,
+      ...report.missing_evidence
+    ])),
+    quality_gate: gate,
+    quality_gate_passed: gate.passed,
+    quality_gate_reasons: gate.reasons,
+    sections: [
+      {
+        bullets: selectedEvents.slice(0, 6).map(eventReportBullet),
+        caveats: selectedEvents.some((event) => event.source_count === 1) ? ["部分事件仍是单源确认，不能写成已被广泛验证的行业结论。"] : [],
+        citations: citations.slice(0, 8).map((citation) => citation.id),
+        summary: "按事件分数、来源可信度、来源多样性和新鲜度排序，优先保留能说明行业变化的事件。",
+        title: "行业精选事件"
+      },
+      {
+        bullets: multiSourceEvents.length > 0
+          ? multiSourceEvents.slice(0, 6).map((event) => `${event.canonical_title}：${event.source_count} 个来源，覆盖 ${event.source_families.join("、")}。`)
+          : ["本轮公开快照中多源确认不足，重点事件仍需要等待下一轮刷新或人工补证。"],
+        caveats: [],
+        citations: [],
+        summary: `本轮报告候选中有 ${multiSourceEvents.length} 个多源确认事件；其余事件主要作为待跟踪信号处理。`,
+        title: "多源确认与可信度"
+      },
+      {
+        bullets: [
+          evidenceBoundary,
+          "目录页、文档首页、仓库元数据和低信息量 release tag 已从事件精选与报告正文中降级。",
+          "公开报告不包含私有原文、供应商原始响应、内部模型运行细节、私有备注或运行日志。"
+        ],
+        caveats: [],
+        citations: [],
+        summary: "报告只使用公开安全字段，强调证据边界和数据缺口。",
+        title: "证据边界"
+      }
+    ],
+    source_item_count: relatedItemIds.length,
+    status: gate.passed ? report.status : "needs_review",
+    summary,
+    title: `AI 行业雷达${reportLabel} - 事件预览`,
+    usable_item_count: relatedItemIds.length
+  };
+}
+
+function reportEventCitations(events: PublicEventCluster[]) {
+  const byKey = new Map<string, PublicReportSnapshot["citations"][number]>();
+
+  for (const event of events) {
+    for (const citation of event.citations) {
+      const key = citation.item_id || citation.url;
+      if (!byKey.has(key)) {
+        byKey.set(key, {
+          collected_at: citation.collected_at,
+          id: citation.item_id,
+          published_at: citation.published_at,
+          source_name: citation.source_name,
+          title: citation.title,
+          url: citation.url
+        });
+      }
+    }
+  }
+
+  return [...byKey.values()];
+}
+
+function eventReportBullet(event: PublicEventCluster) {
+  return `${event.canonical_title}：${event.summary_zh}（${event.event_score_label}，${event.source_count} 个来源，${event.source_families.join("、")}）`;
+}
+
+function eventReportQualityGate(
+  reportType: ReportPreviewType,
+  metrics: Pick<ReportQualityGate, "usable_item_count" | "citation_count" | "distinct_source_count" | "category_count">
+): ReportQualityGate {
+  const thresholds = reportType === "daily"
+    ? { categories: 2, citations: 3, distinct_sources: 2, usable_items: 5 }
+    : { categories: 3, citations: 8, distinct_sources: 5, usable_items: 20 };
+  const reasons = [
+    metrics.usable_item_count < thresholds.usable_items ? `${metrics.usable_item_count} 条可用条目低于${reportType === "daily" ? "日报" : "周报"}最低要求 ${thresholds.usable_items} 条` : "",
+    metrics.citation_count < thresholds.citations ? `${metrics.citation_count} 条引用低于${reportType === "daily" ? "日报" : "周报"}最低要求 ${thresholds.citations} 条` : "",
+    metrics.distinct_source_count < thresholds.distinct_sources ? `${metrics.distinct_source_count} 个独立来源低于${reportType === "daily" ? "日报" : "周报"}最低要求 ${thresholds.distinct_sources} 个` : "",
+    metrics.category_count < thresholds.categories ? `${metrics.category_count} 个类别低于${reportType === "daily" ? "日报" : "周报"}最低要求 ${thresholds.categories} 个` : ""
+  ].filter(Boolean);
+
+  return {
+    category_count: metrics.category_count,
+    category_gate_applicable: true,
+    citation_count: metrics.citation_count,
+    distinct_source_count: metrics.distinct_source_count,
+    passed: reasons.length === 0,
+    reasons,
+    report_type: reportType,
+    thresholds,
+    usable_item_count: metrics.usable_item_count
+  };
+}
+
+function formatPublicDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toISOString().slice(0, 10);
 }
 
 async function readOperationalCounts(publicRadarFallback: number, reportCandidatesFallback: number): Promise<OperationalCounts> {
@@ -1392,18 +1592,34 @@ function dedupe(values: string[]) {
 }
 
 function sanitizePublicSnapshot(snapshot: PublicMirrorSnapshot): PublicMirrorSnapshot {
+  const eventLayer = publicDisplayEventLayer(buildEventLayer(snapshot.radar_items));
+  const reports = buildEventAwareReports(
+    snapshot.reports.map(publicSafeReport),
+    eventLayer,
+    snapshot.freshness.latest_timestamp
+  );
+
   return {
     ...snapshot,
+    counts: {
+      ...snapshot.counts,
+      event_clusters: eventLayer.event_count
+    },
     source: {
       ...snapshot.source,
       data_source: publicSnapshotDataSource(snapshot.source.data_source),
       warnings: publicSafeNotes(snapshot.source.warnings)
     },
+    curated_events: eventLayer.curated_events,
+    event_cluster_items: eventLayer.event_cluster_items,
+    event_clusters: eventLayer.event_clusters,
+    event_count: eventLayer.event_count,
     report_quality_summary: {
-      daily: publicSafeReportQuality(snapshot.report_quality_summary.daily),
-      weekly: publicSafeReportQuality(snapshot.report_quality_summary.weekly)
+      daily: publicSafeReportQuality(reportQualitySummary(reports, "daily", eventLayer.curated_events)),
+      weekly: publicSafeReportQuality(reportQualitySummary(reports, "weekly", eventLayer.curated_events))
     },
-    reports: snapshot.reports.map(publicSafeReport),
+    reports,
+    timeline: eventLayer.timeline,
     caveats: publicSafeNotes(snapshot.caveats)
   };
 }

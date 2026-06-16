@@ -1,5 +1,6 @@
 import { AskRadarClient } from "@/components/ask-radar-client";
 import { loadProductDataSummary } from "@/lib/product/data-summary";
+import { evidenceFreshnessStatus } from "@/lib/product/freshness";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -13,12 +14,16 @@ export default async function AskPage({
 }) {
   const params = searchParams ? await searchParams : {};
   const summary = await loadProductDataSummary();
+  const freshness = evidenceFreshnessStatus(summary.latest.radar);
+  const windowLabel = freshness.isStale ? "这批公开快照" : "今天";
+  const periodLabel = freshness.isStale ? "最近可见窗口" : "过去 24 小时";
+  const curatedLabel = freshness.isStale ? "行业精选快照" : "今日行业精选";
   const suggestedQuestions = [
-    "今天有哪些多源确认的模型发布？",
-    "过去 24 小时 Agent / 开发工具 有哪些重要变化？",
+    `${windowLabel}有哪些多源确认的模型发布？`,
+    `${periodLabel} Agent / 开发工具 有哪些重要变化？`,
     "哪些事件只有单一来源，可信度较低？",
-    "哪些来源今天失败或没有新内容？",
-    "把今日行业精选按重要性排序",
+    freshness.isStale ? "哪些来源在本轮刷新失败或没有新内容？" : "哪些来源今天失败或没有新内容？",
+    `把${curatedLabel}按重要性排序`,
     ...summary.curatedEvents.slice(0, 2).map((event) => `围绕“${event.canonical_title}”有哪些证据和不确定性？`)
   ];
   const initialQuestion = firstParam(params.question) ?? suggestedQuestions[0] ?? "";
@@ -29,6 +34,7 @@ export default async function AskPage({
         attemptedSources: summary.coverage.attemptedSources,
         dataSource: summary.dataSource,
         eventCount: summary.eventCount,
+        freshnessWarning: freshness.warning,
         latestRadarTime: formatTimestamp(summary.latest.radar),
         sourcesWithPublicItems: summary.coverage.sourcesWithPublicItems ?? 0,
         topCategories: summary.topCategories.slice(0, 4),

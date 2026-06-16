@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { assessPublicSignalQuality, publicSignalAdjustedScore } from "@/lib/radar/public-signal-quality";
 import type { RetrievalLanguage } from "@/lib/retrieval/types";
 import type { RadarCategory, UnderstandingEntity, UnderstandingStatus } from "@/lib/understanding/types";
 
@@ -208,10 +209,9 @@ export function buildEventLayer(items: ClusterableRadarItem[]): PublicEventLayer
       source_name: cluster.timeline.find((entry) => entry.item_id === radarItemId)?.source_name ?? "未知来源"
     }))
   );
-  const curatedEvents = clusters
-    .filter((event) => event.event_score_label !== "噪音/低相关")
-    .sort(compareCuratedEvents)
-    .slice(0, 8);
+  const curatedEvents = ensureMultiSourceCurated(clusters
+    .filter((event) => event.event_score_label !== "噪音/低相关" && event.event_score >= 64)
+    .sort(compareCuratedEvents)).slice(0, 8);
   const timeline = clusters
     .flatMap((event) =>
       event.timeline.map((entry) => ({
@@ -231,6 +231,25 @@ export function buildEventLayer(items: ClusterableRadarItem[]): PublicEventLayer
     event_count: clusters.length,
     timeline
   };
+}
+
+export function filterPublicDisplayEventLayer(layer: PublicEventLayer): PublicEventLayer {
+  const events = layer.event_clusters.filter(isPublicDisplayEvent).sort(compareEvents);
+  const eventIds = new Set(events.map((event) => event.event_cluster_id));
+  const curated = layer.curated_events.filter((event) => eventIds.has(event.event_cluster_id));
+  const fallbackCurated = events.filter((event) => event.event_score >= 64).sort(compareCuratedEvents).slice(0, 8);
+
+  return {
+    curated_events: (curated.length > 0 ? curated : fallbackCurated).slice(0, 8),
+    event_cluster_items: layer.event_cluster_items.filter((item) => eventIds.has(item.event_cluster_id)),
+    event_clusters: events,
+    event_count: events.length,
+    timeline: layer.timeline.filter((entry) => eventIds.has(entry.event_cluster_id)).slice(0, 80)
+  };
+}
+
+export function isPublicDisplayEvent(event: PublicEventCluster) {
+  return event.event_score_label !== "噪音/低相关" && event.event_score >= 45;
 }
 
 function compareClusterInputItems(left: ClusterableRadarItem, right: ClusterableRadarItem) {
@@ -314,11 +333,27 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
   const titleOverlap = Math.max(...cluster.items.map((clusterItem) => titleSimilarity(clusterItem.title, item.title)), 0);
   const timeScore = Math.max(...cluster.items.map((clusterItem) => timeWindowScore(clusterItem, item)), 0);
   const domainScore = cluster.items.some((clusterItem) => safeDomain(clusterItem.url) === safeDomain(item.url)) ? 0.08 : 0;
+  const sourceNameOverlap = cluster.items.some((clusterItem) => normalizeEntity(clusterItem.source_name) === normalizeEntity(item.source_name));
+  const openSourceProjectConflict =
+    sourceFamilyForEvent(item) === "开源项目" &&
+    cluster.items.some((clusterItem) => sourceFamilyForEvent(clusterItem) === "开源项目") &&
+    !sourceNameOverlap;
+  const versionConflict = cluster.items.some((clusterItem) => hasVersionConflict(clusterItem.title, item.title));
+  const partnerConflict = cluster.items.some((clusterItem) => hasPartnerConflict(clusterItem, item));
   const strongEntityConflict =
     cluster.strongEntities.size > 0 &&
     strongItemEntitySet.size > 0 &&
     intersectionSize(cluster.strongEntities, strongItemEntitySet) === 0;
   const weakGenericOnly = entityOverlap > 0 && intersectionValues(cluster.entities, itemEntitySet).every((entity) => genericEntityTerms.has(entity));
+
+  if (openSourceProjectConflict && (versionConflict || isReleaseVersionTitle(item.title) || cluster.items.some((clusterItem) => isReleaseVersionTitle(clusterItem.title)))) {
+    return 0;
+  }
+
+  if (partnerConflict) {
+    return 0;
+  }
+
   let score =
     titleOverlap * 0.34 +
     entityOverlap * 0.24 +
@@ -328,6 +363,18 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
     domainScore;
 
   if (strongEntityConflict && titleOverlap < 0.72) {
+    score -= 0.32;
+  }
+
+  if (openSourceProjectConflict && titleOverlap < 0.78) {
+    score -= 0.34;
+  }
+
+  if (versionConflict && titleOverlap < 0.9) {
+    score -= 0.36;
+  }
+
+  if (partnerConflict && titleOverlap < 0.86) {
     score -= 0.32;
   }
 
@@ -344,6 +391,7 @@ function materializeCluster(cluster: WorkingCluster): PublicEventCluster {
   const sourceFamilies = unique(items.map(sourceFamilyForEvent));
   const sourceNames = unique(items.map((item) => item.source_name));
   const relatedItemIds = items.map((item) => item.id);
+  const canonicalTitle = publicEventTitle(primary);
   const timeline = items
     .map((item) => ({
       item_id: item.id,
@@ -368,7 +416,7 @@ function materializeCluster(cluster: WorkingCluster): PublicEventCluster {
   const latestSeen = timeline[timeline.length - 1]?.timestamp ?? itemTimestamp(primary);
 
   return {
-    canonical_title: primary.title,
+    canonical_title: canonicalTitle,
     category: dominantCategory(items),
     caveats: eventCaveats(items, sourceFamilies),
     citations,
@@ -396,17 +444,33 @@ function compareEvents(left: PublicEventCluster, right: PublicEventCluster) {
 }
 
 function compareCuratedEvents(left: PublicEventCluster, right: PublicEventCluster) {
+  const scoreDelta = right.event_score - left.event_score;
+  if (scoreDelta !== 0) return scoreDelta;
+
   const multiSourceDelta = Number(right.source_count > 1) - Number(left.source_count > 1);
   if (multiSourceDelta !== 0) return multiSourceDelta;
 
   return right.source_count - left.source_count ||
-    right.event_score - left.event_score ||
     Date.parse(right.latest_seen_at) - Date.parse(left.latest_seen_at) ||
     left.canonical_title.localeCompare(right.canonical_title, "zh-CN");
 }
 
+function ensureMultiSourceCurated(events: PublicEventCluster[]) {
+  const selected = events.slice(0, 8);
+  if (selected.some((event) => event.source_count > 1)) {
+    return events;
+  }
+
+  const multiSource = events.find((event) => event.source_count > 1);
+  if (!multiSource || selected.length === 0) {
+    return events;
+  }
+
+  return [...selected.slice(0, -1), multiSource, ...events.filter((event) => !selected.includes(event) && event.event_cluster_id !== multiSource.event_cluster_id)];
+}
+
 function compareClusterItems(left: ClusterableRadarItem, right: ClusterableRadarItem) {
-  return right.scores.overall - left.scores.overall ||
+  return publicSignalAdjustedScore(right.scores.overall, right) - publicSignalAdjustedScore(left.scores.overall, left) ||
     right.scores.importance - left.scores.importance ||
     Date.parse(itemTimestamp(right)) - Date.parse(itemTimestamp(left)) ||
     left.title.localeCompare(right.title, "zh-CN");
@@ -421,6 +485,8 @@ function eventScore(items: ClusterableRadarItem[], sourceFamilies: string[], sou
   const diversityBonus = Math.min(12, Math.max(0, sourceFamilies.length - 1) * 5 + Math.max(0, sourceNames.length - 1) * 2);
   const highTierBonus = items.some((item) => /official|tier[_ -]?1|high|primary/i.test(item.source_tier)) ? 6 : 0;
   const freshnessBonus = Math.max(...items.map(freshnessBonusForItem), 0);
+  const averageQualityPenalty = average(items.map((item) => assessPublicSignalQuality(item).penalty)) * 40;
+  const allLowEventSignals = items.every((item) => assessPublicSignalQuality(item).isLowEventSignal);
   const importantCategoryBonus = items.some((item) =>
     item.categories.some((category) =>
       ["model_release", "product_update", "tooling", "benchmark", "infrastructure", "safety", "policy", "business", "open_source", "research"].includes(category)
@@ -428,8 +494,10 @@ function eventScore(items: ClusterableRadarItem[], sourceFamilies: string[], sou
   )
     ? 5
     : 0;
+  const rawScore = base + aiRelevance + credibility + novelty + diversityBonus + highTierBonus + freshnessBonus + importantCategoryBonus - averageQualityPenalty;
+  const cappedScore = allLowEventSignals ? Math.min(rawScore, 44) : rawScore;
 
-  return Math.max(0, Math.min(100, Math.round(base + aiRelevance + credibility + novelty + diversityBonus + highTierBonus + freshnessBonus + importantCategoryBonus)));
+  return Math.max(0, Math.min(100, Math.round(cappedScore)));
 }
 
 function freshnessBonusForItem(item: ClusterableRadarItem) {
@@ -449,15 +517,17 @@ function eventScoreLabel(score: number): EventScoreLabel {
 }
 
 function scoreReason(score: number, sourceCount: number, sourceFamilies: string[], primary: ClusterableRadarItem) {
+  const quality = assessPublicSignalQuality(primary);
   const pieces = [
     `综合分 ${score}`,
     sourceCount > 1 ? `${sourceCount} 个来源确认` : "单一来源，需继续观察",
     sourceFamilies.length > 1 ? `覆盖 ${sourceFamilies.join("、")}` : `来源家族：${sourceFamilies[0] ?? "未知"}`,
     `AI 相关度 ${Math.round((primary.scores.ai_relevance || 0) * 100)}%`,
-    `重要性 ${Math.round((primary.scores.importance || 0) * 100)}%`
+    `重要性 ${Math.round((primary.scores.importance || 0) * 100)}%`,
+    quality.isLowEventSignal ? `事件性不足：${quality.reasons.join("、") || "低信息量信号"}` : ""
   ];
 
-  return pieces.join("；");
+  return pieces.filter(Boolean).join("；");
 }
 
 function publicSummary(primary: ClusterableRadarItem, items: ClusterableRadarItem[], sourceFamilies: string[]) {
@@ -468,6 +538,46 @@ function publicSummary(primary: ClusterableRadarItem, items: ClusterableRadarIte
 
   const multiSource = items.length > 1 ? `该事件合并了 ${items.length} 条相关信号` : "该事件目前只有 1 条公开信号";
   return `${multiSource}，来源覆盖 ${sourceFamilies.join("、") || "未知来源家族"}。`;
+}
+
+function publicEventTitle(primary: ClusterableRadarItem) {
+  const title = primary.title.trim();
+  const source = primary.source_name.trim();
+  const summary = (primary.summary_zh || primary.summary_en || "").trim();
+
+  if (/^release\s+v?\d+(?:\.\d+){1,3}/i.test(title)) {
+    const version = title.match(/v?\d+(?:\.\d+){1,3}/i)?.[0] ?? title.replace(/^release\s+/i, "");
+    return source ? `${source} 发布 ${version} 版本` : title;
+  }
+
+  if (/^v?\d+(?:\.\d+){1,3}(?:[-_][\w.-]+)?$/i.test(title)) {
+    return source ? `${source} 发布 ${title} 版本` : title;
+  }
+
+  if (/^[a-z]+-\d+(?:\.\d+){1,3}$/i.test(title)) {
+    return source ? `${source} 发布 ${title} 版本` : title;
+  }
+
+  if (/^b\d{4,}$/i.test(title)) {
+    return source ? `${source} 发布 ${title} 版本` : title;
+  }
+
+  if (/^[a-f0-9]{6,12}$/i.test(title)) {
+    return source ? `${source} 发布 ${title} 版本` : title;
+  }
+
+  if (/^(research|news|newsroom|blog|overview|documentation|docs|home|homepage|release notes|releases|changelog)$/i.test(title)) {
+    return source ? `${source} 公开页面信号` : title;
+  }
+
+  if (title.length <= 18 && summary) {
+    const firstSentence = summary.split(/[。.!?]/)[0]?.trim();
+    if (firstSentence && firstSentence.length >= 12 && firstSentence.length <= 72) {
+      return firstSentence;
+    }
+  }
+
+  return title;
 }
 
 function eventCaveats(items: ClusterableRadarItem[], sourceFamilies: string[]) {
@@ -522,6 +632,47 @@ function titleFingerprint(title: string) {
     .filter((token) => token.length >= 3 && !stopwords.has(token))
     .slice(0, 10)
     .join(" ");
+}
+
+function hasVersionConflict(leftTitle: string, rightTitle: string) {
+  const leftVersion = releaseVersion(leftTitle);
+  const rightVersion = releaseVersion(rightTitle);
+  return Boolean(leftVersion && rightVersion && leftVersion !== rightVersion);
+}
+
+function releaseVersion(title: string) {
+  return title.match(/\b(?:v|python-)?\d+(?:\.\d+){1,3}(?:[-_][\w.-]+)?\b|\bb\d{4,}\b/i)?.[0]?.toLowerCase() ?? null;
+}
+
+function isReleaseVersionTitle(title: string) {
+  const normalized = normalizeText(title);
+  return /^release\s+v?\d+(?:\s+\d+){1,3}$/.test(normalized) ||
+    /^(?:python\s+)?v?\d+(?:\s+\d+){1,3}$/.test(normalized) ||
+    /^b\d{4,}$/.test(normalized) ||
+    /^python\s+v?\d+\s+\d+\s+\d+$/i.test(normalized);
+}
+
+function hasPartnerConflict(left: ClusterableRadarItem, right: ClusterableRadarItem) {
+  const leftPartners = partnerEntities(left);
+  const rightPartners = partnerEntities(right);
+  if (leftPartners.size === 0 || rightPartners.size === 0) return false;
+  return intersectionSize(leftPartners, rightPartners) === 0;
+}
+
+function partnerEntities(item: ClusterableRadarItem) {
+  const rawText = `${item.title} ${item.summary_zh ?? ""} ${item.summary_en ?? ""}`;
+  const text = normalizeText(rawText);
+  if (!/\b(partner|partnership|collaborat|alliance)\b|合作|伙伴/.test(text)) {
+    return new Set<string>();
+  }
+
+  const parsedPartners = [
+    ...rawText.matchAll(/\b(?:openai|anthropic|google|microsoft|meta)\s+and\s+([a-z0-9][a-z0-9 .&-]{1,40}?)\s+(?:partner|partnership|collaborat)/gi),
+    ...rawText.matchAll(/\bwith\s+([a-z0-9][a-z0-9 .&-]{1,40}?)\s+(?:to|on|for)\b/gi)
+  ].map((match) => normalizeEntity(match[1]).replace(/\b(to|bring|all|citizens|enterprise|environments)\b.*$/g, "").trim()).filter(Boolean);
+  const entities = strongItemEntities(item)
+    .filter((entity) => !["openai", "microsoft", "google", "meta", "anthropic"].includes(entity));
+  return new Set([...entities, ...parsedPartners]);
 }
 
 function timeWindowScore(left: ClusterableRadarItem, right: ClusterableRadarItem) {

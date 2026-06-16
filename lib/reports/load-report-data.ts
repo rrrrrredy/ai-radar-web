@@ -719,7 +719,8 @@ function mergeDocuments(documents: ReportWorkflowDocument[]) {
 
   for (const document of documents) {
     const id = document.id ?? `${document.report_type}:${document.generated_at}`;
-    if (!byId.has(id)) {
+    const existing = byId.get(id);
+    if (!existing || savedDocumentPriority(document) > savedDocumentPriority(existing)) {
       byId.set(id, document);
     }
   }
@@ -737,6 +738,10 @@ function compareSavedDocuments(left: ReportWorkflowDocument, right: ReportWorkfl
 }
 
 function savedDocumentPriority(document: ReportWorkflowDocument) {
+  if (document.read_source === "public_snapshot") {
+    return 7;
+  }
+
   if (document.mode === "saved_report" && document.status === "published") {
     return 6;
   }
@@ -770,12 +775,12 @@ function normalizeSections(value: unknown): GeneratedReportSection[] {
   }
 
   return value
-    .map((section) => {
+    .map((section, index) => {
       if (!isRecord(section)) {
         return null;
       }
 
-      const id = sectionId(section.id);
+      const id = sectionId(section.id) ?? defaultSectionId(index);
       const title = text(section.title);
 
       if (!id || !title) {
@@ -793,6 +798,18 @@ function normalizeSections(value: unknown): GeneratedReportSection[] {
       };
     })
     .filter((section): section is GeneratedReportSection => Boolean(section));
+}
+
+function defaultSectionId(index: number): GeneratedReportSection["id"] {
+  const ids = [
+    "model_product_company_updates",
+    "research_open_source",
+    "agents_products",
+    "business_ecosystem",
+    "weak_signals_needs_review"
+  ] as const;
+
+  return ids[index] ?? "weak_signals_needs_review";
 }
 
 function normalizeCitations(value: unknown): RetrievalCitation[] {

@@ -16,6 +16,7 @@ export type AskRadarClientProps = {
     attemptedSources: number;
     dataSource: RetrievalDataSource;
     eventCount: number;
+    freshnessWarning: string | null;
     latestRadarTime: string;
     sourcesWithPublicItems: number;
     topCategories: Array<{ label: string; count: number }>;
@@ -110,6 +111,14 @@ export function AskRadarClient({
           </ol>
         </aside>
       </section>
+
+      {dataSummary.freshnessWarning ? (
+        <section className="rounded-lg border border-radar-caution/40 bg-radar-caution/10 p-4 text-sm leading-6 text-radar-caution">
+          <strong className="text-radar-ink">数据新鲜度提示：</strong>
+          <span className="ml-1">{dataSummary.freshnessWarning}</span>
+          <span className="ml-1">DeepSeek 只会基于当前公开证据生成回答。</span>
+        </section>
+      ) : null}
 
       <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
         <div className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">

@@ -1,3 +1,4 @@
+import { assessPublicSignalQuality } from "@/lib/radar/public-signal-quality";
 import type {
   NormalizedQuery,
   RankedRadarItem,
@@ -24,6 +25,7 @@ function scoreItem(item: RetrievalRadarItem, query: NormalizedQuery, endMs: numb
   const textMatches = keywords.filter((keyword) => haystack.includes(keyword));
   const entityMatches = query.entity_hints.filter((entity) => haystack.includes(entity.toLowerCase()));
   const categoryMatches = query.category_hints.filter((category) => item.categories.includes(category));
+  const quality = assessPublicSignalQuality(item);
   const scoreParts = {
     text: Math.min(0.35, textMatches.length * 0.06),
     entity: Math.min(0.16, entityMatches.length * 0.08),
@@ -36,11 +38,14 @@ function scoreItem(item: RetrievalRadarItem, query: NormalizedQuery, endMs: numb
   };
   const base = Object.values(scoreParts).reduce((sum, value) => sum + value, 0);
   const fallbackScore = keywords.length === 0 ? item.overall_score * 0.4 : 0;
-  const score = Number(Math.max(0, base + fallbackScore).toFixed(4));
+  const explicitMatch = textMatches.length > 0 || entityMatches.length > 0 || categoryMatches.length > 0;
+  const qualityPenalty = explicitMatch ? quality.penalty * 0.18 : quality.penalty * 0.42;
+  const score = Number(Math.max(0, base + fallbackScore - qualityPenalty).toFixed(4));
   const matchReasons = [
     textMatches.length > 0 ? `keyword:${textMatches.slice(0, 4).join(",")}` : "",
     entityMatches.length > 0 ? `entity:${entityMatches.join(",")}` : "",
     categoryMatches.length > 0 ? `category:${categoryMatches.join(",")}` : "",
+    quality.isLowEventSignal ? `low_event_signal:${quality.reasons.slice(0, 2).join(",")}` : "",
     item.status === "needs_review" ? "needs_review" : "",
     item.status === "included" ? "included" : ""
   ].filter(Boolean);

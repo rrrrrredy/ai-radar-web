@@ -8,6 +8,7 @@ import {
   type ProductDataSummary,
   loadProductDataSummary
 } from "@/lib/product/data-summary";
+import { evidenceFreshnessStatus } from "@/lib/product/freshness";
 import type { ReportWorkflowDocument } from "@/lib/reports/types";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,11 @@ export const revalidate = 0;
 
 export default async function HomePage() {
   const summary = await loadProductDataSummary();
+  const freshness = evidenceFreshnessStatus(summary.latest.radar);
+  const heroTitle = freshness.isStale ? "行业精选快照" : "今日行业精选";
+  const heroDescription = freshness.isStale
+    ? "这批公开证据不是今日实时覆盖；页面按事件合并、来源健康、时间线、引用和局限展示最近可见窗口。"
+    : "把重复 AI 信号合并成事件，优先展示多源确认、来源健康、时间线、引用和局限。";
 
   return (
     <div className="space-y-10">
@@ -26,10 +32,10 @@ export default async function HomePage() {
             <StatusChip label="覆盖率" tone="caution" value="持续补齐" />
           </div>
           <h1 className="mt-4 max-w-4xl text-4xl font-semibold leading-tight tracking-normal text-radar-ink sm:text-5xl">
-            今日行业精选
+            {heroTitle}
           </h1>
           <p className="mt-4 max-w-3xl text-lg leading-8 text-radar-muted">
-            把重复 AI 信号合并成事件，优先展示多源确认、来源健康、时间线、引用和局限。
+            {heroDescription}
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
             <Link
@@ -56,7 +62,9 @@ export default async function HomePage() {
         <ProductionStatusPanel summary={summary} />
       </section>
 
-      <CuratedEvents summary={summary} />
+      {freshness.warning ? <DataFreshnessAlert warning={freshness.warning} /> : null}
+
+      <CuratedEvents isStale={freshness.isStale} summary={summary} />
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <RadarPulse summary={summary} />
@@ -119,16 +127,20 @@ function ProductionStatusPanel({ summary }: { summary: ProductDataSummary }) {
   );
 }
 
-function CuratedEvents({ summary }: { summary: ProductDataSummary }) {
+function CuratedEvents({ isStale, summary }: { isStale: boolean; summary: ProductDataSummary }) {
   const events = summary.curatedEvents.slice(0, 6);
+  const title = isStale ? "行业精选快照" : "今日行业精选";
+  const description = isStale
+    ? "按最新可见证据窗口聚合事件；陈旧数据不会包装成今日实时情报。"
+    : "事件卡合并同一主题的相关信号，并保留来源数、来源家族、时间线和引用。";
 
   return (
     <section className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold text-radar-ink">今日行业精选</h2>
+          <h2 className="text-2xl font-semibold text-radar-ink">{title}</h2>
           <p className="mt-2 text-sm leading-6 text-radar-muted">
-            事件卡合并同一主题的相关信号，并保留来源数、来源家族、时间线和引用。
+            {description}
           </p>
         </div>
         <Link className="text-sm font-semibold text-radar-evidence" href="/radar">
@@ -146,6 +158,14 @@ function CuratedEvents({ summary }: { summary: ProductDataSummary }) {
             </div>
             <h3 className="mt-3 text-lg font-semibold leading-7 text-radar-ink">{event.canonical_title}</h3>
             <p className="mt-2 text-sm leading-6 text-radar-muted">{event.summary_zh}</p>
+            <p className="mt-2 text-sm leading-6 text-radar-muted">
+              <strong className="text-radar-ink">产业影响：</strong>
+              {eventImpactNote(event)}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-radar-muted">
+              <strong className="text-radar-ink">观察点：</strong>
+              {eventWatchNote(event)}
+            </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {event.source_families.slice(0, 4).map((family) => (
                 <StatusChip key={family} label={family} tone="neutral" />
@@ -156,6 +176,44 @@ function CuratedEvents({ summary }: { summary: ProductDataSummary }) {
       </div>
     </section>
   );
+}
+
+function eventImpactNote(event: ProductDataSummary["curatedEvents"][number]) {
+  const text = `${event.canonical_title} ${event.summary_zh} ${event.category} ${event.source_families.join(" ")}`.toLowerCase();
+
+  if (/model|模型|api|context|benchmark|基准/.test(text)) {
+    return "可能影响模型选型、API 成本、能力评估或基准对比。";
+  }
+
+  if (/agent|智能体|codex|developer|tool|工具|workflow/.test(text)) {
+    return "可能影响开发者工作流、企业自动化落地和工具链迁移。";
+  }
+
+  if (/github|release|开源|repository|llama|transformers|semantic kernel/.test(text)) {
+    return "可能改变开源实现、部署兼容性或工程团队的升级节奏。";
+  }
+
+  if (/partner|partnership|合作|enterprise|business|融资|收购/.test(text)) {
+    return "可能影响企业采购、生态合作、渠道分发或竞争格局。";
+  }
+
+  if (/research|paper|arxiv|论文|研究/.test(text)) {
+    return "可能提供新的技术路线、评测方法或后续产品化信号。";
+  }
+
+  return "作为弱到中等强度产业信号，适合继续跟踪是否出现独立来源确认。";
+}
+
+function eventWatchNote(event: ProductDataSummary["curatedEvents"][number]) {
+  if (event.source_count <= 1) {
+    return "等待第二来源、官方更新或社区复现实证后再扩大解读。";
+  }
+
+  if (event.source_families.length <= 1) {
+    return "继续观察是否有跨来源家族确认，避免同源转载放大。";
+  }
+
+  return "跟踪后续时间线、引用来源变化和相关实体的新动作。";
 }
 
 function RadarPulse({ summary }: { summary: ProductDataSummary }) {
@@ -420,6 +478,16 @@ function publicText(value: string) {
       "Supabase coverage depends on rows already persisted into the public retrieval view.",
       "覆盖范围取决于已经入库或快照化的公开证据。"
     );
+}
+
+function DataFreshnessAlert({ warning }: { warning: string }) {
+  return (
+    <section className="rounded-lg border border-radar-caution/40 bg-radar-caution/10 p-4 text-sm leading-6 text-radar-caution">
+      <strong className="text-radar-ink">数据新鲜度提示：</strong>
+      <span className="ml-1">{warning}</span>
+      <span className="ml-1">Ask / Write 的回答也只基于这批公开证据。</span>
+    </section>
+  );
 }
 
 function CountList({ entries, title }: { entries: CountEntry[]; title: string }) {

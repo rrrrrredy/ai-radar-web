@@ -1,5 +1,6 @@
 import { citationFromItem } from "@/lib/retrieval/citations";
 import { itemEvidenceTimestamp, type RadarFeed } from "@/lib/radar/feed";
+import { publicSignalAdjustedScore } from "@/lib/radar/public-signal-quality";
 import type { RetrievalCitation, RetrievalRadarItem } from "@/lib/retrieval/types";
 import type { RadarCategory } from "@/lib/understanding/types";
 import type {
@@ -167,7 +168,7 @@ function sortReportItems(items: RetrievalRadarItem[]) {
       return statusDelta;
     }
 
-    const scoreDelta = right.overall_score - left.overall_score;
+    const scoreDelta = publicSignalAdjustedScore(right.overall_score, right) - publicSignalAdjustedScore(left.overall_score, left);
     if (scoreDelta !== 0) {
       return scoreDelta;
     }

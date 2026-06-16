@@ -283,8 +283,12 @@ async function writeSite(snapshot: Snapshot) {
 function renderHome(snapshot: Snapshot) {
   const latestReports = latestReportsByType(snapshot);
   const curated = snapshot.curated_events.slice(0, 8);
+  const title = snapshotCuratedTitle(snapshot);
+  const description = snapshotIsStale(snapshot)
+    ? "这批公开证据不是今日实时覆盖；页面按事件合并、来源健康、时间线、引用和局限展示最近可见窗口。"
+    : "把重复信号合并成事件，优先展示多源确认、来源健康、时间线、引用和局限。";
 
-  return shell(snapshot, "home", 0, "今日行业精选", `
+  return shell(snapshot, "home", 0, title, `
     <section class="status-strip">
       ${metricMini("公开信号", snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)}
       ${metricMini("事件", snapshot.event_count)}
@@ -293,6 +297,7 @@ function renderHome(snapshot: Snapshot) {
       ${metricMini("报告候选", snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates)}
       ${metricMini("最新刷新", formatDate(snapshot.coverage.latest_refresh))}
     </section>
+    ${freshnessAlert(snapshot)}
 
     <section class="hero event-hero">
       <div>
@@ -301,8 +306,8 @@ function renderHome(snapshot: Snapshot) {
           ${pill("事件雷达", "evidence")}
           ${pill(sourceLabel(snapshot.source.data_source), "neutral")}
         </div>
-        <h1>今日行业精选</h1>
-        <p class="lead">把重复信号合并成事件，优先展示多源确认、来源健康、时间线、引用和局限。</p>
+        <h1>${escapeHtml(title)}</h1>
+        <p class="lead">${escapeHtml(description)}</p>
         <div class="actions">
           <a class="button primary" href="radar/">打开事件雷达</a>
           <a class="button" href="reports/">查看报告质量</a>
@@ -324,7 +329,7 @@ function renderHome(snapshot: Snapshot) {
 
     <section class="panel">
       <div class="section-heading">
-        <h2>今日行业精选</h2>
+          <h2>${escapeHtml(title)}</h2>
         <a href="radar/">查看全部事件</a>
       </div>
       <div class="event-grid">${curated.map(renderEventCard).join("") || empty("暂无可展示事件。")}</div>
@@ -349,10 +354,10 @@ function renderHome(snapshot: Snapshot) {
           <a href="ask/">提问</a>
         </div>
         ${noteList([
-          "今天有哪些多源确认的模型发布？",
-          "过去 24 小时 Agent / 开发工具 有哪些重要变化？",
+          `${snapshotWindowLabel(snapshot)}有哪些多源确认的模型发布？`,
+          `${snapshotPeriodLabel(snapshot)} Agent / 开发工具 有哪些重要变化？`,
           "哪些事件只有单一来源，可信度较低？",
-          "基于今日行业精选写一段 AI 行业观察"
+          `基于${title}写一段 AI 行业观察`
         ])}
       </div>
     </section>
@@ -377,6 +382,9 @@ function renderRadar(snapshot: Snapshot) {
   const families = countSourceFamilies(snapshot.radar_items);
   const eventFamilies = uniqueStrings(snapshot.event_clusters.flatMap((event) => event.source_families));
   const scoreLabels = uniqueStrings(snapshot.event_clusters.map((event) => event.event_score_label));
+  const eventItemIds = new Set(snapshot.event_cluster_items.map((item) => item.radar_item_id));
+  const displaySignalItems = snapshot.radar_items.filter((item) => eventItemIds.has(item.id));
+  const downgradedSignalCount = snapshot.radar_items.length - displaySignalItems.length;
 
   return shell(snapshot, "radar", 1, "雷达", `
     <section class="page-heading">
@@ -391,6 +399,7 @@ function renderRadar(snapshot: Snapshot) {
         <p class="lead">默认展示行业精选事件；全部信号仍保留在“全部信号”标签下，避免同一事件被重复阅读。</p>
       </div>
     </section>
+    ${freshnessAlert(snapshot)}
 
     ${coveragePanel(snapshot)}
 
@@ -443,12 +452,13 @@ function renderRadar(snapshot: Snapshot) {
     <section class="tab-panel" data-tab-panel="signals">
       <div class="grid radar-layout">
       <div class="row-list radar-list" id="radar-list">
-        ${snapshot.radar_items.map(renderRadarItem).join("") || empty("暂无雷达条目。")}
+        ${downgradedSignalCount > 0 ? `<div class="callout warning"><strong>已降级 ${downgradedSignalCount} 条低事件性信号</strong><p>文档入口、目录页、站点首页、仓库元数据等不进入公开事件列表和报告正文；完整审计保留在公开 JSON 快照。</p></div>` : ""}
+        ${displaySignalItems.map(renderRadarItem).join("") || empty("暂无雷达条目。")}
       </div>
       <aside class="panel sticky">
         <h2>引用栏</h2>
         <p class="note">链接指向公开来源页面。快照不包含私有原文、供应商元数据或服务密钥。</p>
-        <div class="row-list">${snapshot.radar_items.slice(0, 12).map(renderCitation).join("")}</div>
+        <div class="row-list">${displaySignalItems.slice(0, 12).map(renderCitation).join("")}</div>
       </aside>
       </div>
     </section>
@@ -485,6 +495,7 @@ function renderReports(snapshot: Snapshot) {
         <p class="lead">报告候选会显示质量门禁、纳入事件、引用、来源多样性、缺失证据和局限；数据不足的日报不会被包装成完整报告。</p>
       </div>
     </section>
+    ${freshnessAlert(snapshot)}
     ${dailySummary && !dailySummary.quality_gate_passed ? `<section class="callout warning"><strong>今日数据不足，需补充信源或等待下一轮刷新</strong><p>${escapeHtml(dailySummary.quality_gate_reasons.map(publicText).join("；") || "日报质量门禁未通过。")}</p></section>` : ""}
     ${coveragePanel(snapshot)}
     ${reportCoveragePanel(snapshot, reports)}
@@ -495,12 +506,13 @@ function renderReports(snapshot: Snapshot) {
 }
 
 function renderAsk(snapshot: Snapshot) {
+  const title = snapshotCuratedTitle(snapshot);
   const examples = [
-    "今天有哪些多源确认的模型发布？",
-    "过去 24 小时 Agent / 开发工具 有哪些重要变化？",
+    `${snapshotWindowLabel(snapshot)}有哪些多源确认的模型发布？`,
+    `${snapshotPeriodLabel(snapshot)} Agent / 开发工具 有哪些重要变化？`,
     "哪些事件只有单一来源，可信度较低？",
-    "哪些来源今天失败或没有新内容？",
-    "把今日行业精选按重要性排序",
+    snapshotIsStale(snapshot) ? "哪些来源在本轮刷新失败或没有新内容？" : "哪些来源今天失败或没有新内容？",
+    `把${title}按重要性排序`,
     ...snapshot.curated_events.slice(0, 2).map((event) => `围绕“${event.canonical_title}”有哪些证据和不确定性？`)
   ];
 
@@ -512,9 +524,10 @@ function renderAsk(snapshot: Snapshot) {
           ${pill("事件查询页", "evidence")}
         </div>
         <h1>事件提问</h1>
-        <p class="lead">围绕今日行业精选、多源确认、来源失败和弱信号提问。Cloudflare 保持只读，不暴露 API Key 或服务端路由。</p>
+        <p class="lead">围绕${escapeHtml(title)}、多源确认、来源失败和弱信号提问。Cloudflare 保持只读，不暴露 API Key 或服务端路由。</p>
       </div>
     </section>
+    ${freshnessAlert(snapshot, "DeepSeek 只会基于当前公开证据生成回答；Cloudflare 页面本身不提供实时联网聊天。")}
     <section class="grid two">
       <div class="panel">
         <h2>证据上下文</h2>
@@ -531,17 +544,26 @@ function renderAsk(snapshot: Snapshot) {
         ${noteList(examples)}
       </div>
     </section>
+    <section class="panel interactive-tool">
+      <h2>本地事件查询</h2>
+      <p class="note">该工具只读取公开快照 JSON，在浏览器内返回相关事件和引用；不会联网调用 DeepSeek，也不会产生服务端写入。</p>
+      <textarea id="local-query-input" rows="4" placeholder="输入问题，例如：哪些事件只有单一来源，可信度较低？">${escapeHtml(examples[0] ?? "")}</textarea>
+      <div class="actions"><button class="button primary" id="local-query-run" type="button">查询公开事件</button></div>
+      <div class="local-result" id="local-query-result" aria-live="polite"></div>
+    </section>
     <section class="panel">
       <h2>注意事项</h2>
       ${noteList(snapshot.caveats.slice(0, 6))}
     </section>
+    <script>${localEvidenceToolScript("ask")}</script>
   `);
 }
 
 function renderWrite(snapshot: Snapshot) {
+  const title = snapshotCuratedTitle(snapshot);
   const prompts = [
-    "基于今日行业精选写一段 AI 行业观察",
-    "把本周多源确认事件整理成周报提纲",
+    `基于${title}写一段 AI 行业观察`,
+    `把${snapshotIsStale(snapshot) ? "这批可见窗口" : "本周"}多源确认事件整理成周报提纲`,
     "找出适合写成深度分析的 3 个事件",
     "列出证据不足但值得继续跟踪的弱信号",
     ...snapshot.curated_events.slice(0, 2).map((event) => `基于“${event.canonical_title}”写一个带证据边界的观察角度。`)
@@ -558,6 +580,7 @@ function renderWrite(snapshot: Snapshot) {
         <p class="lead">基于行业精选、多源确认、弱信号和报告质量状态组织写作提示。Cloudflare 上保持只读。</p>
       </div>
     </section>
+    ${freshnessAlert(snapshot, "写作提示只基于当前公开证据，不应写成今日实时结论。")}
     <section class="grid two">
       <div class="panel">
         <h2>写作提示</h2>
@@ -584,17 +607,25 @@ function renderWrite(snapshot: Snapshot) {
         ${noteList(snapshot.caveats.slice(0, 6))}
       </div>
     </section>
+    <section class="panel interactive-tool">
+      <h2>本地写作生成</h2>
+      <p class="note">该工具基于公开事件快照生成提纲和证据边界；Cloudflare 静态页不调用私有 API。</p>
+      <textarea id="local-query-input" rows="4" placeholder="输入写作需求，例如：找出适合写成深度分析的 3 个事件">${escapeHtml(prompts[0] ?? "")}</textarea>
+      <div class="actions"><button class="button primary" id="local-query-run" type="button">生成写作提纲</button></div>
+      <div class="local-result" id="local-query-result" aria-live="polite"></div>
+    </section>
     <section class="panel">
       <h2>缺失证据</h2>
       ${noteList(uniqueStrings(snapshot.reports.flatMap((report) => report.missing_evidence)).slice(0, 8).concat(snapshot.caveats.slice(0, 3)))}
     </section>
+    <script>${localEvidenceToolScript("write")}</script>
   `);
 }
 
 function shell(snapshot: Snapshot, current: "home" | "radar" | "reports" | "ask" | "write", depth: 0 | 1, title: string, body: string) {
   const prefix = depth === 0 ? "" : "../";
   const nav = [
-    ["home", "今日", `${prefix}index.html`],
+    ["home", snapshotIsStale(snapshot) ? "快照" : "今日", `${prefix}index.html`],
     ["radar", "雷达", `${prefix}radar/`],
     ["reports", "报告", `${prefix}reports/`],
     ["ask", "提问", `${prefix}ask/`],
@@ -651,6 +682,8 @@ function renderEventCard(event: SnapshotEvent) {
       ${rail("类别", labelize(event.category))}
       ${rail("时间", `${formatDate(event.first_seen_at)} 至 ${formatDate(event.latest_seen_at)}`)}
       ${rail("相关信号", String(event.related_item_ids.length))}
+      ${rail("产业影响", eventImpactNote(event))}
+      ${rail("观察点", eventWatchNote(event))}
       ${rail("评分说明", event.score_reason)}
     </dl>
     ${event.related_entities.length > 0 ? `<div class="pill-row">${event.related_entities.slice(0, 6).map((entity) => pill(entity, "neutral")).join("")}</div>` : ""}
@@ -672,6 +705,44 @@ function renderEventMini(event: SnapshotEvent) {
     <strong>${escapeHtml(event.canonical_title)}</strong>
     <span>${escapeHtml(`${event.source_count} 个来源 / ${event.related_item_ids.length} 条信号`)}</span>
   </article>`;
+}
+
+function eventImpactNote(event: SnapshotEvent) {
+  const text = `${event.canonical_title} ${event.summary_zh} ${event.category} ${event.source_families.join(" ")}`.toLowerCase();
+
+  if (/model|模型|api|context|benchmark|基准/.test(text)) {
+    return "可能影响模型选型、API 成本、能力评估或基准对比。";
+  }
+
+  if (/agent|智能体|codex|developer|tool|工具|workflow/.test(text)) {
+    return "可能影响开发者工作流、企业自动化落地和工具链迁移。";
+  }
+
+  if (/github|release|开源|repository|llama|transformers|semantic kernel/.test(text)) {
+    return "可能改变开源实现、部署兼容性或工程团队的升级节奏。";
+  }
+
+  if (/partner|partnership|合作|enterprise|business|融资|收购/.test(text)) {
+    return "可能影响企业采购、生态合作、渠道分发或竞争格局。";
+  }
+
+  if (/research|paper|arxiv|论文|研究/.test(text)) {
+    return "可能提供新的技术路线、评测方法或后续产品化信号。";
+  }
+
+  return "作为弱到中等强度产业信号，适合继续跟踪是否出现独立来源确认。";
+}
+
+function eventWatchNote(event: SnapshotEvent) {
+  if (event.source_count <= 1) {
+    return "等待第二来源、官方更新或社区复现实证后再扩大解读。";
+  }
+
+  if (event.source_families.length <= 1) {
+    return "继续观察是否有跨来源家族确认，避免同源转载放大。";
+  }
+
+  return "跟踪后续时间线、引用来源变化和相关实体的新动作。";
 }
 
 function renderEventTimelineRow(entry: SnapshotEvent["timeline"][number]) {
@@ -1166,6 +1237,55 @@ function formatNullablePercent(value: number | null) {
   return value === null ? "待补" : formatPercent(value);
 }
 
+function snapshotCuratedTitle(snapshot: Snapshot) {
+  return snapshotIsStale(snapshot) ? "行业精选快照" : "今日行业精选";
+}
+
+function snapshotWindowLabel(snapshot: Snapshot) {
+  return snapshotIsStale(snapshot) ? "这批公开快照" : "今天";
+}
+
+function snapshotPeriodLabel(snapshot: Snapshot) {
+  return snapshotIsStale(snapshot) ? "最近可见窗口" : "过去 24 小时";
+}
+
+function snapshotIsStale(snapshot: Snapshot) {
+  const ageDays = snapshotAgeDays(snapshot);
+  return ageDays === null || ageDays > 2;
+}
+
+function snapshotAgeDays(snapshot: Snapshot) {
+  const latest = snapshot.freshness?.latest_timestamp;
+  if (!latest) return null;
+
+  const latestDate = new Date(latest);
+  const generatedAt = snapshot.generated_at ? new Date(snapshot.generated_at) : new Date();
+  const now = Number.isNaN(generatedAt.getTime()) ? new Date() : generatedAt;
+
+  if (Number.isNaN(latestDate.getTime())) return null;
+  return Math.max(0, Math.ceil((now.getTime() - latestDate.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
+function freshnessAlert(snapshot: Snapshot, suffix = "") {
+  const latest = snapshot.freshness?.latest_timestamp;
+  const snapshotGeneratedAt = snapshot.generated_at ? new Date(snapshot.generated_at) : new Date();
+  const now = Number.isNaN(snapshotGeneratedAt.getTime()) ? new Date() : snapshotGeneratedAt;
+
+  if (!latest) {
+    const message = `当前公开证据没有可验证的新鲜度时间戳；请只把页面当作结构演示和历史证据检索。${suffix ? ` ${suffix}` : ""}`;
+    return `<section class="freshness-alert"><strong>数据新鲜度提示</strong><p>${escapeHtml(message)}</p></section>`;
+  }
+
+  const latestDate = new Date(latest);
+  if (Number.isNaN(latestDate.getTime())) return "";
+
+  const ageDays = snapshotAgeDays(snapshot) ?? Math.max(0, Math.ceil((now.getTime() - latestDate.getTime()) / (24 * 60 * 60 * 1000)));
+  if (ageDays <= 2) return "";
+
+  const message = `当前公开证据最新到 ${formatDate(latest)}，距快照生成时间约 ${ageDays} 天；本页不能代表今日实时 AI 行业覆盖。${suffix ? ` ${suffix}` : ""}`;
+  return `<section class="freshness-alert"><strong>数据新鲜度提示</strong><p>${escapeHtml(message)}</p></section>`;
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value) return "待补证据";
   const date = new Date(value);
@@ -1243,6 +1363,123 @@ for (const button of tabButtons) {
 `;
 }
 
+function localEvidenceToolScript(mode: "ask" | "write") {
+  return `
+(function () {
+  const toolMode = ${JSON.stringify(mode)};
+  const input = document.querySelector("#local-query-input");
+  const button = document.querySelector("#local-query-run");
+  const result = document.querySelector("#local-query-result");
+  if (!input || !button || !result) return;
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function textOf(event) {
+    return [
+      event.canonical_title,
+      event.summary_zh,
+      event.category,
+      event.event_score_label,
+      (event.source_families || []).join(" "),
+      (event.related_entities || []).join(" ")
+    ].join(" ").toLowerCase();
+  }
+
+  function scoreEvent(event, query) {
+    const q = query.toLowerCase();
+    let score = Number(event.event_score || 0);
+    const text = textOf(event);
+    for (const token of q.split(/\\s+/).filter(Boolean)) {
+      if (token.length >= 2 && text.includes(token)) score += 14;
+    }
+    if (/多源|确认|可信/.test(q) && Number(event.source_count || 0) > 1) score += 28;
+    if (/单一|单源|弱信号|可信度较低/.test(q) && Number(event.source_count || 0) === 1) score += 22;
+    if (/模型|model|llm|api|发布/.test(q) && /模型|model|llm|api|release|发布/i.test(text)) score += 18;
+    if (/agent|智能体|开发工具|工具/.test(q) && /agent|智能体|developer|tool|工具|coding/i.test(text)) score += 18;
+    if (/重要|排序|高优先级|精选/.test(q)) score += Number(event.event_score || 0) / 2;
+    return score;
+  }
+
+  function pickEvents(snapshot, query) {
+    const events = Array.isArray(snapshot.event_clusters) ? snapshot.event_clusters : [];
+    const curated = Array.isArray(snapshot.curated_events) ? snapshot.curated_events : [];
+    const merged = [];
+    const seen = new Set();
+    for (const event of curated.concat(events)) {
+      if (!event || seen.has(event.event_cluster_id)) continue;
+      seen.add(event.event_cluster_id);
+      merged.push(event);
+    }
+    return merged
+      .map((event) => ({ event, score: scoreEvent(event, query) }))
+      .sort((left, right) => right.score - left.score || Number(right.event.event_score || 0) - Number(left.event.event_score || 0))
+      .slice(0, 6)
+      .map((entry) => entry.event);
+  }
+
+  function citationHtml(event) {
+    return (event.citations || []).slice(0, 2).map((citation) =>
+      '<a href="' + escapeHtml(citation.url) + '">' + escapeHtml(citation.source_name) + '：' + escapeHtml(citation.title) + '</a>'
+    ).join("<br>");
+  }
+
+  function renderAsk(snapshot, query, events) {
+    const freshness = snapshot.freshness && snapshot.freshness.latest_timestamp ? snapshot.freshness.latest_timestamp : "待补证据";
+    return '<h3>本地证据回答</h3>' +
+      '<p>问题：' + escapeHtml(query) + '</p>' +
+      '<p>证据边界：仅基于当前公开快照，最新证据时间 ' + escapeHtml(freshness) + '；结果不是实时联网回答。</p>' +
+      '<ol>' + events.map((event) =>
+        '<li><strong>' + escapeHtml(event.canonical_title) + '</strong><p>' + escapeHtml(event.summary_zh) + '</p>' +
+        '<small>' + escapeHtml(event.event_score_label) + ' / 分数 ' + escapeHtml(event.event_score) + ' / ' + escapeHtml(event.source_count) + ' 个来源 / ' + escapeHtml((event.source_families || []).join("、")) + '</small>' +
+        '<div class="local-citations">' + citationHtml(event) + '</div></li>'
+      ).join("") + '</ol>';
+  }
+
+  function renderWrite(snapshot, query, events) {
+    const freshness = snapshot.freshness && snapshot.freshness.latest_timestamp ? snapshot.freshness.latest_timestamp : "待补证据";
+    return '<h3>写作提纲</h3>' +
+      '<p>需求：' + escapeHtml(query) + '</p>' +
+      '<p>开头判断：这是一份基于公开快照的事件观察，最新证据时间 ' + escapeHtml(freshness) + '，不能写成今日实时结论。</p>' +
+      '<ol>' + events.slice(0, 4).map((event) =>
+        '<li><strong>' + escapeHtml(event.canonical_title) + '</strong>' +
+        '<p>论点：' + escapeHtml(event.summary_zh) + '</p>' +
+        '<p>证据：' + escapeHtml(event.source_count) + ' 个来源，来源家族 ' + escapeHtml((event.source_families || []).join("、")) + '。</p>' +
+        '<p>边界：' + escapeHtml((event.caveats || ["仍需补充独立来源确认。"])[0]) + '</p></li>'
+      ).join("") + '</ol>' +
+      '<p>建议收束：把单源事件写成待跟踪信号，多源事件写成已观察到的产业变化。</p>';
+  }
+
+  async function run() {
+    const query = input.value.trim();
+    if (!query) {
+      result.innerHTML = '<p class="empty">先输入一个问题或写作需求。</p>';
+      return;
+    }
+    result.innerHTML = '<p class="note">正在读取公开快照...</p>';
+    try {
+      const response = await fetch("../data/radar-snapshot.json", { cache: "no-store" });
+      const snapshot = await response.json();
+      const events = pickEvents(snapshot, query);
+      result.innerHTML = events.length === 0
+        ? '<p class="empty">没有从公开快照中找到匹配事件。</p>'
+        : (toolMode === "write" ? renderWrite(snapshot, query, events) : renderAsk(snapshot, query, events));
+    } catch (error) {
+      result.innerHTML = '<p class="empty">公开快照读取失败，请稍后重试或直接打开 data/radar-snapshot.json。</p>';
+    }
+  }
+
+  button.addEventListener("click", run);
+})();
+`;
+}
+
 function stylesheet() {
   return `:root {
   --bg: #f7f8f5;
@@ -1268,6 +1505,8 @@ nav a, .button { border: 1px solid var(--line); border-radius: 6px; color: var(-
 nav a[aria-current="page"], .button.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
 main { display: grid; gap: 24px; padding-bottom: 42px; }
 .status-strip { display: grid; gap: 10px; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.freshness-alert { background: #fff8ed; border: 1px solid #f0c37b; border-radius: 8px; color: var(--caution); display: grid; gap: 4px; padding: 14px 16px; }
+.freshness-alert p { color: #7c3f09; }
 .mini-metric { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 4px; padding: 12px; }
 .mini-metric span { color: var(--muted); font-size: 12px; font-weight: 700; }
 .mini-metric strong { color: var(--ink); font-size: 18px; overflow-wrap: anywhere; }
@@ -1326,7 +1565,15 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .tag-block, .distribution { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .distribution section { border: 1px solid var(--line); border-radius: 8px; flex: 1 1 220px; padding: 12px; }
 .controls { display: grid; gap: 12px; grid-template-columns: 2fr repeat(5, minmax(130px, 1fr)); }
-input, select { border: 1px solid var(--line); border-radius: 6px; color: var(--ink); display: block; margin-top: 6px; padding: 9px 10px; width: 100%; }
+input, select, textarea { border: 1px solid var(--line); border-radius: 6px; color: var(--ink); display: block; margin-top: 6px; padding: 9px 10px; width: 100%; }
+textarea { font: inherit; line-height: 1.5; min-height: 120px; resize: vertical; }
+.interactive-tool { display: grid; gap: 12px; }
+.local-result { border-top: 1px solid var(--line); display: grid; gap: 10px; margin-top: 4px; padding-top: 14px; }
+.local-result ol { display: grid; gap: 12px; margin: 0; padding-left: 20px; }
+.local-result li { padding-left: 4px; }
+.local-result p { color: var(--muted); margin-top: 4px; }
+.local-result small { color: var(--muted); display: block; font-weight: 700; margin-top: 6px; }
+.local-citations { background: var(--soft); border: 1px solid var(--line); border-radius: 6px; display: grid; gap: 4px; margin-top: 8px; padding: 8px; }
 .source-link { border-top: 1px solid var(--line); display: block; font-weight: 700; margin-top: 12px; padding-top: 12px; }
 .citation-grid { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 14px; }
 .citation { border: 1px solid var(--line); border-radius: 8px; color: var(--ink); display: grid; gap: 4px; padding: 12px; }

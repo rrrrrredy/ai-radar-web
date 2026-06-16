@@ -4,7 +4,11 @@ import {
   loadPublicDataCompletenessSummary,
   type PublicDataCompletenessSummary
 } from "@/lib/data-completeness/public-summary";
-import { buildEventLayer, type PublicEventCluster } from "@/lib/events/clustering";
+import {
+  buildEventLayer,
+  filterPublicDisplayEventLayer,
+  type PublicEventCluster
+} from "@/lib/events/clustering";
 import { loadRadarFeed, type RadarFeed, itemEvidenceTimestamp } from "@/lib/radar/feed";
 import { loadReportWorkflowData } from "@/lib/reports/load-report-data";
 import type { ReportWorkflowDocument } from "@/lib/reports/types";
@@ -96,7 +100,7 @@ export async function loadProductDataSummary(): Promise<ProductDataSummary> {
     loadOperationalSummary(),
     loadPublicDataCompletenessSummary()
   ]);
-  const eventLayer = buildEventLayer(
+  const eventLayer = filterPublicDisplayEventLayer(buildEventLayer(
     feed.items.map((item) => ({
       categories: item.categories,
       collected_at: item.collected_at,
@@ -125,7 +129,7 @@ export async function loadProductDataSummary(): Promise<ProductDataSummary> {
       url: item.url,
       why_it_matters: item.why_it_matters
     }))
-  );
+  ));
   const reportsByType = new Map(reportData.reports.map((report) => [report.report_type, report]));
   const caveats = Array.from(new Set([...feed.caveats, ...reportData.warnings]));
   const warnings = Array.from(new Set([...operational.warnings, ...reportData.warnings]));
