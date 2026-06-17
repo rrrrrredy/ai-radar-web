@@ -216,7 +216,6 @@ export default async function RadarPage({
               defaultValue={filters.query}
               id="radar-filter-q"
               name="q"
-              placeholder="搜索标题、摘要、来源、标签"
               type="search"
             />
           </label>
