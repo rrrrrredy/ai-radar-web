@@ -19,11 +19,17 @@ export type PublicSignalQuality = {
 };
 
 const genericExactTitles = new Set([
+  "articles",
+  "stories",
+  "thoughts",
   "research",
   "news",
   "newsroom",
+  "ai at meta blog",
   "blog",
   "overview",
+  "essays",
+  "deep learning archives",
   "documentation",
   "docs",
   "home",
@@ -32,17 +38,28 @@ const genericExactTitles = new Set([
   "release notes",
   "releases",
   "changelog",
+  "the technium",
+  "benedict evans",
+  "andrej karpathy",
   "更新日志",
   "版本说明",
   "출시 노트"
 ]);
 
 const genericTitlePatterns = [
+  /^articles\s*[–-]/i,
+  /^essays(?:\s*[–—-]|$)/i,
+  /\barchives?\b/i,
+  /^category\s*:/i,
+  /^stories$/i,
+  /^thoughts$/i,
   /\brepository metadata\b/i,
   /\bwelcome to .*\bdocs\b/i,
   /\bwelcome to .*api docs\b/i,
   /\bapi docs\b/i,
   /\bgeneratecontent api\b/i,
+  /\|\s*substack$/i,
+  /\bsubstack\b/i,
   /\bchangelog\b/i,
   /\brelease notes\s*(?:\||$)/i,
   /출시 노트/i,
@@ -52,18 +69,25 @@ const genericTitlePatterns = [
 ];
 
 const listingSummaryPatterns = [
-  /页面|主页|中心|概述|链接|列表|展示了|提供.*链接/,
-  /homepage|landing page|overview|lists?|links?|directory|news hub|research page|documentation page/i,
+  /页面|主页|中心|概述|链接|列表|展示了|汇总|提供.*链接|个人博客|个人网站|博客主页|博客主要|博客首页|官方博客首页|文章列表|出版物|订阅者/,
+  /homepage|landing page|overview|lists?|links?|directory|news hub|research page|documentation page|personal blog|personal site|publication|subscriber|substack/i,
   /technical forum|free online access|published papers are available/i,
   /成立于\d{4}年|技术论坛|定期发布|已发表论文|在线免费获取|期刊首页|杂志首页/,
   /未完全抓取|无法提供具体更新细节/
 ];
 
 const genericUrlPatterns = [
+  /^https?:\/\/[^/?#]+\/?$/i,
   /\/research\/?$/i,
   /\/newsroom\/?$/i,
   /\/news\/?$/i,
   /\/blog\/?$/i,
+  /\/stories\/?$/i,
+  /\/articles\/?$/i,
+  /\/articles\.html$/i,
+  /\/archive\/?$/i,
+  /\/essays\/?$/i,
+  /\/category\/[^/?#]+\/?$/i,
   /\/docs\/?(overview)?\/?$/i,
   /\/docs\/overview\/?$/i,
   /^https?:\/\/(?:www\.)?jmlr\.org\/?$/i,
@@ -90,6 +114,8 @@ export function assessPublicSignalQuality(item: QualityInput): PublicSignalQuali
   let penalty = 0;
   let hardLowSignal = false;
 
+  const hasEventCue = eventCuePatterns.some((pattern) => pattern.test(`${title} ${url} ${summary}`));
+
   if (genericExactTitles.has(titleLower)) {
     penalty += 0.5;
     reasons.push("泛标题");
@@ -110,12 +136,15 @@ export function assessPublicSignalQuality(item: QualityInput): PublicSignalQuali
     reasons.push("更新日志目录页");
   }
 
-  if (genericUrlPatterns.some((pattern) => pattern.test(url))) {
+  const hasGenericUrl = genericUrlPatterns.some((pattern) => pattern.test(url));
+  const hasListingSummary = listingSummaryPatterns.some((pattern) => pattern.test(summary));
+
+  if (hasGenericUrl) {
     penalty += 0.3;
     reasons.push("URL 像首页、目录页或仓库首页");
   }
 
-  if (listingSummaryPatterns.some((pattern) => pattern.test(summary))) {
+  if (hasListingSummary) {
     penalty += 0.25;
     reasons.push("摘要像页面说明而不是事件");
   }
@@ -135,7 +164,26 @@ export function assessPublicSignalQuality(item: QualityInput): PublicSignalQuali
     reasons.push("证据粒度偏元数据");
   }
 
-  const hasEventCue = eventCuePatterns.some((pattern) => pattern.test(`${title} ${url} ${summary}`));
+  if (!hasEventCue && (genericTitlePatterns.some((pattern) => pattern.test(title)) || listingSummaryPatterns.some((pattern) => pattern.test(summary)))) {
+    hardLowSignal = true;
+    reasons.push("缺少明确事件动作");
+  }
+
+  if (!hasEventCue && isBareRootUrl(url)) {
+    hardLowSignal = true;
+    reasons.push("根域名入口页，不是事件");
+  }
+
+  if (hasGenericUrl && hasListingSummary) {
+    hardLowSignal = true;
+    reasons.push("源页面或目录页，不是事件");
+  }
+
+  if (/\bsubstack\b|出版物|订阅者/i.test(`${title} ${summary}`) && hasGenericUrl) {
+    hardLowSignal = true;
+    reasons.push("订阅源主页，不是事件");
+  }
+
   if (hasEventCue) {
     penalty -= 0.2;
   }
@@ -169,4 +217,14 @@ function clean(value: string) {
 
 function clamp(value: number) {
   return Math.max(0, Math.min(1, value));
+}
+
+function isBareRootUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    const path = parsed.pathname.replace(/\/+$/, "");
+    return parsed.protocol.startsWith("http") && path === "";
+  } catch {
+    return false;
+  }
 }

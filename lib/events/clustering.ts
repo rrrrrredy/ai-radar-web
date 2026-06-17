@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { assessPublicSignalQuality, publicSignalAdjustedScore } from "@/lib/radar/public-signal-quality";
+import { assessPublicSignalQuality, type PublicSignalQuality } from "@/lib/radar/public-signal-quality";
 import type { RetrievalLanguage } from "@/lib/retrieval/types";
 import type { RadarCategory, UnderstandingEntity, UnderstandingStatus } from "@/lib/understanding/types";
 
@@ -196,6 +196,12 @@ const knownEntityPatterns = [
   "苹果"
 ];
 
+const itemKeywordCache = new WeakMap<ClusterableRadarItem, string[]>();
+const itemEntityCache = new WeakMap<ClusterableRadarItem, string[]>();
+const itemStrongEntityCache = new WeakMap<ClusterableRadarItem, string[]>();
+const signalQualityCache = new WeakMap<ClusterableRadarItem, PublicSignalQuality>();
+const normalizedTextCache = new Map<string, string>();
+
 export function buildEventLayer(items: ClusterableRadarItem[]): PublicEventLayer {
   const publicItems = items
     .filter((item) => item.status === "included" || item.status === "needs_review")
@@ -209,9 +215,7 @@ export function buildEventLayer(items: ClusterableRadarItem[]): PublicEventLayer
       source_name: cluster.timeline.find((entry) => entry.item_id === radarItemId)?.source_name ?? "未知来源"
     }))
   );
-  const curatedEvents = ensureMultiSourceCurated(clusters
-    .filter((event) => event.event_score_label !== "噪音/低相关" && event.event_score >= 64)
-    .sort(compareCuratedEvents)).slice(0, 8);
+  const curatedEvents = selectCuratedEvents(clusters);
   const timeline = clusters
     .flatMap((event) =>
       event.timeline.map((entry) => ({
@@ -237,7 +241,7 @@ export function filterPublicDisplayEventLayer(layer: PublicEventLayer): PublicEv
   const events = layer.event_clusters.filter(isPublicDisplayEvent).sort(compareEvents);
   const eventIds = new Set(events.map((event) => event.event_cluster_id));
   const curated = layer.curated_events.filter((event) => eventIds.has(event.event_cluster_id));
-  const fallbackCurated = events.filter((event) => event.event_score >= 64).sort(compareCuratedEvents).slice(0, 8);
+  const fallbackCurated = selectCuratedEvents(events);
 
   return {
     curated_events: (curated.length > 0 ? curated : fallbackCurated).slice(0, 8),
@@ -249,7 +253,7 @@ export function filterPublicDisplayEventLayer(layer: PublicEventLayer): PublicEv
 }
 
 export function isPublicDisplayEvent(event: PublicEventCluster) {
-  return event.event_score_label !== "噪音/低相关" && event.event_score >= 45;
+  return event.event_score_label !== "噪音/低相关" && event.event_score >= 45 && !looksLikeSourcePageEvent(event);
 }
 
 function compareClusterInputItems(left: ClusterableRadarItem, right: ClusterableRadarItem) {
@@ -354,6 +358,10 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
     return 0;
   }
 
+  if (versionConflict) {
+    return 0;
+  }
+
   let score =
     titleOverlap * 0.34 +
     entityOverlap * 0.24 +
@@ -368,10 +376,6 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
 
   if (openSourceProjectConflict && titleOverlap < 0.78) {
     score -= 0.34;
-  }
-
-  if (versionConflict && titleOverlap < 0.9) {
-    score -= 0.36;
   }
 
   if (partnerConflict && titleOverlap < 0.86) {
@@ -444,6 +448,9 @@ function compareEvents(left: PublicEventCluster, right: PublicEventCluster) {
 }
 
 function compareCuratedEvents(left: PublicEventCluster, right: PublicEventCluster) {
+  const editorialDelta = editorialPriority(right) - editorialPriority(left);
+  if (editorialDelta !== 0) return editorialDelta;
+
   const scoreDelta = right.event_score - left.event_score;
   if (scoreDelta !== 0) return scoreDelta;
 
@@ -455,38 +462,114 @@ function compareCuratedEvents(left: PublicEventCluster, right: PublicEventCluste
     left.canonical_title.localeCompare(right.canonical_title, "zh-CN");
 }
 
-function ensureMultiSourceCurated(events: PublicEventCluster[]) {
-  const selected = events.slice(0, 8);
-  if (selected.some((event) => event.source_count > 1)) {
-    return events;
+function selectCuratedEvents(events: PublicEventCluster[]) {
+  const eligible = events
+    .filter(isCuratedEventCandidate)
+    .sort(compareCuratedEvents);
+  const selected: PublicEventCluster[] = [];
+
+  for (const event of eligible.filter((candidate) => candidate.source_count > 1)) {
+    addCurated(selected, event);
   }
 
-  const multiSource = events.find((event) => event.source_count > 1);
-  if (!multiSource || selected.length === 0) {
-    return events;
+  for (const event of eligible.filter((candidate) => candidate.source_count === 1 && editorialPriority(candidate) >= 3)) {
+    addCurated(selected, event);
   }
 
-  return [...selected.slice(0, -1), multiSource, ...events.filter((event) => !selected.includes(event) && event.event_cluster_id !== multiSource.event_cluster_id)];
+  for (const event of eligible) {
+    addCurated(selected, event);
+  }
+
+  return selected.slice(0, 8);
+}
+
+function addCurated(selected: PublicEventCluster[], event: PublicEventCluster) {
+  if (selected.length >= 8 || selected.some((candidate) => candidate.event_cluster_id === event.event_cluster_id)) {
+    return;
+  }
+
+  selected.push(event);
+}
+
+function isCuratedEventCandidate(event: PublicEventCluster) {
+  if (!isPublicDisplayEvent(event) || event.event_score < 62 || looksLikeSourcePageEvent(event)) {
+    return false;
+  }
+
+  if (event.source_count <= 1 && event.event_score < 70) {
+    return false;
+  }
+
+  if (event.source_count <= 1 && event.source_families.length <= 1 && event.source_families[0] === "研究订阅" && event.event_score < 74) {
+    return false;
+  }
+
+  return editorialPriority(event) > 0;
+}
+
+function editorialPriority(event: PublicEventCluster) {
+  const text = `${event.canonical_title} ${event.summary_zh} ${event.category} ${event.related_entities.join(" ")} ${event.source_families.join(" ")}`.toLowerCase();
+  let priority = 0;
+
+  if (event.source_count > 1) priority += 4;
+  if (event.source_families.length > 1) priority += 2;
+  if (/official|公司\/实验室/.test(`${event.source_tier_max} ${event.source_families.join(" ")}`.toLowerCase())) priority += 2;
+  if (/model_release|product_update|tooling|infrastructure|benchmark|safety|policy|regulation|business|funding|open_source/.test(event.category)) priority += 3;
+  if (/openai|anthropic|google|deepmind|meta|llama|deepseek|qwen|kimi|microsoft|nvidia|hugging face|github|copilot|mistral|gemini|claude|gpt|codex/.test(text)) priority += 2;
+  if (/发布|推出|上线|合作|融资|收购|开源|基准|安全|监管|release|launch|partner|funding|acquire|benchmark|agent|tool|api/.test(text)) priority += 2;
+  if (event.source_families.length === 1 && event.source_families[0] === "研究订阅") priority -= 2;
+  if (event.caveats.some((caveat) => caveat.includes("单条公开信号"))) priority -= 1;
+
+  return priority;
+}
+
+function looksLikeSourcePageEvent(event: PublicEventCluster) {
+  const text = `${event.canonical_title} ${event.summary_zh} ${event.score_reason} ${event.citations.map((citation) => `${citation.title} ${citation.source_name}`).join(" ")}`.toLowerCase();
+  const hasBareRootCitation = event.citations.some((citation) => isBareRootUrl(citation.url));
+
+  if (hasBareRootCitation && !/发布|推出|上线|合作|融资|收购|开源|基准|安全|监管|release|launch|partner|funding|acquire|benchmark|api|sdk|model|agent|tool/i.test(text)) {
+    return true;
+  }
+
+  return /\b(homepage|landing page|substack|publication|subscriber|articles|stories|thoughts|newsroom|documentation|docs|overview|repository metadata)\b/.test(text) ||
+    /主页|目录页|入口页|出版物|订阅者|文章列表|个人博客|个人网站|博客主要|仓库元数据|文档入口/.test(text);
 }
 
 function compareClusterItems(left: ClusterableRadarItem, right: ClusterableRadarItem) {
-  return publicSignalAdjustedScore(right.scores.overall, right) - publicSignalAdjustedScore(left.scores.overall, left) ||
+  return eventAdjustedScore(right) - eventAdjustedScore(left) ||
     right.scores.importance - left.scores.importance ||
     Date.parse(itemTimestamp(right)) - Date.parse(itemTimestamp(left)) ||
     left.title.localeCompare(right.title, "zh-CN");
 }
 
+function eventAdjustedScore(item: ClusterableRadarItem) {
+  return Math.max(0, item.scores.overall - signalQuality(item).penalty * 0.45);
+}
+
+function signalQuality(item: ClusterableRadarItem) {
+  const cached = signalQualityCache.get(item);
+  if (cached) {
+    return cached;
+  }
+
+  const quality = assessPublicSignalQuality(item);
+  signalQualityCache.set(item, quality);
+  return quality;
+}
+
 function eventScore(items: ClusterableRadarItem[], sourceFamilies: string[], sourceNames: string[]) {
   const average = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
+  const qualities = items.map(signalQuality);
   const base = average(items.map((item) => item.scores.overall || item.scores.importance || 0.45)) * 52;
   const aiRelevance = average(items.map((item) => item.scores.ai_relevance || 0.45)) * 12;
   const credibility = average(items.map((item) => item.scores.credibility || item.confidence || 0.45)) * 10;
   const novelty = average(items.map((item) => item.scores.novelty || 0.4)) * 8;
   const diversityBonus = Math.min(12, Math.max(0, sourceFamilies.length - 1) * 5 + Math.max(0, sourceNames.length - 1) * 2);
   const highTierBonus = items.some((item) => /official|tier[_ -]?1|high|primary/i.test(item.source_tier)) ? 6 : 0;
+  const hasHighTierSource = highTierBonus > 0;
   const freshnessBonus = Math.max(...items.map(freshnessBonusForItem), 0);
-  const averageQualityPenalty = average(items.map((item) => assessPublicSignalQuality(item).penalty)) * 40;
-  const allLowEventSignals = items.every((item) => assessPublicSignalQuality(item).isLowEventSignal);
+  const averageQualityPenalty = average(qualities.map((quality) => quality.penalty)) * 40;
+  const allLowEventSignals = qualities.every((quality) => quality.isLowEventSignal);
   const importantCategoryBonus = items.some((item) =>
     item.categories.some((category) =>
       ["model_release", "product_update", "tooling", "benchmark", "infrastructure", "safety", "policy", "business", "open_source", "research"].includes(category)
@@ -494,8 +577,13 @@ function eventScore(items: ClusterableRadarItem[], sourceFamilies: string[], sou
   )
     ? 5
     : 0;
-  const rawScore = base + aiRelevance + credibility + novelty + diversityBonus + highTierBonus + freshnessBonus + importantCategoryBonus - averageQualityPenalty;
-  const cappedScore = allLowEventSignals ? Math.min(rawScore, 44) : rawScore;
+  const singleSourcePenalty = sourceNames.length <= 1 ? 8 : 0;
+  const singleFamilyPenalty = sourceFamilies.length <= 1 ? 3 : 0;
+  const singleResearchPenalty = sourceNames.length <= 1 && sourceFamilies.length === 1 && sourceFamilies[0] === "研究订阅" ? 7 : 0;
+  const rawScore = base + aiRelevance + credibility + novelty + diversityBonus + highTierBonus + freshnessBonus + importantCategoryBonus - averageQualityPenalty - singleSourcePenalty - singleFamilyPenalty - singleResearchPenalty;
+  const singleSourceCap = sourceNames.length <= 1 ? (hasHighTierSource ? 76 : 70) : 100;
+  const researchCap = sourceNames.length <= 1 && sourceFamilies.length === 1 && sourceFamilies[0] === "研究订阅" ? 68 : 100;
+  const cappedScore = allLowEventSignals ? Math.min(rawScore, 44) : Math.min(rawScore, singleSourceCap, researchCap);
 
   return Math.max(0, Math.min(100, Math.round(cappedScore)));
 }
@@ -517,7 +605,7 @@ function eventScoreLabel(score: number): EventScoreLabel {
 }
 
 function scoreReason(score: number, sourceCount: number, sourceFamilies: string[], primary: ClusterableRadarItem) {
-  const quality = assessPublicSignalQuality(primary);
+  const quality = signalQuality(primary);
   const pieces = [
     `综合分 ${score}`,
     sourceCount > 1 ? `${sourceCount} 个来源确认` : "单一来源，需继续观察",
@@ -600,20 +688,41 @@ function dominantCategory(items: ClusterableRadarItem[]) {
 }
 
 function itemKeywords(item: ClusterableRadarItem) {
+  const cached = itemKeywordCache.get(item);
+  if (cached) {
+    return cached;
+  }
+
   const text = normalizeText(`${item.title} ${item.summary_zh ?? ""} ${item.summary_en ?? ""} ${item.tags.join(" ")}`);
-  return unique(text.split(/\s+/).filter((token) => token.length >= 3 && !stopwords.has(token))).slice(0, 20);
+  const keywords = unique(text.split(/\s+/).filter((token) => token.length >= 3 && !stopwords.has(token))).slice(0, 20);
+  itemKeywordCache.set(item, keywords);
+  return keywords;
 }
 
 function itemEntities(item: ClusterableRadarItem) {
+  const cached = itemEntityCache.get(item);
+  if (cached) {
+    return cached;
+  }
+
   const explicit = (item.entities ?? []).map((entity) => normalizeEntity(entity.name)).filter(Boolean);
   const inferred = knownEntityPatterns.filter((entity) =>
     normalizeText(`${item.title} ${item.summary_zh ?? ""} ${item.summary_en ?? ""}`).includes(normalizeEntity(entity))
   );
-  return unique([...explicit, ...inferred]);
+  const entities = unique([...explicit, ...inferred]);
+  itemEntityCache.set(item, entities);
+  return entities;
 }
 
 function strongItemEntities(item: ClusterableRadarItem) {
-  return itemEntities(item).filter((entity) => !genericEntityTerms.has(entity));
+  const cached = itemStrongEntityCache.get(item);
+  if (cached) {
+    return cached;
+  }
+
+  const entities = itemEntities(item).filter((entity) => !genericEntityTerms.has(entity));
+  itemStrongEntityCache.set(item, entities);
+  return entities;
 }
 
 function titleSimilarity(left: string, right: string) {
@@ -744,18 +853,38 @@ function safeDomain(rawUrl: string) {
   }
 }
 
+function isBareRootUrl(rawUrl: string) {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.protocol.startsWith("http") && parsed.pathname.replace(/\/+$/, "") === "";
+  } catch {
+    return false;
+  }
+}
+
 function normalizeEntity(value: string) {
   return normalizeText(value).trim();
 }
 
 function normalizeText(value: string) {
-  return value
+  const cached = normalizedTextCache.get(value);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const normalized = value
     .toLowerCase()
     .replace(/https?:\/\/\S+/g, " ")
     .replace(/[\u2018\u2019\u201c\u201d]/g, "")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+  if (normalizedTextCache.size > 5000) {
+    normalizedTextCache.clear();
+  }
+  normalizedTextCache.set(value, normalized);
+  return normalized;
 }
 
 function unique<T>(items: T[]) {

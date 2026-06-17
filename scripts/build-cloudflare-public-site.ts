@@ -283,6 +283,7 @@ async function writeSite(snapshot: Snapshot) {
 function renderHome(snapshot: Snapshot) {
   const latestReports = latestReportsByType(snapshot);
   const curated = snapshot.curated_events.slice(0, 8);
+  const leadEvents = curated.slice(0, 5);
   const title = snapshotCuratedTitle(snapshot);
   const description = snapshotIsStale(snapshot)
     ? "这批公开证据不是今日实时覆盖；页面按事件合并、来源健康、时间线、引用和局限展示最近可见窗口。"
@@ -299,15 +300,16 @@ function renderHome(snapshot: Snapshot) {
     </section>
     ${freshnessAlert(snapshot)}
 
-    <section class="hero event-hero">
-      <div>
+    <section class="home-desk">
+      <div class="headline-panel">
         <div class="pill-row">
-          ${pill("Cloudflare 主站", "success")}
-          ${pill("事件雷达", "evidence")}
+          ${pill(snapshotIsStale(snapshot) ? "非今日快照" : "今日雷达", snapshotIsStale(snapshot) ? "caution" : "success")}
+          ${pill("事件优先", "evidence")}
           ${pill(sourceLabel(snapshot.source.data_source), "neutral")}
         </div>
         <h1>${escapeHtml(title)}</h1>
         <p class="lead">${escapeHtml(description)}</p>
+        <div class="featured-list">${leadEvents.map(renderFeaturedEventCard).join("") || empty("暂无可展示精选事件。")}</div>
         <div class="actions">
           <a class="button primary" href="radar/">打开事件雷达</a>
           <a class="button" href="reports/">查看报告质量</a>
@@ -315,7 +317,7 @@ function renderHome(snapshot: Snapshot) {
           <a class="button" href="write/">生成行业观察</a>
         </div>
       </div>
-      <aside class="panel pulse-panel">
+      <aside class="ops-console">
         <h2>信息源健康摘要</h2>
         <dl class="rail">
           ${rail("事件/信号", `${snapshot.event_count} / ${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items}`)}
@@ -324,12 +326,16 @@ function renderHome(snapshot: Snapshot) {
           ${rail("失败类别", formatDistribution(snapshot.failure_family_summary))}
           ${rail("数据覆盖", `公开来源 ${snapshot.coverage.sources_with_public_items ?? 0} / ${snapshot.coverage.sources_total}`)}
         </dl>
+        <div class="quality-note">
+          <strong>${escapeHtml(snapshot.source.local_data_used ? "当前使用安全快照" : "当前使用公开证据库")}</strong>
+          <p>${escapeHtml(snapshot.source.local_data_used ? "Supabase 当前不可读，页面复用上一版 public-safe 快照；单源事件均按待确认处理。" : "公开证据库读取正常，仍只展示 public-safe 字段。")}</p>
+        </div>
       </aside>
     </section>
 
     <section class="panel">
       <div class="section-heading">
-          <h2>${escapeHtml(title)}</h2>
+        <h2>全部行业精选</h2>
         <a href="radar/">查看全部事件</a>
       </div>
       <div class="event-grid">${curated.map(renderEventCard).join("") || empty("暂无可展示事件。")}</div>
@@ -413,7 +419,7 @@ function renderRadar(snapshot: Snapshot) {
         ${tabButton("health", "来源健康")}
       </div>
       <div class="controls" role="search">
-        <label>搜索 <input id="radar-search" type="search" placeholder="标题、来源、类别、标签"></label>
+        <label>搜索 <input id="radar-search" type="search" aria-label="按标题、来源、类别、标签搜索"></label>
         <label>状态 <select id="radar-status">${option("all", "全部状态")}${["included", "needs_review", "excluded", "failed"].map((status) => option(status, statusLabel(status))).join("")}</select></label>
         <label>类别 <select id="radar-category">${option("all", "全部类别")}${snapshot.top_categories.map((entry) => option(entry.label, entry.label)).join("")}</select></label>
         <label>来源家族 <select id="radar-family">${option("all", "全部家族")}${uniqueStrings([...Object.keys(families), ...eventFamilies]).map((family) => option(family, family)).join("")}</select></label>
@@ -547,7 +553,7 @@ function renderAsk(snapshot: Snapshot) {
     <section class="panel interactive-tool">
       <h2>本地事件查询</h2>
       <p class="note">该工具只读取公开快照 JSON，在浏览器内返回相关事件和引用；不会联网调用 DeepSeek，也不会产生服务端写入。</p>
-      <textarea id="local-query-input" rows="4" placeholder="输入问题，例如：哪些事件只有单一来源，可信度较低？">${escapeHtml(examples[0] ?? "")}</textarea>
+      <textarea id="local-query-input" rows="4" aria-label="输入问题">${escapeHtml(examples[0] ?? "")}</textarea>
       <div class="actions"><button class="button primary" id="local-query-run" type="button">查询公开事件</button></div>
       <div class="local-result" id="local-query-result" aria-live="polite"></div>
     </section>
@@ -610,7 +616,7 @@ function renderWrite(snapshot: Snapshot) {
     <section class="panel interactive-tool">
       <h2>本地写作生成</h2>
       <p class="note">该工具基于公开事件快照生成提纲和证据边界；Cloudflare 静态页不调用私有 API。</p>
-      <textarea id="local-query-input" rows="4" placeholder="输入写作需求，例如：找出适合写成深度分析的 3 个事件">${escapeHtml(prompts[0] ?? "")}</textarea>
+      <textarea id="local-query-input" rows="4" aria-label="输入写作需求">${escapeHtml(prompts[0] ?? "")}</textarea>
       <div class="actions"><button class="button primary" id="local-query-run" type="button">生成写作提纲</button></div>
       <div class="local-result" id="local-query-result" aria-live="polite"></div>
     </section>
@@ -696,6 +702,28 @@ function renderEventCard(event: SnapshotEvent) {
       <div class="citation-grid">${event.citations.map(renderEventCitation).join("")}</div>
     </details>
     ${event.caveats.length > 0 ? `<div class="event-caveats">${noteList(event.caveats)}</div>` : ""}
+  </article>`;
+}
+
+function renderFeaturedEventCard(event: SnapshotEvent) {
+  return `<article class="featured-card">
+    <div class="featured-main">
+      <div class="pill-row">
+        ${pill(event.event_score_label, eventScoreTone(event.event_score_label))}
+        ${pill(`${event.source_count} 个来源`, event.source_count > 1 ? "success" : "caution")}
+        ${event.source_families.slice(0, 2).map((family) => pill(family, "neutral")).join("")}
+      </div>
+      <h2>${escapeHtml(event.canonical_title)}</h2>
+      <p>${escapeHtml(publicText(event.summary_zh))}</p>
+    </div>
+    <aside>
+      <dl class="rail compact-rail">
+        ${rail("分数", String(event.event_score))}
+        ${rail("最新", formatDate(event.latest_seen_at))}
+        ${rail("引用", String(event.citations.length))}
+      </dl>
+      ${event.citations[0] ? `<a class="source-link" href="${escapeAttr(event.citations[0].url)}">${escapeHtml(event.citations[0].source_name)}</a>` : ""}
+    </aside>
   </article>`;
 }
 
@@ -1482,15 +1510,16 @@ function localEvidenceToolScript(mode: "ask" | "write") {
 
 function stylesheet() {
   return `:root {
-  --bg: #f7f8f5;
-  --ink: #10201c;
-  --muted: #5d6b66;
-  --line: #d9dfda;
+  --bg: #f5f7fb;
+  --ink: #111827;
+  --muted: #5b6472;
+  --line: #d9e0ea;
   --panel: #ffffff;
-  --soft: #eef4f1;
+  --soft: #eef3f8;
   --evidence: #0f766e;
-  --success: #166534;
-  --caution: #b45309;
+  --success: #18703e;
+  --caution: #a15c07;
+  --shadow: 0 14px 38px rgba(15, 23, 42, 0.08);
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font-family: Arial, Helvetica, sans-serif; line-height: 1.5; }
@@ -1499,7 +1528,7 @@ a:hover { text-decoration: underline; }
 .site-header, .site-footer, main { margin: 0 auto; max-width: 1180px; padding: 0 20px; }
 .site-header { align-items: center; display: flex; gap: 20px; justify-content: space-between; padding-bottom: 20px; padding-top: 20px; }
 .brand { align-items: center; color: var(--ink); display: inline-flex; font-weight: 700; gap: 10px; }
-.brand-mark { background: var(--evidence); border-radius: 6px; display: inline-block; height: 26px; width: 26px; }
+.brand-mark { background: linear-gradient(135deg, #0f766e, #2563eb); border-radius: 6px; display: inline-block; height: 26px; width: 26px; }
 nav, .actions, .pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
 nav a, .button { border: 1px solid var(--line); border-radius: 6px; color: var(--ink); display: inline-flex; font-size: 14px; font-weight: 700; padding: 9px 12px; }
 nav a[aria-current="page"], .button.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
@@ -1513,6 +1542,18 @@ main { display: grid; gap: 24px; padding-bottom: 42px; }
 .hero, .page-heading { border-bottom: 1px solid var(--line); display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) 400px; padding: 24px 0 32px; }
 .page-heading { grid-template-columns: 1fr; }
 .event-hero { align-items: stretch; }
+.home-desk { align-items: stretch; display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr) 360px; }
+.headline-panel, .ops-console { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 22px; }
+.headline-panel { display: grid; gap: 16px; }
+.ops-console { align-content: start; display: grid; gap: 16px; }
+.featured-list { display: grid; gap: 10px; margin-top: 2px; }
+.featured-card { background: #fbfdff; border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) 190px; padding: 14px; }
+.featured-card h2 { font-size: 18px; line-height: 1.35; }
+.featured-card p { color: var(--muted); margin-top: 6px; }
+.featured-card aside { border-left: 1px solid var(--line); padding-left: 14px; }
+.compact-rail { grid-template-columns: 64px minmax(0, 1fr); }
+.quality-note { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.quality-note p { color: var(--muted); margin-top: 4px; }
 h1, h2, h3, p { margin: 0; }
 h1 { font-size: clamp(34px, 5vw, 56px); letter-spacing: 0; line-height: 1.05; margin-top: 14px; }
 h2 { font-size: 22px; }
@@ -1587,7 +1628,8 @@ textarea { font: inherit; line-height: 1.5; min-height: 120px; resize: vertical;
 .empty { border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); padding: 16px; }
 .site-footer { align-items: center; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; padding-bottom: 26px; padding-top: 20px; }
 @media (max-width: 880px) {
-  .status-strip, .hero, .grid.two, .radar-layout, .compact-row, .radar-row, .event-grid, .event-mini, .timeline-row { grid-template-columns: 1fr; }
+  .status-strip, .hero, .home-desk, .featured-card, .grid.two, .radar-layout, .compact-row, .radar-row, .event-grid, .event-mini, .timeline-row { grid-template-columns: 1fr; }
+  .featured-card aside { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; padding-top: 12px; }
   .controls { grid-template-columns: 1fr; }
   .citation-grid { grid-template-columns: 1fr; }
   .site-header { align-items: flex-start; flex-direction: column; }
