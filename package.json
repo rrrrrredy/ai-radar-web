@@ -56,7 +56,7 @@
     "mirror:snapshot": "tsx scripts/export-public-snapshot.ts",
     "mirror:build": "npm run mirror:snapshot && tsx scripts/build-github-pages-mirror.ts",
     "check:deployment": "npm run lint && npm run typecheck && npm run validate:data && npm run sensitive:scan && npm run build",
-    "build": "next build"
+    "build": "next build && npm run cloudflare:build"
   },
   "dependencies": {
     "@supabase/ssr": "^0.7.0",

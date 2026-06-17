@@ -126,6 +126,13 @@ npm run cloudflare:build
 npx wrangler pages deploy dist/cloudflare-pages --project-name=ai-industry-radar --branch=main
 ```
 
+Cloudflare Git integration:
+
+- `wrangler.toml` is committed as the Pages project source of truth.
+- `pages_build_output_dir` is `dist/cloudflare-pages`.
+- `npm run build` runs both `next build` and `npm run cloudflare:build`, so a Cloudflare Git build from `main` produces the same public static output as the manual Wrangler deploy path.
+- Manual Wrangler deploy remains the preferred recovery path when the dashboard build cache or Git integration lags behind the reviewed local build.
+
 ## What Is Not Automated
 
 - No scheduled write workflow.

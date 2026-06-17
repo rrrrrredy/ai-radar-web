@@ -94,6 +94,8 @@ Manual workflow:
 
 It is `workflow_dispatch` only. There is no schedule. Inputs support mock/live, persist true/false, source limit, chunk size, max items per source, Cloudflare deploy true/false, report generation true/false, and event clustering true/false. The workflow uploads a safe run summary artifact.
 
+Cloudflare Pages build configuration is committed in `wrangler.toml`. The output directory is `dist/cloudflare-pages`, and `npm run build` now produces both the Next.js build and the Cloudflare static public site so Git-based Cloudflare deployments cannot silently publish a Next-only output.
+
 ## Safety
 
 - Supabase writes were not run in this recovery pass.
