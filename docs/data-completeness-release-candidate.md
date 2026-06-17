@@ -1,10 +1,12 @@
 # Data Completeness Release Candidate
 
-Generated: 2026-05-26T03:59:43.965Z
+Generated: 2026-06-17T03:57:11.281Z
 
-## 2026-06-16 Follow-up Status
+## 2026-06-17 Follow-up Status
 
-The ledger below remains the latest successful audited source-completeness run. During the final release-candidate recovery pass, the configured Supabase project `phurrofgzqvawhookqbv` was inactive and the project host resolved as NXDOMAIN/ENOTFOUND, so a new live activation/persist cycle could not be run without risking fabricated coverage. Cloudflare production continues to serve the previous public-safe snapshot with 183 public radar items, 159 event clusters, and 22 reports.
+The ledger below remains the latest persisted source-completeness audit baseline. During the final release-candidate recovery pass, the configured Supabase project host was unavailable to the runner, so no Supabase persistence was attempted.
+
+Cloudflare production snapshot is now rebuilt from the previous public-safe evidence plus completed live DeepSeek activation chunks under `data/activation/runs`. The exporter filters low-event source pages and exposes 203 public radar signals, 200 public event clusters, and 22 report snapshots.
 
 ## Gate Summary
 
@@ -18,7 +20,8 @@ The ledger below remains the latest successful audited source-completeness run. 
 - Sources with public visible items: 62
 - Raw items: 205
 - Radar items: 201
-- Public radar items: 183
+- Public radar items in persisted audit baseline: 183
+- Public radar items in current Cloudflare snapshot: 203
 
 ## Conversion Rates
 

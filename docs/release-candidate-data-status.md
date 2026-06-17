@@ -1,63 +1,70 @@
 # Release Candidate Data Status
 
-Generated: 2026-05-26
-
-## 2026-06-16 Follow-up Status
-
-- The persisted counts below are from the last successful controlled activation and report write on 2026-05-26.
-- The configured Supabase project `phurrofgzqvawhookqbv` was reported inactive and its project host resolved as NXDOMAIN/ENOTFOUND during the release-candidate recovery pass, so no fresh Supabase read/write, live activation persistence, or report-candidate persistence was attempted.
-- Cloudflare production uses the previous public-safe snapshot, sanitized for public labels and private-field removal. The minimum 180 public-item gate remains met; the preferred 200 public-item target remains blocked until Supabase is reactivated and source failures are repaired.
+Generated: 2026-06-17
 
 ## What Completed
 
-- Resumable live activation ran against 86 automated-eligible sources.
-- 18 chunks completed and 18 chunks were persisted.
-- DeepSeek understanding ran in bounded live mode for 296 calls.
-- Supabase persistence wrote only controlled source/raw/radar/entity/score/run rows.
-- Daily and weekly report candidates were regenerated and persisted through the report candidate write gate.
-- Data completeness JSON was generated at `data/reports/data-completeness.latest.json` and is ignored.
+- Live DeepSeek resumable activation ran in bounded chunks.
+- Additional targeted live runs were executed for high-quality sources:
+  - OpenAI News + arXiv cs.AI
+  - arXiv cs.CL
+  - arXiv cs.CV
+  - arXiv cs.LG
+- Cloudflare snapshot export now merges completed live activation chunks from `data/activation/runs`.
+- Public snapshot filtering removes homepages, archive pages, source directories, Substack/publication landing pages, repository metadata pages, docs entry pages, and generic category pages.
+- Event clustering is regenerated from the filtered public-safe snapshot.
 
-## Current Counts
+## Current Public Snapshot
 
-- sources: 312
+| metric | count |
+| --- | ---: |
+| public radar signals | 203 |
+| public event clusters | 200 |
+| event cluster item links | 201 |
+| curated events | 8 |
+| report snapshots | 22 |
+| latest public evidence timestamp | 2026-06-17T03:57:11.281Z |
+
+Target status:
+
+- preferred 200 public items: yes
+- minimum 180 public items: yes
+
+## Source Completeness
+
+Persisted/source-audit baseline remains:
+
+- sources total: 312
 - automated eligible: 86
 - attempted: 86
 - fetched: 62
 - failed: 24
 - blocked/manual: 226
-- raw_items: 205
-- radar_items: 201
-- public_radar_items: 183
-- included / needs_review / excluded / failed: 176 / 9 / 16 / 0
+- source health failure families: timeout 5, rate_limit 16, 403 4, low_relevance_excluded 16
 
-## Target Status
+Known blockers:
 
-- preferred 200 public items: no
-- minimum 180 public items: yes
-
-Blockers for 200:
-
-- too many manual/blocked sources: 226
-- failed automated sources: 24
-- GitHub unauthenticated rate limits
-- 403/timeout fetch failures
-- low relevance exclusions: 16
-- public view gaps: 18, all from excluded rows or source risk flags
-
-## Failure Families
-
-- low_relevance_excluded: 16
-- rate_limit: 16
-- timeout: 5
-- 403: 4
+- Supabase host is unavailable to this runner, so fresh DB public reads and persistence were not available.
+- GitHub API sources can hit unauthenticated rate limits without `GITHUB_TOKEN`.
+- Many configured sources are manual/blocked or produce only source pages instead of event-level URLs.
+- X and WeChat are intentionally not crawled automatically.
 
 ## Conversion
 
-- source to raw coverage: 90.7%
-- raw to radar conversion: 98.0%
-- radar to public visibility: 91.0%
-- public visible sources / total configured sources: 19.9%
+The Cloudflare public snapshot is now based on filtered public evidence rather than raw Supabase counts:
+
+- raw to radar conversion in successful targeted runs: 100% for the latest arXiv/OpenAI chunks
+- radar to public snapshot visibility: filtered by public event quality
+- low-event source pages are intentionally excluded even when DeepSeek scored them as AI-related
+
+## Report Gates
+
+- Daily quality gate: passed
+- Weekly quality gate: passed
+- Daily remains `needs_review` until editorial review, but it is not presented as a complete published report.
 
 ## Safety
 
-The audit script did not run writes. Actual writes were limited to the explicit activation/report candidate steps with process-level `ENABLE_SUPABASE_WRITES=true`.
+- This pass did not run Supabase writes.
+- Generated activation checkpoints/chunks remain ignored operational artifacts.
+- Cloudflare JSON excludes `raw_text`, `raw_metadata`, `model_metadata`, provider payloads, secrets, private notes, and operational logs.

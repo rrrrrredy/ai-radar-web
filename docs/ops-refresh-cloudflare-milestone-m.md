@@ -139,4 +139,14 @@ npx wrangler pages deploy dist/cloudflare-pages --project-name=ai-industry-radar
 
 ## Final RC Run
 
-The 2026-05-26 final RC run persisted 183 public radar rows, 205 raw items, 201 radar items, 159 public event clusters, and 22 report candidates. The latest daily and weekly candidates both passed quality gates. The run met the 180-row minimum but did not reach the preferred 200+ target because the remaining automated-safe expansion was limited by 226 manual/blocked sources, 24 failed automated sources, rate limits, timeout/403 failures, and 16 low-relevance exclusions.
+The 2026-06-17 recovery run used controlled live DeepSeek activation chunks and a public-safe Cloudflare snapshot merge. Supabase was not written because the configured project host was unavailable from the runner.
+
+Current Cloudflare snapshot:
+
+- 203 public radar rows
+- 200 public event clusters
+- 22 report snapshots
+- daily and weekly quality gates passed
+- preferred 200-row public target met
+
+The remaining operating risks are source quality and availability, not UI wiring: many configured sources are manual/blocked, GitHub API sources require authenticated rate limits for reliable release coverage, and several HTML sources only expose landing/category/archive pages unless source-specific parsers are added.

@@ -1,5 +1,7 @@
 import "@/lib/config/load-cli-env";
 
+import dns from "node:dns/promises";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -11,12 +13,14 @@ import {
 } from "@/lib/data-completeness/public-summary";
 import {
   buildEventLayer,
+  filterPublicDisplayEventLayer,
   type PublicEventLayer,
   type PublicEventCluster,
   type PublicEventClusterItem,
   type PublicTimelineEntry
 } from "@/lib/events/clustering";
 import { buildRadarFeed } from "@/lib/radar/feed";
+import { assessPublicSignalQuality } from "@/lib/radar/public-signal-quality";
 import { loadRadarItems } from "@/lib/retrieval/load-radar-items";
 import type {
   RetrievalDataSource,
@@ -31,6 +35,7 @@ import {
 import type { ReportPreviewType, ReportQualityGate } from "@/lib/reports/types";
 import { getSupabaseServerReadClient } from "@/lib/supabase/server-read";
 import { getSupabaseServiceClient, getSupabaseServiceStatus } from "@/lib/supabase/service";
+import { getSupabasePublicConfig } from "@/lib/config";
 import { RADAR_CATEGORIES, type RadarCategory, type UnderstandingStatus } from "@/lib/understanding/types";
 
 const cloudflareUrl = "https://ai-industry-radar.pages.dev";
@@ -280,8 +285,20 @@ type SupabaseReadError = {
 type SupabaseRadarRow = Record<string, unknown>;
 type SupabaseReportRow = Record<string, unknown>;
 
+function debugStep(message: string) {
+  if (process.env.CLOUDFLARE_SNAPSHOT_DEBUG === "true") {
+    console.error(`[cloudflare:snapshot] ${message}`);
+    const debugFile = process.env.CLOUDFLARE_SNAPSHOT_DEBUG_FILE;
+    if (debugFile) {
+      fsSync.appendFileSync(debugFile, `[${new Date().toISOString()}] ${message}\n`, "utf8");
+    }
+  }
+}
+
 async function main() {
+  debugStep("main:start");
   const snapshot = await createPublicSnapshot();
+  debugStep(`main:snapshot-ready rows=${snapshot.radar_items.length}`);
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
   await fs.writeFile(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
 
@@ -299,17 +316,63 @@ async function main() {
 
 async function createPublicSnapshot(): Promise<PublicMirrorSnapshot> {
   const generatedAt = new Date().toISOString();
+  debugStep("create:start");
+
+  if (process.env.CLOUDFLARE_SNAPSHOT_READ_SUPABASE !== "true") {
+    debugStep("create:local-first");
+    const warnings = [
+      "Cloudflare static snapshot export used public-safe local snapshot mode; set CLOUDFLARE_SNAPSHOT_READ_SUPABASE=true to opt into Supabase public reads."
+    ];
+    const previousSnapshot = await readPreviousPublicSnapshot(generatedAt, warnings);
+    if (previousSnapshot) {
+      debugStep("create:previous-found");
+      return mergeLatestActivationSnapshot(previousSnapshot, generatedAt, warnings);
+    }
+
+    debugStep("create:previous-missing");
+    return readLocalFallbackSnapshot(generatedAt, warnings);
+  }
+
   const supabase = getSupabaseServerReadClient();
 
   if (supabase) {
-    const supabaseSnapshot = await readSupabaseSnapshot(supabase, generatedAt);
+    const preflight = await supabaseReadPreflight();
+    if (!preflight.ok) {
+      const warnings = [
+        `Supabase public reads skipped before export: ${preflight.reason}`
+      ];
+      const previousSnapshot = await readPreviousPublicSnapshot(generatedAt, warnings);
+      if (previousSnapshot) {
+        return mergeLatestActivationSnapshot(previousSnapshot, generatedAt, warnings);
+      }
+
+      return readLocalFallbackSnapshot(generatedAt, warnings);
+    }
+
+    let supabaseSnapshot: { snapshot: PublicMirrorSnapshot | null; warnings: string[] };
+    try {
+      supabaseSnapshot = await withTimeout(
+        readSupabaseSnapshot(supabase, generatedAt),
+        45_000,
+        "Supabase public reads timed out before export."
+      );
+    } catch (error) {
+      const warnings = [`Supabase public reads failed before export fallback: ${sanitizeError(error)}`];
+      const previousSnapshot = await readPreviousPublicSnapshot(generatedAt, warnings);
+      if (previousSnapshot) {
+        return mergeLatestActivationSnapshot(previousSnapshot, generatedAt, warnings);
+      }
+
+      return readLocalFallbackSnapshot(generatedAt, warnings);
+    }
+
     if (supabaseSnapshot.snapshot) {
       return supabaseSnapshot.snapshot;
     }
 
     const previousSnapshot = await readPreviousPublicSnapshot(generatedAt, supabaseSnapshot.warnings);
     if (previousSnapshot) {
-      return previousSnapshot;
+      return mergeLatestActivationSnapshot(previousSnapshot, generatedAt, supabaseSnapshot.warnings);
     }
 
     return readLocalFallbackSnapshot(generatedAt, supabaseSnapshot.warnings);
@@ -320,10 +383,60 @@ async function createPublicSnapshot(): Promise<PublicMirrorSnapshot> {
   ];
   const previousSnapshot = await readPreviousPublicSnapshot(generatedAt, warnings);
   if (previousSnapshot) {
-    return previousSnapshot;
+    return mergeLatestActivationSnapshot(previousSnapshot, generatedAt, warnings);
   }
 
   return readLocalFallbackSnapshot(generatedAt, warnings);
+}
+
+async function supabaseReadPreflight(): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const publicConfig = getSupabasePublicConfig();
+  if (!publicConfig) {
+    return { ok: false, reason: "public Supabase config is not available." };
+  }
+
+  try {
+    const hostname = new URL(publicConfig.url).hostname;
+    await withTimeout(dns.lookup(hostname), 5_000, "Supabase hostname lookup timed out.");
+
+    const healthUrl = new URL("/rest/v1/", publicConfig.url);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
+
+    try {
+      const response = await fetch(healthUrl, {
+        headers: {
+          apikey: publicConfig.anonKey
+        },
+        signal: controller.signal
+      });
+
+      if (response.status >= 500) {
+        return { ok: false, reason: `Supabase REST preflight returned HTTP ${response.status}.` };
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: sanitizeError(error) };
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
 }
 
 async function readSupabaseSnapshot(
@@ -640,25 +753,32 @@ async function readPreviousPublicSnapshot(
   warnings: string[]
 ): Promise<PublicMirrorSnapshot | null> {
   try {
+    debugStep("previous:read");
     const parsed = JSON.parse(await fs.readFile(outputPath, "utf8")) as Partial<PublicMirrorSnapshot>;
     const items = Array.isArray(parsed.radar_items) ? parsed.radar_items : [];
     const reports = Array.isArray(parsed.reports) ? parsed.reports : [];
+    const publicItems = (items as PublicRadarSnapshotItem[]).filter(isPublicSnapshotRadarCandidate);
+    const droppedItems = items.length - publicItems.length;
 
     if (parsed.schema_version !== 1 || items.length < 50) {
+      debugStep(`previous:rejected items=${items.length}`);
       return null;
     }
 
     const previousWarnings = Array.isArray(parsed.source?.warnings) ? parsed.source.warnings : [];
+    debugStep(`previous:sanitize-start items=${publicItems.length} dropped=${droppedItems}`);
 
-    return sanitizePublicSnapshot({
+    const snapshot = sanitizePublicSnapshot({
       ...(parsed as PublicMirrorSnapshot),
       generated_at: generatedAt,
+      radar_items: publicItems,
       source: {
         ...(parsed.source as PublicMirrorSnapshot["source"]),
         data_source: publicSnapshotDataSource(parsed.source?.data_source),
         local_data_used: true,
         warnings: publicSafeNotes([
           ...warnings,
+          droppedItems > 0 ? `${droppedItems} 条旧快照低事件性源页或目录页已从公开快照中过滤。` : "",
           "Supabase public reads were unavailable during export; reused the previous public-safe Cloudflare snapshot instead of degrading to incomplete local data.",
           ...previousWarnings
         ])
@@ -666,13 +786,316 @@ async function readPreviousPublicSnapshot(
       counts: {
         ...(parsed.counts as PublicMirrorSnapshot["counts"]),
         report_snapshots: (parsed.counts?.report_snapshots ?? reports.length) as number,
-        snapshot_radar_items: (parsed.counts?.snapshot_radar_items ?? items.length) as number,
-        visible_radar_items: (parsed.counts?.visible_radar_items ?? items.length) as number
+        snapshot_radar_items: publicItems.length,
+        visible_radar_items: publicItems.length
       }
     });
+    debugStep(`previous:sanitize-done events=${snapshot.event_count}`);
+    return snapshot;
   } catch {
+    debugStep("previous:missing");
     return null;
   }
+}
+
+type LatestActivationRead = {
+  droppedCount: number;
+  items: PublicRadarSnapshotItem[];
+  latestTimestamp: string | null;
+  runId: string | null;
+  warnings: string[];
+};
+
+async function mergeLatestActivationSnapshot(
+  snapshot: PublicMirrorSnapshot,
+  generatedAt: string,
+  warnings: string[]
+): Promise<PublicMirrorSnapshot> {
+  debugStep(`activation-merge:start previous=${snapshot.radar_items.length}`);
+  const activation = await readLatestActivationRadarItems();
+  debugStep(`activation-merge:read items=${activation.items.length} dropped=${activation.droppedCount}`);
+  const sourceWarnings = publicSafeNotes([
+    ...warnings,
+    ...snapshot.source.warnings,
+    ...activation.warnings
+  ]);
+
+  if (activation.items.length === 0) {
+    return sanitizePublicSnapshot({
+      ...snapshot,
+      generated_at: generatedAt,
+      source: {
+        ...snapshot.source,
+        local_data_used: true,
+        warnings: sourceWarnings
+      }
+    });
+  }
+
+  const previousItemCount = snapshot.radar_items.length;
+  const mergedItems = mergePublicRadarItems([...activation.items, ...snapshot.radar_items]);
+  debugStep(`activation-merge:merged rows=${mergedItems.length}`);
+  const addedCount = Math.max(0, mergedItems.length - previousItemCount);
+  const latest = latestTimestamp(mergedItems);
+  const statusCounts = countStatuses(mergedItems);
+  const activationNote = [
+    `本轮 live DeepSeek activation ${activation.runId ?? "latest"} 公开合并 ${activation.items.length} 条事件信号。`,
+    `去重后新增 ${addedCount} 条，当前静态快照公开信号 ${mergedItems.length} 条。`,
+    activation.droppedCount > 0 ? `${activation.droppedCount} 条非公开状态、低事件性或字段不完整的 activation 信号未进入公开快照。` : ""
+  ].filter(Boolean).join(" ");
+
+  debugStep("activation-merge:sanitize-start");
+  const draft = sanitizePublicSnapshot({
+    ...snapshot,
+    caveats: publicSafeNotes([
+      ...snapshot.caveats,
+      "Supabase public reads were unavailable during export, so the snapshot reuses the last public-safe Cloudflare evidence and merges the newest public-safe live DeepSeek activation output.",
+      activationNote
+    ]),
+    coverage: {
+      ...snapshot.coverage,
+      latest_refresh: activation.latestTimestamp ?? snapshot.coverage.latest_refresh,
+      public_radar_items: mergedItems.length
+    },
+    data_completeness_summary: {
+      ...snapshot.data_completeness_summary,
+      public_radar_items: mergedItems.length,
+      radar_items: Math.max(snapshot.data_completeness_summary.radar_items ?? 0, mergedItems.length),
+      raw_items: Math.max(snapshot.data_completeness_summary.raw_items ?? 0, mergedItems.length)
+    },
+    freshness: {
+      ...snapshot.freshness,
+      latest_timestamp: latest?.value ?? snapshot.freshness.latest_timestamp,
+      latest_timestamp_source: latest?.source ?? snapshot.freshness.latest_timestamp_source,
+      latest_understanding: activation.latestTimestamp ?? snapshot.freshness.latest_understanding,
+      note: latest
+        ? `Latest public radar timestamp is ${latest.value} (${latest.source}); includes newest public-safe live DeepSeek activation output.`
+        : snapshot.freshness.note
+    },
+    generated_at: generatedAt,
+    counts: {
+      ...snapshot.counts,
+      excluded: statusCounts.excluded,
+      failed: statusCounts.failed,
+      included: statusCounts.included,
+      needs_review: statusCounts.needs_review,
+      public_radar_items: mergedItems.length,
+      radar_items: Math.max(snapshot.counts.radar_items ?? 0, mergedItems.length),
+      raw_items: Math.max(snapshot.counts.raw_items ?? 0, mergedItems.length),
+      snapshot_radar_items: mergedItems.length,
+      visible_radar_items: mergedItems.length
+    },
+    radar_items: mergedItems,
+    source: {
+      data_source: "local_understanding_output",
+      kind: "local_files",
+      local_data_used: true,
+      warnings: publicSafeNotes([...sourceWarnings, activationNote])
+    },
+    top_categories: countEntries(mergedItems.flatMap((item) => item.categories.map(labelize))),
+    top_source_tiers: countEntries(mergedItems.map((item) => item.source_tier)),
+    top_sources: countEntries(mergedItems.map((item) => item.source_name))
+  });
+  debugStep(`activation-merge:sanitize-done events=${draft.event_count}`);
+
+  const sanitizedStatusCounts = countStatuses(draft.radar_items);
+  const reportCitationCount = draft.reports.reduce((count, report) => count + report.citations.length, 0);
+
+  return {
+    ...draft,
+    counts: {
+      ...draft.counts,
+      citations: draft.radar_items.length + reportCitationCount,
+      event_clusters: draft.event_count,
+      excluded: sanitizedStatusCounts.excluded,
+      failed: sanitizedStatusCounts.failed,
+      included: sanitizedStatusCounts.included,
+      needs_review: sanitizedStatusCounts.needs_review,
+      public_radar_items: draft.radar_items.length,
+      report_snapshots: draft.reports.length,
+      saved_report_candidates: draft.reports.filter((report) => report.mode === "saved_candidate").length,
+      snapshot_radar_items: draft.radar_items.length,
+      visible_radar_items: draft.radar_items.length
+    }
+  };
+}
+
+async function readLatestActivationRadarItems(): Promise<LatestActivationRead> {
+  debugStep("activation:read-summary");
+  const empty: LatestActivationRead = {
+    droppedCount: 0,
+    items: [],
+    latestTimestamp: null,
+    runId: null,
+    warnings: []
+  };
+  const summaryPath = path.join(process.cwd(), "data", "activation", "latest", "summary.json");
+
+  let summary: Record<string, unknown>;
+  try {
+    summary = record(JSON.parse(await fs.readFile(summaryPath, "utf8")));
+  } catch {
+    return {
+      ...empty,
+      warnings: ["No latest activation summary was available for public-safe snapshot merge."]
+    };
+  }
+
+  const mode = text(summary.mode, 24);
+  const runId = text(summary.run_id, 120) || null;
+  if (mode !== "live") {
+    return {
+      ...empty,
+      runId,
+      warnings: [`Latest activation run ${runId ?? "unknown"} is ${mode || "unknown"}; only live activation output is merged into the public snapshot.`]
+    };
+  }
+
+  const chunkFiles = await discoverActivationChunkFiles();
+  const items: PublicRadarSnapshotItem[] = [];
+  const warnings: string[] = [];
+  const runIds = new Set<string>();
+  let droppedCount = 0;
+  let completedChunks = 0;
+
+  for (const chunkPath of chunkFiles) {
+    completedChunks += 1;
+
+    try {
+      debugStep(`activation:read-chunk ${path.basename(chunkPath)}`);
+      const parsed = record(JSON.parse(await fs.readFile(chunkPath, "utf8")));
+      const understandingRun = record(parsed.understanding_run);
+      const chunkMode = text(understandingRun.mode, 24);
+      if (chunkMode && chunkMode !== "live") {
+        continue;
+      }
+
+      const chunkRunId = text(parsed.run_id, 120);
+      if (chunkRunId) {
+        runIds.add(chunkRunId);
+      }
+
+      const rows = Array.isArray(parsed.radar_items) ? parsed.radar_items.filter(isRecord) : [];
+
+      for (const row of rows) {
+        const item = normalizeSupabaseRadarRow(row);
+        if (!item || !isPublicSnapshotRadarCandidate(item)) {
+          droppedCount += 1;
+          continue;
+        }
+
+        items.push(item);
+      }
+    } catch (error) {
+      warnings.push(`Activation chunk ${path.basename(chunkPath)} read failed: ${sanitizeError(error)}`);
+    }
+  }
+
+  const mergedItems = mergePublicRadarItems(items);
+  debugStep(`activation:filtered items=${mergedItems.length} dropped=${droppedCount}`);
+  const duplicateCount = Math.max(0, items.length - mergedItems.length);
+  const latest = latestTimestamp(mergedItems)?.value ?? (text(summary.updated_at, 80) || null);
+
+  return {
+    droppedCount: droppedCount + duplicateCount,
+    items: mergedItems,
+    latestTimestamp: latest,
+    runId,
+    warnings: publicSafeNotes([
+      `Live activation chunks contributed ${mergedItems.length} public-safe radar items from ${completedChunks} completed chunks across ${runIds.size || 1} run(s). Latest run: ${runId ?? "unknown"}.`,
+      duplicateCount > 0 ? `${duplicateCount} duplicate activation rows were removed before public snapshot merge.` : "",
+      ...warnings
+    ])
+  };
+}
+
+async function discoverActivationChunkFiles() {
+  const runsDir = path.join(process.cwd(), "data", "activation", "runs");
+
+  try {
+    const names = await fs.readdir(runsDir);
+    return names
+      .filter((name) => /^activation_\d{8}_\d+Z-chunk-\d+\.json$/i.test(name))
+      .filter((name) => !/raw-items\.json$/i.test(name))
+      .sort()
+      .map((name) => path.join(runsDir, name));
+  } catch {
+    return [];
+  }
+}
+
+function isPublicSnapshotRadarCandidate(item: PublicRadarSnapshotItem) {
+  if (item.status !== "included" && item.status !== "needs_review") {
+    return false;
+  }
+
+  if (item.scores.ai_relevance < 0.55 || item.scores.overall < 0.45) {
+    return false;
+  }
+
+  const quality = assessPublicSignalQuality(item);
+  if (quality.isLowEventSignal) {
+    return false;
+  }
+
+  const weakCategoryOnly = item.categories.every((category) =>
+    category === "other" || category === "opinion" || category === "media_interview"
+  );
+
+  return !weakCategoryOnly || hasAiIndustryCue(item);
+}
+
+function hasAiIndustryCue(item: PublicRadarSnapshotItem) {
+  const haystack = [
+    item.title,
+    item.summary_zh ?? "",
+    item.summary_en ?? "",
+    item.source_name,
+    ...item.tags
+  ].join(" ");
+
+  return /\b(AI|OpenAI|Anthropic|DeepMind|Gemini|Claude|GPT|LLM|Llama|agent|model|benchmark|SDK|API|Lean|autoformalization|transformer|vision|diffusion)\b|人工智能|模型|智能体|大模型|基准|开源|安全|对齐/i.test(haystack);
+}
+
+function mergePublicRadarItems(items: PublicRadarSnapshotItem[]) {
+  const byKey = new Map<string, PublicRadarSnapshotItem>();
+
+  for (const item of items) {
+    if (!isPublicSnapshotRadarCandidate(item)) {
+      continue;
+    }
+
+    const key = radarItemKey(item);
+    if (!key || byKey.has(key)) {
+      continue;
+    }
+
+    byKey.set(key, item);
+  }
+
+  return [...byKey.values()]
+    .sort((left, right) => itemTime(right) - itemTime(left))
+    .slice(0, radarLimit);
+}
+
+function radarItemKey(item: PublicRadarSnapshotItem) {
+  const urlKey = normalizedUrlKey(item.url);
+  return urlKey || `id:${item.id}`;
+}
+
+function normalizedUrlKey(value: string) {
+  try {
+    const parsed = new URL(value);
+    parsed.hash = "";
+    return parsed.toString().replace(/\/+$/, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function itemTime(item: PublicRadarSnapshotItem) {
+  const value = Date.parse(item.processed_at || item.collected_at || item.published_at || "");
+  return Number.isFinite(value) ? value : 0;
 }
 
 function buildSnapshot(input: {
@@ -849,30 +1272,7 @@ function reportQualitySummary(
 }
 
 function publicDisplayEventLayer(layer: PublicEventLayer): PublicEventLayer {
-  const events = layer.event_clusters.filter(isPublicDisplayEvent).sort(comparePublicEvents);
-  const eventIds = new Set(events.map((event) => event.event_cluster_id));
-  const curated = layer.curated_events.filter((event) => eventIds.has(event.event_cluster_id));
-  const fallbackCurated = events.filter((event) => event.event_score >= 64).slice(0, 8);
-  const curatedEvents = (curated.length > 0 ? curated : fallbackCurated).slice(0, 8);
-
-  return {
-    curated_events: curatedEvents,
-    event_cluster_items: layer.event_cluster_items.filter((item) => eventIds.has(item.event_cluster_id)),
-    event_clusters: events,
-    event_count: events.length,
-    timeline: layer.timeline.filter((entry) => eventIds.has(entry.event_cluster_id)).slice(0, 80)
-  };
-}
-
-function isPublicDisplayEvent(event: PublicEventCluster) {
-  return event.event_score_label !== "噪音/低相关" && event.event_score >= 45;
-}
-
-function comparePublicEvents(left: PublicEventCluster, right: PublicEventCluster) {
-  return right.event_score - left.event_score ||
-    right.source_count - left.source_count ||
-    Date.parse(right.latest_seen_at) - Date.parse(left.latest_seen_at) ||
-    left.canonical_title.localeCompare(right.canonical_title, "zh-CN");
+  return filterPublicDisplayEventLayer(layer);
 }
 
 function buildEventAwareReports(
@@ -1592,12 +1992,18 @@ function dedupe(values: string[]) {
 }
 
 function sanitizePublicSnapshot(snapshot: PublicMirrorSnapshot): PublicMirrorSnapshot {
-  const eventLayer = publicDisplayEventLayer(buildEventLayer(snapshot.radar_items));
+  debugStep(`sanitize:build-event-layer-start rows=${snapshot.radar_items.length}`);
+  const rawEventLayer = buildEventLayer(snapshot.radar_items);
+  debugStep(`sanitize:build-event-layer-done events=${rawEventLayer.event_count}`);
+  const eventLayer = publicDisplayEventLayer(rawEventLayer);
+  debugStep(`sanitize:public-filter-done events=${eventLayer.event_count}`);
+  debugStep(`sanitize:reports-start reports=${snapshot.reports.length}`);
   const reports = buildEventAwareReports(
     snapshot.reports.map(publicSafeReport),
     eventLayer,
     snapshot.freshness.latest_timestamp
   );
+  debugStep(`sanitize:reports-done reports=${reports.length}`);
 
   return {
     ...snapshot,
@@ -1819,7 +2225,11 @@ function sanitizeError(error: unknown) {
     .slice(0, 400);
 }
 
-main().catch((error: unknown) => {
-  console.error(`Cloudflare public snapshot failed: ${sanitizeError(error)}`);
-  process.exitCode = 1;
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error: unknown) => {
+    console.error(`Cloudflare public snapshot failed: ${sanitizeError(error)}`);
+    process.exit(1);
+  });
