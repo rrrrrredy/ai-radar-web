@@ -8,6 +8,13 @@ import type { LoadedRadarItems, RetrievalRadarItem } from "@/lib/retrieval/types
 import { RADAR_CATEGORIES, type RadarCategory } from "@/lib/understanding/types";
 
 const LATEST_RADAR_ITEMS_PATH = path.join(process.cwd(), "data", "understanding", "latest", "radar-items.json");
+const DEFAULT_PUBLIC_SNAPSHOT_PATH = path.join(
+  process.cwd(),
+  "dist",
+  "cloudflare-pages",
+  "data",
+  "radar-snapshot.json"
+);
 export const DEFAULT_PUBLIC_SNAPSHOT_URL = "https://ai-industry-radar.pages.dev/data/radar-snapshot.json";
 
 export async function loadRadarItems(): Promise<LoadedRadarItems> {
@@ -69,7 +76,11 @@ export async function loadRadarItems(): Promise<LoadedRadarItems> {
 }
 
 function shouldPreferPublicSnapshot() {
-  return process.env.NODE_ENV === "production" || process.env.PREFER_PUBLIC_RADAR_SNAPSHOT === "true";
+  return (
+    process.env.NODE_ENV === "production" ||
+    process.env.PREFER_PUBLIC_RADAR_SNAPSHOT === "true" ||
+    process.env.PREFER_LOCAL_PUBLIC_RADAR_SNAPSHOT === "true"
+  );
 }
 
 function allowSyntheticFallback() {
@@ -105,6 +116,11 @@ async function loadLocalRadarItems(): Promise<LoadedRadarItems | null> {
 }
 
 export async function loadPublicRadarSnapshot(): Promise<Record<string, unknown> | null> {
+  const localSnapshot = await loadLocalPublicRadarSnapshot();
+  if (localSnapshot) {
+    return localSnapshot;
+  }
+
   const snapshotUrl = process.env.PUBLIC_RADAR_SNAPSHOT_URL?.trim() || DEFAULT_PUBLIC_SNAPSHOT_URL;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
@@ -131,6 +147,24 @@ export async function loadPublicRadarSnapshot(): Promise<Record<string, unknown>
     return null;
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+async function loadLocalPublicRadarSnapshot(): Promise<Record<string, unknown> | null> {
+  const explicitPath = process.env.PUBLIC_RADAR_SNAPSHOT_FILE?.trim();
+  const shouldReadLocal = process.env.PREFER_LOCAL_PUBLIC_RADAR_SNAPSHOT === "true" || Boolean(explicitPath);
+
+  if (!shouldReadLocal) {
+    return null;
+  }
+
+  const snapshotPath = explicitPath ? path.resolve(explicitPath) : DEFAULT_PUBLIC_SNAPSHOT_PATH;
+
+  try {
+    const parsed = JSON.parse(await fs.readFile(snapshotPath, "utf8")) as unknown;
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
   }
 }
 

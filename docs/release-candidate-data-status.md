@@ -16,6 +16,25 @@ Generated: 2026-06-17
 
 ## Current Public Snapshot
 
+2026-06-22 refresh:
+
+| metric | count |
+| --- | ---: |
+| public radar signals | 208 |
+| public event clusters | 204 |
+| curated events | 8 |
+| report snapshots | 22 |
+| latest public evidence timestamp | 2026-06-22 |
+
+The 2026-06-22 refresh added a bounded live DeepSeek run without Supabase writes. It produced 23 raw/radar items, with 17 included, 2 needs_review, and 4 low-relevance exclusions. GitHub API sources were still limited by unauthenticated rate limits.
+
+Current report gate status after the 2026-06-22 refresh:
+
+- Daily quality gate: not passed; the public UI must show `今日数据不足，需补充信源或等待下一轮刷新`.
+- Weekly quality gate: passed.
+
+2026-06-17 release-candidate baseline:
+
 | metric | count |
 | --- | ---: |
 | public radar signals | 203 |
@@ -59,9 +78,9 @@ The Cloudflare public snapshot is now based on filtered public evidence rather t
 
 ## Report Gates
 
-- Daily quality gate: passed
-- Weekly quality gate: passed
-- Daily remains `needs_review` until editorial review, but it is not presented as a complete published report.
+- 2026-06-22 daily quality gate: not passed; the report page shows the required insufficient-data notice.
+- 2026-06-22 weekly quality gate: passed.
+- Daily remains `needs_review` until enough current-window evidence exists and editorial review is complete.
 
 ## Safety
 

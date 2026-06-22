@@ -1,5 +1,8 @@
 import "@/lib/config/load-cli-env";
 
+process.env.PREFER_PUBLIC_RADAR_SNAPSHOT ??= "true";
+process.env.PREFER_LOCAL_PUBLIC_RADAR_SNAPSHOT ??= "true";
+
 import { loadRadarFeed } from "@/lib/radar/feed";
 import { generateReportDraft } from "@/lib/reports/generate-live-report";
 import type { ReportLanguage, ReportPreviewType } from "@/lib/reports/types";

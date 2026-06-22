@@ -1284,23 +1284,53 @@ function buildEventAwareReports(
     return reports;
   }
 
-  return reports.map((report) => eventAwareReport(report, selectReportEvents(report.report_type, eventLayer), latestTimestamp));
+  return reports.map((report) =>
+    eventAwareReport(
+      report,
+      selectReportEvents(report.report_type, eventLayer, latestTimestamp),
+      latestTimestamp
+    )
+  );
 }
 
-function selectReportEvents(reportType: ReportPreviewType, eventLayer: PublicEventLayer) {
+function selectReportEvents(
+  reportType: ReportPreviewType,
+  eventLayer: PublicEventLayer,
+  latestTimestamp: string | null
+) {
   const preferred = reportType === "daily"
     ? [...eventLayer.curated_events, ...eventLayer.event_clusters]
     : eventLayer.event_clusters;
   const seen = new Set<string>();
   const limit = reportType === "daily" ? 8 : 24;
+  const cutoff = reportWindowCutoff(reportType, latestTimestamp);
 
   return preferred
     .filter((event) => {
       if (seen.has(event.event_cluster_id)) return false;
+      if (cutoff && eventLatestTime(event) < cutoff) return false;
       seen.add(event.event_cluster_id);
       return true;
     })
     .slice(0, limit);
+}
+
+function reportWindowCutoff(reportType: ReportPreviewType, latestTimestamp: string | null) {
+  const latest = latestTimestamp ? Date.parse(latestTimestamp) : NaN;
+  if (!Number.isFinite(latest)) {
+    return null;
+  }
+
+  const windowMs = reportType === "daily" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+  return latest - windowMs;
+}
+
+function eventLatestTime(event: PublicEventCluster) {
+  const candidates = [event.latest_seen_at, event.first_seen_at, ...event.timeline.map((entry) => entry.timestamp)];
+  const times = candidates
+    .map((value) => Date.parse(value))
+    .filter((value) => Number.isFinite(value));
+  return times.length > 0 ? Math.max(...times) : 0;
 }
 
 function eventAwareReport(

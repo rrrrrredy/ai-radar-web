@@ -11,6 +11,8 @@ Release candidate is ready for internal review.
 - Branch: `codex/release-candidate-event-radar`
 - Current Cloudflare snapshot: 203 public radar signals, 200 public event clusters, 22 report snapshots
 
+2026-06-22 update: a bounded live refresh raised the Cloudflare snapshot to 208 public radar signals and 204 public event clusters. Weekly report quality passes. Daily report quality does not pass for the current 24-hour window, so the public reports page must show `今日数据不足，需补充信源或等待下一轮刷新`.
+
 ## Current Data State
 
 Cloudflare is using a public-safe local evidence snapshot because the configured Supabase host is not reachable from the runner. The exporter now merges all completed live DeepSeek activation chunks from `data/activation/runs`, filters source pages/homepages/directories, strips private fields, and rebuilds the event layer.
