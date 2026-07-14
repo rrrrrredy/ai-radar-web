@@ -22,8 +22,8 @@ Both were generated in bounded `live_deepseek` mode from `supabase_radar_items`,
 
 | type | usable events | citations | sources | categories | gate |
 | --- | ---: | ---: | ---: | ---: | --- |
-| daily | 11 | 11 | 6 | 4 | passed |
-| weekly | 29 | 29 | 16 | 8 | passed |
+| daily | 11 | 11 | 6 | 6 | passed |
+| weekly | 29 | 29 | 16 | 10 | passed |
 
 ## Publication Boundary
 

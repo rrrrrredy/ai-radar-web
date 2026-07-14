@@ -54,8 +54,8 @@ The second multi-source cluster is a low-score multilingual documentation/change
 
 | type | ID | status | generation metrics | public event metrics |
 | --- | --- | --- | --- | --- |
-| daily | `2daba147-d851-41c4-a8ee-efed66eedcdf` | `needs_review` | 60 / 12 / 13 / 12 | 11 / 11 / 6 / 4 |
-| weekly | `ba8dbe90-30ef-4f60-8460-04456ad7be21` | `needs_review` | 75 / 12 / 13 / 11 | 29 / 29 / 16 / 8 |
+| daily | `2daba147-d851-41c4-a8ee-efed66eedcdf` | `needs_review` | 60 / 12 / 13 / 12 | 11 / 11 / 6 / 6 |
+| weekly | `ba8dbe90-30ef-4f60-8460-04456ad7be21` | `needs_review` | 75 / 12 / 13 / 11 | 29 / 29 / 16 / 10 |
 
 Metrics are usable items/events, citations, distinct sources, and categories. Both baseline source-stage gates and both public event projections pass. Neither candidate is presented as published or release-ready; independent source-family corroboration is still missing.
 

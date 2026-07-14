@@ -41,8 +41,8 @@ The Apple/OpenAI lawsuit is merged across The Verge and Ars Technica into one 77
 
 | type | candidate ID | status | source-stage gate | public event projection |
 | --- | --- | --- | --- | --- |
-| daily | `2daba147-d851-41c4-a8ee-efed66eedcdf` | `needs_review` | passed: 60 usable / 12 citations / 13 sources / 12 categories | passed: 11 / 11 / 6 / 4 |
-| weekly | `ba8dbe90-30ef-4f60-8460-04456ad7be21` | `needs_review` | passed: 75 / 12 / 13 / 11 | passed: 29 / 29 / 16 / 8 |
+| daily | `2daba147-d851-41c4-a8ee-efed66eedcdf` | `needs_review` | passed: 60 usable / 12 citations / 13 sources / 12 categories | passed: 11 / 11 / 6 / 6 |
+| weekly | `ba8dbe90-30ef-4f60-8460-04456ad7be21` | `needs_review` | passed: 75 / 12 / 13 / 11 | passed: 29 / 29 / 16 / 10 |
 
 The baseline gate means enough volume and citation diversity for editorial review, not publication. The public report cards separately show event corroboration and release readiness; both current candidates remain not release-ready because there is no cross-source-family confirmation. A failed daily gate renders `今日数据不足，需补充信源或等待下一轮刷新`.
 
