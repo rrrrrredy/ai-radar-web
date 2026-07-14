@@ -16,7 +16,7 @@ Updated: 2026-07-14
 | raw items | 268 |
 | radar items | 264 |
 | public radar items | 242 |
-| report candidates | 26 |
+| historical candidate rows / current public candidates | 26 / 2 |
 
 - source-to-raw coverage: 91.2%;
 - raw-to-radar conversion: 98.5%;
@@ -43,21 +43,21 @@ All 317 sources have a row in `docs/data-completeness-release-candidate.md`. The
 
 ## Event Projection
 
-| layer | signals/relationships | events | curated | multi-source display events |
+| layer | signals/relationships | events | curated | source confirmation state |
 | --- | ---: | ---: | ---: | ---: |
-| current deterministic run | 242 | 234 | 8 | 2 total, 1 public-display quality |
-| Cloudflare public-safe projection | 192 | 188 | 8 | 1 |
+| current deterministic run | 242 | 205 | 8 | 2 same-family, 0 cross-family |
+| Cloudflare public-safe projection | 190 | 159 | 8 | 1 same-family, 0 cross-family |
 
-The second multi-source cluster is a low-score multilingual Gemini documentation/changelog grouping and is excluded from public display. The Apple/OpenAI lawsuit is the genuine public multi-source event.
+The second multi-source cluster is a low-score multilingual documentation/changelog grouping and is excluded from public display. The Apple/OpenAI lawsuit is the only public two-source event; both sources belong to the media/analysis family, so it is not labeled as cross-family corroboration.
 
 ## Report Candidates
 
 | type | ID | status | generation metrics | public event metrics |
 | --- | --- | --- | --- | --- |
-| daily | `2daba147-d851-41c4-a8ee-efed66eedcdf` | `needs_review` | 60 / 12 / 13 / 12 | 9 / 9 / 5 / 4 |
-| weekly | `ba8dbe90-30ef-4f60-8460-04456ad7be21` | `needs_review` | 75 / 12 / 13 / 11 | 25 / 25 / 15 / 8 |
+| daily | `2daba147-d851-41c4-a8ee-efed66eedcdf` | `needs_review` | 60 / 12 / 13 / 12 | 11 / 11 / 6 / 4 |
+| weekly | `ba8dbe90-30ef-4f60-8460-04456ad7be21` | `needs_review` | 75 / 12 / 13 / 11 | 29 / 29 / 16 / 8 |
 
-Metrics are usable items, citations, distinct sources, and categories. Both source-stage gates and both public event projections pass. Neither candidate is presented as published.
+Metrics are usable items/events, citations, distinct sources, and categories. Both baseline source-stage gates and both public event projections pass. Neither candidate is presented as published or release-ready; independent source-family corroboration is still missing.
 
 ## Data Boundary
 

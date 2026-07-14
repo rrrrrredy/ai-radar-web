@@ -22,12 +22,12 @@ Both were generated in bounded `live_deepseek` mode from `supabase_radar_items`,
 
 | type | usable events | citations | sources | categories | gate |
 | --- | ---: | ---: | ---: | ---: | --- |
-| daily | 9 | 9 | 5 | 4 | passed |
-| weekly | 25 | 25 | 15 | 8 | passed |
+| daily | 11 | 11 | 6 | 4 | passed |
+| weekly | 29 | 29 | 16 | 8 | passed |
 
 ## Publication Boundary
 
-Both candidates remain `needs_review`. Passing is evidence sufficiency for editorial review, not approval or publication. Public cards expose gate status, event/useful-item counts, citations, source/category diversity, caveats, and missing evidence.
+Both candidates remain `needs_review`. The baseline gate measures evidence volume, citations, source count, category spread, and freshness. Passing is evidence sufficiency for editorial review, not approval or publication. Public cards separately expose same-family versus cross-family corroboration and release readiness; both current candidates remain not release-ready because cross-source-family confirmation is zero.
 
 If a future daily gate fails, the candidate remains `needs_review` and the UI renders:
 

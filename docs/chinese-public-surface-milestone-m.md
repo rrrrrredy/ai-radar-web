@@ -32,11 +32,13 @@ English pages are not label-only shells. They render the same public snapshot, e
 | --- | ---: |
 | public radar items | 242 |
 | public-safe snapshot items | 192 |
-| public display events | 188 |
+| public display events | 159 |
+| public event relationships | 190 |
 | curated events | 8 |
-| genuine multi-source display events | 1 |
+| same-family two-source display events | 1 |
+| cross-source-family display events | 0 |
 
-Latest daily and weekly candidates remain `needs_review` but both pass source-stage and event-projection quality gates.
+Latest daily and weekly candidates remain `needs_review`. Both pass baseline source-stage and event-projection quality gates, while separate release-readiness labels remain negative because cross-source-family corroboration is absent.
 
 ## Browser Verification
 

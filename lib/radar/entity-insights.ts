@@ -177,7 +177,7 @@ export function entityTrackingInsight(entity: EntitySummary): EntityTrackingInsi
   }
 
   if (sourceCount >= 2) {
-    reasons.push(`证据覆盖 ${sourceCount} 个来源，适合做交叉验证。`);
+    reasons.push(`证据覆盖 ${sourceCount} 个来源，可比较报道差异；来源家族独立性仍需单独核对。`);
   } else {
     reasons.push("目前主要来自单一来源，发布前需要独立来源确认。");
   }
@@ -239,7 +239,7 @@ function watchLabel(entity: EntitySummary) {
   }
 
   if (entity.sourceCounts.size >= 2 && entity.totalSignals >= 3) {
-    return "可入报告";
+    return "报告候选";
   }
 
   return "补证据";

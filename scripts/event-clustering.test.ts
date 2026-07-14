@@ -98,6 +98,7 @@ const corroboratedEvent = layer.event_clusters.find((event) =>
 );
 
 assert.ok(corroboratedEvent, "expected an Apple/OpenAI lawsuit event");
+assert.equal(corroboratedEvent.category, "regulation", "legal events must not inherit a generic business impact template");
 assert.deepEqual(
   new Set(corroboratedEvent.related_item_ids),
   new Set([arsAppleLawsuit.id, vergeAppleLawsuit.id]),
@@ -105,9 +106,73 @@ assert.deepEqual(
 );
 assert.equal(corroboratedEvent.source_count, 2);
 assert.equal(corroboratedEvent.citations.length, 2);
+assert.equal(corroboratedEvent.source_families.length, 1);
+assert.equal(corroboratedEvent.event_score <= 77, true, "same-family multi-source coverage must not enter the high-priority score band");
 assert.equal(layer.event_count, 3, "unrelated product and legal events must remain separate");
 
 assert.equal(sourceFamilyForEvent(arsAppleLawsuit), "分析/媒体");
 assert.equal(sourceFamilyForEvent(vergeAppleLawsuit), "分析/媒体");
+
+const releaseItems = ["b9994", "b9993", "b9992"].map((version, index) => radarItem({
+  categories: ["open_source"],
+  entities: [{ confidence: 0.98, name: "llama.cpp", type: "project" as const }],
+  id: `llama-${version}`,
+  published_at: `2026-07-${String(14 - index).padStart(2, "0")}T02:00:00Z`,
+  source_name: "GitHub Releases",
+  title: `llama.cpp 发布 ${version} 版本`,
+  url: `https://github.com/ggerganov/llama.cpp/releases/tag/${version}`
+}));
+const vllmRelease = radarItem({
+  categories: ["open_source"],
+  entities: [{ confidence: 0.98, name: "vLLM", type: "project" as const }],
+  id: "vllm-v0.25.0",
+  published_at: "2026-07-14T01:00:00Z",
+  source_name: "GitHub Releases",
+  title: "vLLM 发布 v0.25.0 版本",
+  url: "https://github.com/vllm-project/vllm/releases/tag/v0.25.0"
+});
+const releaseLayer = buildEventLayer([...releaseItems, vllmRelease]);
+const llamaReleaseSeries = releaseLayer.event_clusters.find((event) => event.related_item_ids.includes("llama-b9994"));
+assert.ok(llamaReleaseSeries, "expected a llama.cpp release series");
+assert.deepEqual(new Set(llamaReleaseSeries.related_item_ids), new Set(releaseItems.map((item) => item.id)));
+assert.equal(llamaReleaseSeries.timeline.length, 3, "consecutive releases from the same project should become one version timeline");
+assert.equal(releaseLayer.event_count, 2, "a different project release must remain a separate event");
+
+const semanticKernelTracks = [
+  radarItem({
+    categories: ["open_source"],
+    entities: [{ confidence: 0.98, name: "Microsoft Semantic Kernel", type: "project" as const }],
+    id: "semantic-kernel-python",
+    source_name: "GitHub Releases",
+    title: "Microsoft Semantic Kernel 发布 python-1.44.0 版本",
+    url: "https://github.com/microsoft/semantic-kernel/releases/tag/python-1.44.0"
+  }),
+  radarItem({
+    categories: ["open_source"],
+    entities: [{ confidence: 0.98, name: "Microsoft Semantic Kernel", type: "project" as const }],
+    id: "semantic-kernel-dotnet",
+    source_name: "GitHub Releases",
+    title: "Microsoft Semantic Kernel 发布 dotnet-1.78.0 版本",
+    url: "https://github.com/microsoft/semantic-kernel/releases/tag/dotnet-1.78.0"
+  })
+];
+assert.equal(buildEventLayer(semanticKernelTracks).event_count, 2, "different release tracks in one repository must remain separate events");
+
+const historicalItem = radarItem({
+  categories: ["model_release"],
+  entities: [company("OpenAI")],
+  id: "historical-openai-release",
+  published_at: "2025-01-10T02:00:00Z",
+  source_name: "OpenAI",
+  source_tier: "official",
+  title: "OpenAI launches archived model release",
+  url: "https://openai.com/index/archived-model-release"
+});
+const freshnessLayer = buildEventLayer([historicalItem, arsAppleLawsuit, vergeAppleLawsuit]);
+assert.equal(
+  freshnessLayer.curated_events.some((event) => event.related_item_ids.includes(historicalItem.id)),
+  false,
+  "events older than 30 days relative to the latest evidence must not enter the curated view"
+);
 
 console.log("Event clustering tests passed.");

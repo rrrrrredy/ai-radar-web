@@ -415,7 +415,7 @@ function trackingTone(score: number): StatusTone {
 }
 
 function watchTone(label: string): StatusTone {
-  if (label === "可入报告") return "success";
+  if (label === "报告候选") return "evidence";
   if (label === "先复核") return "caution";
   return "neutral";
 }

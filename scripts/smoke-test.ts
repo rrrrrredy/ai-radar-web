@@ -531,7 +531,7 @@ function assertTrustedPublishingSurfaces() {
       cloudflareSite.includes("case \"safety\"") &&
       cloudflareSite.includes("case \"other\"") &&
       cloudflareSite.includes("encodeURIComponent(category.query)") &&
-      cloudflareSite.includes("categoryFilterValue(entry.label)") &&
+      cloudflareSite.includes("snapshot.event_clusters.map((event) => categoryFilterValue(event.category))") &&
       cloudflareSite.includes("model_release,benchmark") &&
       cloudflareSite.includes("agent,product_update") &&
       cloudflareSite.includes("business,funding,regulation,safety") &&
@@ -678,14 +678,57 @@ function assertBilingualStaticContract() {
     assert.equal(englishRadar.includes(`>${label}<`), true, `English radar must expose the ${label} tab.`);
   }
   assert.equal(englishRadar.includes('data-tab-panel="curated"'), true, "English radar must keep the selected event view as the default tab.");
+  assert.equal(englishRadar.includes('role="tab"') && englishRadar.includes('role="tabpanel"') && englishRadar.includes('aria-selected="true"'), true, "English radar must expose an accessible tab contract.");
+  assert.equal(englishRadar.includes('data-status="included"') && englishRadar.includes('card.dataset.status === selectedStatus'), true, "English event cards must participate in the status filter.");
+  assert.equal(englishRadar.includes('params.get("tab")') && englishRadar.includes('["ArrowLeft", "ArrowRight", "Home", "End"]'), true, "English radar must persist tab state and support keyboard tab navigation.");
+  assert.equal(englishRadar.includes('id="radar-freshness"') && englishRadar.includes('data-freshness="'), true, "English radar must expose and apply the freshness filter.");
+  assert.equal(englishRadar.includes("public store / ") && englishRadar.includes(" displayed") && englishRadar.includes("Rate-limit warnings (may overlap)"), true, "English radar must distinguish store/display counts and overlapping rate-limit warnings.");
+  assert.equal(englishRadar.includes('>苹果<'), false, "English radar must not render Chinese entity aliases when an English alias is available.");
+  assert.equal(englishRadar.includes("Single-source observation") && englishRadar.includes("Multiple reports, one family") && englishRadar.includes("Cross-family corroboration"), true, "English radar must distinguish cross-family corroboration, same-family repetition, and single-source observations.");
+  assert.equal(englishRadar.includes('value="cross"') && englishRadar.includes('value="same"') && englishRadar.includes('id="radar-result-count"') && englishRadar.includes('id="radar-reset"'), true, "English radar must expose evidence-state filters, live result counts, and reset.");
+  assert.equal(englishRadar.includes('value="regulation"') && englishRadar.includes('value="media_interview"'), true, "English radar must expose all public event categories, including regulation and media/interview.");
+
+  const chineseRadar = readSource("dist/cloudflare-pages/radar/index.html");
+  assert.equal(chineseRadar.includes("单源观察") && chineseRadar.includes("同家族多源复述") && chineseRadar.includes("跨家族确认"), true, "Chinese radar must distinguish cross-family corroboration, same-family repetition, and single-source observations.");
+  assert.equal(chineseRadar.includes('id="radar-result-count"') && chineseRadar.includes('id="radar-reset"') && chineseRadar.includes('value="regulation"') && chineseRadar.includes('>监管<'), true, "Chinese radar must expose complete localized filters with count/reset controls.");
+  assert.equal(chineseRadar.includes('data-status="included"') && chineseRadar.includes('id="radar-freshness"') && chineseRadar.includes("条公开库 /") && chineseRadar.includes("条本站展示") && chineseRadar.includes("限流警告（可重叠）"), true, "Chinese radar must filter event status/freshness and explain count/failure semantics.");
+
+  const englishEntities = readSource("dist/cloudflare-pages/en/entities/index.html");
+  assert.equal(englishEntities.includes("持续跟踪") || englishEntities.includes("观察中"), false, "English entities must localize tracking-priority labels.");
+  const chineseEntities = readSource("dist/cloudflare-pages/entities/index.html");
+  assert.equal(chineseEntities.includes('href="../radar/"') && chineseEntities.includes('href="../reports/"'), true, "Chinese entity index links must resolve from /entities/ to sibling routes.");
+  assert.equal(chineseEntities.includes('href="radar/"') || chineseEntities.includes('href="reports/"'), false, "Chinese entity index must not generate nested /entities/radar or /entities/reports links.");
 
   const englishReports = readSource("dist/cloudflare-pages/en/reports/index.html");
-  assert.equal(englishReports.includes("Event-aware reports") && englishReports.includes("Quality gate"), true, "English reports must expose event and quality-gate context.");
+  assert.equal(englishReports.includes("Event-aware reports") && englishReports.includes("Baseline evidence gate"), true, "English reports must expose event and quality-gate context.");
+  assert.equal(englishReports.includes("Baseline evidence gate") && englishReports.includes("Multiple reports / cross-family / all events") && englishReports.includes("Release readiness"), true, "English reports must separate baseline evidence volume from event corroboration and release readiness.");
+  assert.equal(englishReports.includes("Evidence draft, not release-ready"), true, "English reports must lead with the non-publication state when independent corroboration is insufficient.");
+  const chineseReports = readSource("dist/cloudflare-pages/reports/index.html");
+  assert.equal(chineseReports.includes("来源家族确认与可信度") && chineseReports.includes("跨家族确认事件") && chineseReports.includes("同家族多源复述事件"), true, "Chinese report body and Markdown must use source-family-aware confirmation language.");
+  assert.equal(chineseReports.includes("多源确认与可信度") || chineseReports.includes("个多源确认事件"), false, "Chinese reports must not present same-family repetition as independent multi-source confirmation.");
+
+  const publicSnapshot = JSON.parse(readSource("dist/cloudflare-pages/data/radar-snapshot.json")) as {
+    curated_events?: Array<{ event_score_label?: string; source_count?: number; source_families?: string[] }>;
+    reports?: Array<{ mode?: string; report_type?: string; source_item_ids?: string[] }>;
+  };
+  for (const event of publicSnapshot.curated_events ?? []) {
+    if (event.event_score_label === "高优先级") {
+      assert.equal((event.source_count ?? 0) >= 2, true, "High-priority public events must have multi-source support.");
+      assert.equal((event.source_families?.length ?? 0) >= 2, true, "High-priority public events must span more than one source family.");
+    }
+  }
+  const candidateSignatures = (publicSnapshot.reports ?? [])
+    .filter((report) => report.mode === "saved_candidate")
+    .map((report) => `${report.report_type}:${[...(report.source_item_ids ?? [])].sort().join(",")}`);
+  assert.equal(new Set(candidateSignatures).size, candidateSignatures.length, "Public snapshot must deduplicate saved report candidates by stable content signature.");
 
   const englishAsk = readSource("dist/cloudflare-pages/en/ask/index.html");
   const englishWrite = readSource("dist/cloudflare-pages/en/write/index.html");
   assert.equal(englishAsk.includes("Query public events") && englishAsk.includes("../../data/radar-snapshot.json"), true, "English Ask must query the public event snapshot locally.");
   assert.equal(englishWrite.includes("Generate an evidence-led outline") && englishWrite.includes("../../data/radar-snapshot.json"), true, "English Write must generate from the public event snapshot locally.");
+  assert.equal(englishAsk.includes("filter((entry) => entry.score !== null)") && englishAsk.includes("multiple source families") && englishAsk.includes("No matching event"), true, "English Ask must apply bilingual intent matching and a real no-match threshold.");
+  const publicStyles = readSource("dist/cloudflare-pages/assets/styles.css");
+  assert.equal(publicStyles.includes(":focus-visible") && publicStyles.includes("outline: 3px solid"), true, "Static public controls and links must expose a visible keyboard focus state.");
 }
 
 function assertStaticCategoryFilterContract(pagePath: string) {

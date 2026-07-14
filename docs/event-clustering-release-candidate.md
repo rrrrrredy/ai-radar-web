@@ -22,7 +22,8 @@ Specific legal, funding, and acquisition actions can add corroboration weight on
 
 - generic terms such as AI, model, agent, tool, and research are weak evidence;
 - conflicting strong entities are penalized;
-- different open-source projects and conflicting release versions do not merge;
+- different open-source projects and different SDK tracks do not merge;
+- same-project release updates can form a bounded seven-day storyline, while distant versions remain separate;
 - different partnership counterparts do not merge;
 - same-domain or same-category proximity cannot establish identity alone;
 - source homepage, directory, documentation-index, and repository-metadata shapes are blocked from public events;
@@ -35,14 +36,15 @@ Specific legal, funding, and acquisition actions can add corroboration weight on
 | metric | value |
 | --- | ---: |
 | input public radar items | 242 |
-| current-run event clusters | 234 |
+| current-run event clusters | 205 |
 | relationships | 242 |
-| multi-item clusters | 3 |
-| average items per cluster | 1.03 |
+| multi-item clusters | 16 |
+| average items per cluster | 1.18 |
 | curated events | 8 |
-| Cloudflare visible signals/events | 192 / 188 |
-| genuine public multi-source events | 1 |
+| Cloudflare visible relationships/events | 190 / 159 |
+| same-family two-source public events | 1 |
+| cross-source-family public events | 0 |
 
-The public multi-source example is the Apple/OpenAI lawsuit from The Verge and Ars Technica: source count 2, two citations, timeline preserved, event score 82, label `高优先级`. A low-score Gemini documentation/changelog cluster is excluded from display.
+The public two-source example is the Apple/OpenAI lawsuit from The Verge and Ars Technica: source count 2, two citations, timeline preserved, event score 77, label `关注`. Both sources are in the media/analysis family, so the event is explicitly labeled `同家族多源复述`, not cross-family corroboration. A low-score multilingual documentation/changelog cluster is excluded from display.
 
 Persistence is additive and non-destructive: clusters upsert by stable local ID and relationships by event/radar pair. Historical rows are not deleted automatically, so current-run counts come from the generated event artifact rather than an accumulated table count.

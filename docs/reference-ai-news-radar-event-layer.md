@@ -38,4 +38,4 @@ public-safe signals -> deterministic event clusters -> curated events -> quality
 
 Clustering uses title, entities, specific event actions, category, time, source, domain, and keyword evidence. Generic AI terms cannot merge events. Conflicting companies, projects, release versions, or partnership counterparts block or penalize a merge. The UI leads with `行业精选` and `事件雷达`, while `全部信号` retains item-level auditability.
 
-The final RC has 242 public radar items, 234 current-run clusters, 188 public-display events, 8 curated events, and one genuine public multi-source event. This low multi-source count is disclosed rather than inflated by weakening merge safeguards.
+The final RC has 242 public radar items, 205 current-run clusters, 159 public-display events, 8 curated events, and one same-family two-source public event. Cross-source-family confirmation remains zero and is disclosed rather than inflated by weakening merge safeguards.

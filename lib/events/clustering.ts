@@ -366,6 +366,7 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
     cluster.items.some((clusterItem) => sourceFamilyForEvent(clusterItem) === "开源项目") &&
     !sourceNameOverlap;
   const versionConflict = cluster.items.some((clusterItem) => hasVersionConflict(clusterItem.title, item.title));
+  const releaseSeriesMatch = cluster.items.some((clusterItem) => isSameReleaseSeries(clusterItem, item));
   const partnerConflict = cluster.items.some((clusterItem) => hasPartnerConflict(clusterItem, item));
   const strongEntityConflict =
     cluster.strongEntities.size > 0 &&
@@ -381,7 +382,7 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
     titleOverlap >= 0.04 &&
     keywordOverlap >= 0.12;
 
-  if (openSourceProjectConflict && (versionConflict || isReleaseVersionTitle(item.title) || cluster.items.some((clusterItem) => isReleaseVersionTitle(clusterItem.title)))) {
+  if (openSourceProjectConflict && !releaseSeriesMatch && (versionConflict || isReleaseVersionTitle(item.title) || cluster.items.some((clusterItem) => isReleaseVersionTitle(clusterItem.title)))) {
     return 0;
   }
 
@@ -389,7 +390,7 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
     return 0;
   }
 
-  if (versionConflict) {
+  if (versionConflict && !releaseSeriesMatch) {
     return 0;
   }
 
@@ -403,6 +404,10 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
 
   if (corroboratedActionMatch) {
     score += 0.28;
+  }
+
+  if (releaseSeriesMatch) {
+    score = Math.max(score, 0.66);
   }
 
   if (strongEntityConflict && titleOverlap < 0.72) {
@@ -498,8 +503,9 @@ function compareCuratedEvents(left: PublicEventCluster, right: PublicEventCluste
 }
 
 function selectCuratedEvents(events: PublicEventCluster[]) {
+  const referenceTime = Math.max(...events.map((event) => Date.parse(event.latest_seen_at)).filter(Number.isFinite), 0);
   const eligible = events
-    .filter(isCuratedEventCandidate)
+    .filter((event) => isCuratedEventCandidate(event, referenceTime))
     .sort(compareCuratedEvents);
   const selected: PublicEventCluster[] = [];
 
@@ -526,8 +532,13 @@ function addCurated(selected: PublicEventCluster[], event: PublicEventCluster) {
   selected.push(event);
 }
 
-function isCuratedEventCandidate(event: PublicEventCluster) {
+function isCuratedEventCandidate(event: PublicEventCluster, referenceTime: number) {
   if (!isPublicDisplayEvent(event) || event.event_score < 62 || looksLikeSourcePageEvent(event)) {
+    return false;
+  }
+
+  const latestSeen = Date.parse(event.latest_seen_at);
+  if (referenceTime > 0 && Number.isFinite(latestSeen) && referenceTime - latestSeen > 30 * 24 * 60 * 60 * 1000) {
     return false;
   }
 
@@ -617,8 +628,9 @@ function eventScore(items: ClusterableRadarItem[], sourceFamilies: string[], sou
   const singleResearchPenalty = sourceNames.length <= 1 && sourceFamilies.length === 1 && sourceFamilies[0] === "研究订阅" ? 7 : 0;
   const rawScore = base + aiRelevance + credibility + novelty + diversityBonus + highTierBonus + freshnessBonus + importantCategoryBonus - averageQualityPenalty - singleSourcePenalty - singleFamilyPenalty - singleResearchPenalty;
   const singleSourceCap = sourceNames.length <= 1 ? (hasHighTierSource ? 76 : 70) : 100;
+  const singleFamilyMultiSourceCap = sourceNames.length > 1 && sourceFamilies.length <= 1 ? 77 : 100;
   const researchCap = sourceNames.length <= 1 && sourceFamilies.length === 1 && sourceFamilies[0] === "研究订阅" ? 68 : 100;
-  const cappedScore = allLowEventSignals ? Math.min(rawScore, 44) : Math.min(rawScore, singleSourceCap, researchCap);
+  const cappedScore = allLowEventSignals ? Math.min(rawScore, 44) : Math.min(rawScore, singleSourceCap, singleFamilyMultiSourceCap, researchCap);
 
   return Math.max(0, Math.min(100, Math.round(cappedScore)));
 }
@@ -643,7 +655,11 @@ function scoreReason(score: number, sourceCount: number, sourceFamilies: string[
   const quality = signalQuality(primary);
   const pieces = [
     `综合分 ${score}`,
-    sourceCount > 1 ? `${sourceCount} 个来源确认` : "单一来源，需继续观察",
+    sourceCount > 1 && sourceFamilies.length > 1
+      ? `${sourceCount} 个来源、${sourceFamilies.length} 个来源家族交叉确认`
+      : sourceCount > 1
+        ? `${sourceCount} 个来源报道，但集中在同一来源家族`
+        : "单一来源，需继续观察",
     sourceFamilies.length > 1 ? `覆盖 ${sourceFamilies.join("、")}` : `来源家族：${sourceFamilies[0] ?? "未知"}`,
     `AI 相关度 ${Math.round((primary.scores.ai_relevance || 0) * 100)}%`,
     `重要性 ${Math.round((primary.scores.importance || 0) * 100)}%`,
@@ -712,6 +728,17 @@ function eventCaveats(items: ClusterableRadarItem[], sourceFamilies: string[]) {
 }
 
 function dominantCategory(items: ClusterableRadarItem[]) {
+  const eventText = items
+    .map((item) => `${item.title} ${item.summary_zh ?? ""} ${item.summary_en ?? ""} ${item.tags.join(" ")}`)
+    .join(" ")
+    .toLowerCase();
+  if (/lawsuit|litigation|sues?|court|antitrust|copyright|trade secrets?|intellectual property|知识产权|诉讼|起诉|法院|反垄断/.test(eventText)) {
+    return "regulation";
+  }
+  if (/vulnerabilit|exploit|breach|prompt injection|security incident|安全|漏洞|攻击|泄露/.test(eventText)) {
+    return "safety";
+  }
+
   const counts = new Map<string, number>();
   for (const item of items) {
     for (const category of item.categories) {
@@ -785,7 +812,65 @@ function hasVersionConflict(leftTitle: string, rightTitle: string) {
 }
 
 function releaseVersion(title: string) {
-  return title.match(/\b(?:v|python-)?\d+(?:\.\d+){1,3}(?:[-_][\w.-]+)?\b|\bb\d{4,}\b/i)?.[0]?.toLowerCase() ?? null;
+  return title.match(/\b(?:(?:python|dotnet|java|js|node|go|rust)-|v)?\d+(?:\.\d+){1,3}(?:[-_][\w.-]+)?\b|\bb\d{4,}\b/i)?.[0]?.toLowerCase() ?? null;
+}
+
+function isSameReleaseSeries(left: ClusterableRadarItem, right: ClusterableRadarItem) {
+  if (!hasVersionConflict(left.title, right.title)) return false;
+  const leftTrack = releaseTrack(left.title);
+  const rightTrack = releaseTrack(right.title);
+  if (leftTrack && rightTrack && leftTrack !== rightTrack) return false;
+
+  const leftTime = Date.parse(itemTimestamp(left));
+  const rightTime = Date.parse(itemTimestamp(right));
+  if (!Number.isFinite(leftTime) || !Number.isFinite(rightTime) || Math.abs(leftTime - rightTime) > 7 * 24 * 60 * 60 * 1000) {
+    return false;
+  }
+
+  const leftProject = releaseProjectKey(left.url);
+  const rightProject = releaseProjectKey(right.url);
+  if (leftProject && rightProject && leftProject === rightProject) return true;
+
+  if (sourceFamilyForEvent(left) !== "开源项目" || sourceFamilyForEvent(right) !== "开源项目") return false;
+  const leftSubject = releaseSubject(left.title);
+  const rightSubject = releaseSubject(right.title);
+  if (!leftSubject || leftSubject !== rightSubject) return false;
+
+  return canonicalStrongEntityOverlap(new Set(strongItemEntities(left)), new Set(strongItemEntities(right))) > 0;
+}
+
+function releaseTrack(title: string) {
+  const version = releaseVersion(title);
+  const prefix = version?.match(/^([a-z]+)-?/i)?.[1]?.toLowerCase() ?? null;
+  return prefix && prefix !== "v" && prefix !== "b" ? prefix : null;
+}
+
+function releaseProjectKey(rawUrl: string) {
+  try {
+    const parsed = new URL(rawUrl);
+    const host = parsed.hostname.replace(/^www\./, "").toLowerCase();
+    const segments = parsed.pathname.split("/").filter(Boolean).map((segment) => segment.toLowerCase());
+    if (host === "api.github.com" && segments[0] === "repos" && segments.length >= 3) {
+      return `github:${segments[1]}/${segments[2]}`;
+    }
+    if (host.endsWith("github.com") && segments.length >= 2) {
+      return `github:${segments[0]}/${segments[1]}`;
+    }
+    if (host.endsWith("huggingface.co") && segments.length >= 2) {
+      return `huggingface:${segments[0]}/${segments[1]}`;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function releaseSubject(title: string) {
+  return normalizeText(
+    title
+      .replace(/\b(?:(?:python|dotnet|java|js|node|go|rust)-|v)?\d+(?:\.\d+){1,3}(?:[-_][\w.-]+)?\b|\bb\d{4,}\b/gi, " ")
+      .replace(/\b(?:release|released|version|changelog|update)\b|发布|版本|更新|上线/gi, " ")
+  ).trim();
 }
 
 function isReleaseVersionTitle(title: string) {

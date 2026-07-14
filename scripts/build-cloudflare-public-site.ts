@@ -316,7 +316,8 @@ function renderEnglishHome(snapshot: Snapshot) {
   const curated = snapshot.curated_events.slice(0, 8);
   const topEvents = curated.slice(0, 3);
   const latestReportCandidates = latestReportsByType(snapshot);
-  const multiSourceEvents = snapshot.event_clusters.filter((event) => event.source_count > 1).length;
+  const sameFamilyEvents = snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length === 1).length;
+  const crossFamilyEvents = snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
   const title = snapshotIsStale(snapshot) ? "AI Industry Radar Public Snapshot" : "Today's AI Industry Selection";
   const description = snapshotIsStale(snapshot)
     ? "A public evidence snapshot organized as events, with source health, timelines, citations and explicit coverage limits."
@@ -324,12 +325,12 @@ function renderEnglishHome(snapshot: Snapshot) {
 
   return englishShell(snapshot, "home", 0, title, `
     <section class="status-strip">
-      ${metricMini("Public signals", snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)}
+      ${metricMini("Public store / displayed", `${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} / ${snapshot.radar_items.length}`)}
       ${metricMini("Events", snapshot.event_count)}
       ${metricMini("Sources attempted", snapshot.coverage.attempted_sources)}
-      ${metricMini("Succeeded / failed / manual", `${snapshot.source_health_summary.succeeded}/${snapshot.source_health_summary.failed}/${snapshot.source_health_summary.manual_blocked}`)}
-      ${metricMini("Report candidates", snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates)}
-      ${metricMini("Last refresh", formatDateEn(snapshot.coverage.latest_refresh))}
+      ${metricMini("Succeeded / failed / manual", `${snapshot.source_health_summary.succeeded}/${snapshot.source_health_summary.failed}/${snapshot.source_health_summary.manual_blocked} of ${snapshot.coverage.sources_total}`)}
+      ${metricMini("Current report candidates", latestReportCandidates.length)}
+      ${metricMini("Evidence through", formatDateEn(snapshot.coverage.latest_refresh))}
     </section>
     ${freshnessAlertEn(snapshot)}
 
@@ -354,10 +355,12 @@ function renderEnglishHome(snapshot: Snapshot) {
       <aside class="ops-console">
         <h2>Source health</h2>
         <dl class="rail">
-          ${rail("Events / signals", `${snapshot.event_count} / ${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items}`)}
-          ${rail("Multi-source events", String(multiSourceEvents))}
-          ${rail("Succeeded / failed", `${snapshot.source_health_summary.succeeded} / ${snapshot.source_health_summary.failed}`)}
-          ${rail("Manual / blocked", String(snapshot.source_health_summary.manual_blocked))}
+          ${rail("Events / displayed signals", `${snapshot.event_count} / ${snapshot.radar_items.length}`)}
+          ${rail("Cross-family corroboration", String(crossFamilyEvents))}
+          ${rail("Multi-source, one family", String(sameFamilyEvents))}
+          ${rail("Automated eligible", String(snapshot.coverage.automated_eligible_sources))}
+          ${rail("Succeeded / failed", `${snapshot.source_health_summary.succeeded} / ${snapshot.source_health_summary.failed} of ${snapshot.coverage.attempted_sources} attempted`)}
+          ${rail("Manual / blocked", `${snapshot.source_health_summary.manual_blocked} of ${snapshot.coverage.sources_total} total`)}
           ${rail("Visible sources", `${snapshot.coverage.sources_with_public_items ?? 0} / ${snapshot.coverage.sources_total}`)}
         </dl>
         <div class="quality-note">
@@ -405,6 +408,10 @@ function renderEnglishRadar(snapshot: Snapshot) {
     ...snapshot.event_clusters.flatMap((event) => event.source_families)
   ]);
   const scoreLabels = uniqueStrings(snapshot.event_clusters.map((event) => event.event_score_label));
+  const categories = uniqueStrings([
+    ...snapshot.event_clusters.map((event) => categoryFilterValue(event.category)),
+    ...snapshot.radar_items.flatMap((item) => item.categories.map(categoryFilterValue))
+  ]).toSorted();
   const eventItemIds = new Set(snapshot.event_cluster_items.map((item) => item.radar_item_id));
   const displaySignalItems = snapshot.radar_items.filter((item) => eventItemIds.has(item.id));
   const downgradedSignalCount = snapshot.radar_items.length - displaySignalItems.length;
@@ -418,7 +425,7 @@ function renderEnglishRadar(snapshot: Snapshot) {
     <section class="page-heading">
       <div>
         <div class="pill-row">
-          ${pill(`${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} public signals`, "success")}
+          ${pill(`${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} public store / ${snapshot.radar_items.length} displayed`, "success")}
           ${pill(`${snapshot.event_count} events`, "evidence")}
           ${pill(`${snapshot.coverage.attempted_sources} sources attempted`, "neutral")}
           ${pill(sourceLabelEn(snapshot.source.data_source), "neutral")}
@@ -442,26 +449,28 @@ function renderEnglishRadar(snapshot: Snapshot) {
       <div class="controls" role="search">
         <label>Search <input id="radar-search" type="search" aria-label="Search titles, sources, categories and entities"></label>
         <label>Status <select id="radar-status">${optionRaw("all", "All statuses")}${["included", "needs_review", "excluded", "failed"].map((status) => optionRaw(status, statusLabelEn(status))).join("")}</select></label>
-        <label>Category <select id="radar-category">${optionRaw("all", "All categories")}${snapshot.top_categories.map((entry) => optionRaw(categoryFilterValue(entry.label), categoryLabelEn(entry.label))).join("")}</select></label>
+        <label>Category <select id="radar-category">${optionRaw("all", "All categories")}${categories.map((category) => optionRaw(category, categoryLabelEn(category))).join("")}</select></label>
         <label>Source family <select id="radar-family">${optionRaw("all", "All families")}${families.map((family) => optionRaw(family, sourceFamilyLabelEn(family))).join("")}</select></label>
         <label>Score <select id="radar-score">${optionRaw("all", "All scores")}${scoreLabels.map((label) => optionRaw(label, eventScoreLabelEn(label))).join("")}</select></label>
-        <label>Sources <select id="radar-source-count">${optionRaw("all", "Any count")}${optionRaw("multi", "Multi-source")}${optionRaw("single", "Single-source")}</select></label>
+        <label>Freshness <select id="radar-freshness">${optionRaw("all", "Any time")}${optionRaw("24h", "Within 24h")}${optionRaw("7d", "2-7 days")}${optionRaw("30d", "8-30 days")}${optionRaw("archive", "Archive (>30 days)")}</select></label>
+        <label>Confirmation <select id="radar-source-count">${optionRaw("all", "Any evidence state")}${optionRaw("cross", "Cross-family corroboration")}${optionRaw("same", "Multi-source, one family")}${optionRaw("single", "Single-source observation")}</select></label>
       </div>
+      <div class="filter-feedback"><span aria-live="polite" id="radar-result-count"></span><button class="button" id="radar-reset" type="button">Reset filters</button></div>
       <div class="distribution">
         ${distributionEn("Status", [["Included", snapshot.counts.included], ["Needs review", snapshot.counts.needs_review], ["Excluded", snapshot.counts.excluded], ["Failed", snapshot.counts.failed]])}
         ${distributionEn("Categories", snapshot.top_categories.slice(0, 8).map((entry) => [entry.label, entry.count]))}
         ${distributionEn("Source coverage", [["Total", snapshot.coverage.sources_total], ["Automated eligible", snapshot.coverage.automated_eligible_sources], ["Attempted", snapshot.coverage.attempted_sources], ["Publicly visible", snapshot.coverage.sources_with_public_items ?? 0], ["Failed", snapshot.coverage.failed_sources]])}
-        ${distributionEn("Freshness", freshnessBuckets(snapshot.radar_items))}
+        ${distributionEn("Freshness", freshnessBuckets(snapshot.radar_items, "en"))}
       </div>
     </section>
 
-    <section class="tab-panel active" data-tab-panel="curated">
+    <section aria-labelledby="radar-tab-curated" class="tab-panel active" data-tab-panel="curated" id="radar-panel-curated" role="tabpanel">
       <div class="event-grid">${snapshot.curated_events.map((event) => renderEventCardEn(event, snapshot)).join("") || empty("No curated events are available.")}</div>
     </section>
-    <section class="tab-panel" data-tab-panel="events">
+    <section aria-labelledby="radar-tab-events" class="tab-panel" data-tab-panel="events" hidden id="radar-panel-events" role="tabpanel">
       <div class="event-grid">${snapshot.event_clusters.map((event) => renderEventCardEn(event, snapshot)).join("") || empty("No event clusters are available.")}</div>
     </section>
-    <section class="tab-panel" data-tab-panel="signals">
+    <section aria-labelledby="radar-tab-signals" class="tab-panel" data-tab-panel="signals" hidden id="radar-panel-signals" role="tabpanel">
       <div class="grid radar-layout">
         <div class="row-list radar-list" id="radar-list">
           ${downgradedSignalCount > 0 ? `<div class="callout warning"><strong>${downgradedSignalCount} low-event signals are kept out of the public event list</strong><p>Directory pages, site homepages and repository metadata remain auditable in the JSON snapshot but do not become public events or report evidence.</p></div>` : ""}
@@ -470,13 +479,13 @@ function renderEnglishRadar(snapshot: Snapshot) {
         <aside class="panel sticky"><h2>Citations</h2><p class="note">Links point to public source pages. Private raw text, provider metadata and operational logs are not included.</p><div class="row-list">${displaySignalItems.slice(0, 12).map(renderCitationEn).join("")}</div></aside>
       </div>
     </section>
-    <section class="tab-panel" data-tab-panel="timeline">
+    <section aria-labelledby="radar-tab-timeline" class="tab-panel" data-tab-panel="timeline" hidden id="radar-panel-timeline" role="tabpanel">
       <div class="timeline-list">${snapshot.timeline.map((entry) => renderTimelineEntryEn(entry, snapshot)).join("") || empty("No timeline entries are available.")}</div>
     </section>
-    <section class="tab-panel" data-tab-panel="review">
+    <section aria-labelledby="radar-tab-review" class="tab-panel" data-tab-panel="review" hidden id="radar-panel-review" role="tabpanel">
       <div class="event-grid">${reviewEvents.map((event) => renderEventCardEn(event, snapshot)).join("") || empty("No events currently require review.")}</div>
     </section>
-    <section class="tab-panel" data-tab-panel="health">${sourceHealthPanelEn(snapshot)}</section>
+    <section aria-labelledby="radar-tab-health" class="tab-panel" data-tab-panel="health" hidden id="radar-panel-health" role="tabpanel">${sourceHealthPanelEn(snapshot)}</section>
     <script>${filterScript("en")}</script>
   `);
 }
@@ -552,18 +561,19 @@ function renderEnglishAsk(snapshot: Snapshot) {
 }
 
 function renderEnglishWrite(snapshot: Snapshot) {
+  const currentReports = latestReportsByType(snapshot);
   const prompts = [
     "Draft a concise AI industry observation from the selected events.",
-    "Turn this week's multi-source events into a weekly report outline.",
+    "Turn this week's corroborated and single-source events into a weekly report outline with separate evidence labels.",
     "Identify three events worth a deeper analysis.",
     "List weak signals that deserve follow-up despite limited evidence.",
     ...snapshot.curated_events.slice(0, 2).map((event) => `Build an evidence-bounded angle around “${eventEnglishTitle(event, snapshot)}”.`)
   ];
 
   return englishShell(snapshot, "write", 1, "Write", `
-    <section class="page-heading"><div><div class="pill-row">${pill(`${snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates} report candidates`, "success")}${pill(`${snapshot.event_count} events`, "evidence")}</div><h1>Evidence-led writing</h1><p class="lead">Build an outline from selected events, source confirmation, weak signals and report quality while keeping citations and uncertainty visible.</p></div></section>
+    <section class="page-heading"><div><div class="pill-row">${pill(`${currentReports.length} current report candidates`, "caution")}${pill(`${snapshot.event_count} events`, "evidence")}</div><h1>Evidence-led writing</h1><p class="lead">Build an outline from selected events, source-family corroboration, weak signals and report quality while keeping citations and uncertainty visible.</p></div></section>
     ${freshnessAlertEn(snapshot, "Generated outlines must not make claims beyond the evidence window.")}
-    <section class="grid two"><div class="panel"><h2>Writing prompts</h2>${noteListEn(prompts)}</div><div class="panel"><h2>Data context</h2><dl class="rail">${rail("Data source", sourceLabelEn(snapshot.source.data_source))}${rail("Latest evidence", formatDateEn(snapshot.freshness.latest_timestamp))}${rail("Events", String(snapshot.event_count))}${rail("Public signals", String(snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items))}${rail("Report candidates", String(snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates))}</dl></div></section>
+    <section class="grid two"><div class="panel"><h2>Writing prompts</h2>${noteListEn(prompts)}</div><div class="panel"><h2>Data context</h2><dl class="rail">${rail("Data source", sourceLabelEn(snapshot.source.data_source))}${rail("Latest evidence", formatDateEn(snapshot.freshness.latest_timestamp))}${rail("Events", String(snapshot.event_count))}${rail("Public signals", String(snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items))}${rail("Current report candidates", String(currentReports.length))}</dl></div></section>
     <section class="panel interactive-tool"><h2>Generate an evidence-led outline</h2><p class="note">The browser-local tool turns public events into claims, evidence and caveats. It does not call a private API.</p><textarea id="local-query-input" rows="4" aria-label="Enter a writing request">${escapeHtml(prompts[0] ?? "")}</textarea><div class="actions"><button class="button primary" id="local-query-run" type="button">Generate outline</button></div><div class="local-result" id="local-query-result" aria-live="polite"></div></section>
     <section class="panel"><h2>Current report context</h2><div class="row-list">${latestReportsByType(snapshot).map(renderCompactReportEn).join("") || empty("No public report candidate is available.")}</div></section>
     <script>${localEvidenceToolScript("write", "en", "../../data/radar-snapshot.json")}</script>
@@ -580,16 +590,16 @@ function renderHome(snapshot: Snapshot) {
   const topSectionTitle = snapshotIsStale(snapshot) ? "Top 3 快照" : "今日 Top 3";
   const description = snapshotIsStale(snapshot)
     ? "这批公开证据不是今日实时覆盖；页面按事件合并、来源健康、时间线、引用和局限展示最近可见窗口。"
-    : "把重复信号合并成事件，优先展示多源确认、来源健康、时间线、引用和局限。";
+    : "把重复信号合并成事件，明确区分跨家族确认、同家族复述和单源观察，并展示来源健康、时间线、引用和局限。";
 
   return shell(snapshot, "home", 0, title, `
     <section class="status-strip">
-      ${metricMini("公开信号", snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)}
+      ${metricMini("公开库/本站展示", `${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} / ${snapshot.radar_items.length}`)}
       ${metricMini("事件", snapshot.event_count)}
       ${metricMini("已尝试来源", snapshot.coverage.attempted_sources)}
-      ${metricMini("成功/失败/手动", `${snapshot.source_health_summary.succeeded}/${snapshot.source_health_summary.failed}/${snapshot.source_health_summary.manual_blocked}`)}
-      ${metricMini("报告候选", snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates)}
-      ${metricMini("最新刷新", formatDate(snapshot.coverage.latest_refresh))}
+      ${metricMini("成功/失败/手动", `${snapshot.source_health_summary.succeeded}/${snapshot.source_health_summary.failed}/${snapshot.source_health_summary.manual_blocked}（共 ${snapshot.coverage.sources_total}）`)}
+      ${metricMini("当前报告候选", latestReports.length)}
+      ${metricMini("证据截至", formatDate(snapshot.coverage.latest_refresh))}
     </section>
     ${freshnessAlert(snapshot)}
 
@@ -615,10 +625,12 @@ function renderHome(snapshot: Snapshot) {
       <aside class="ops-console">
         <h2>信息源健康摘要</h2>
         <dl class="rail">
-          ${rail("事件/信号", `${snapshot.event_count} / ${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items}`)}
-          ${rail("多源确认", String(snapshot.event_clusters.filter((event) => event.source_count > 1).length))}
-          ${rail("来源成功/失败", `${snapshot.source_health_summary.succeeded} / ${snapshot.source_health_summary.failed}`)}
-          ${rail("失败类别", formatDistribution(snapshot.failure_family_summary))}
+          ${rail("事件/本站展示信号", `${snapshot.event_count} / ${snapshot.radar_items.length}`)}
+          ${rail("跨家族确认", String(snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length > 1).length))}
+          ${rail("同家族多源复述", String(snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length === 1).length))}
+          ${rail("自动合格来源", String(snapshot.coverage.automated_eligible_sources))}
+          ${rail("来源成功/失败", `${snapshot.source_health_summary.succeeded} / ${snapshot.source_health_summary.failed}（已尝试 ${snapshot.coverage.attempted_sources}）`)}
+          ${rail("异常/排除类别", formatDistribution(snapshot.failure_family_summary))}
           ${rail("数据覆盖", `公开来源 ${snapshot.coverage.sources_with_public_items ?? 0} / ${snapshot.coverage.sources_total}`)}
         </dl>
         <div class="quality-note">
@@ -658,7 +670,7 @@ function renderHome(snapshot: Snapshot) {
         <h2>全部行业精选</h2>
         <a href="radar/">查看全部事件</a>
       </div>
-      <div class="event-grid">${curated.map(renderEventCard).join("") || empty("暂无可展示事件。")}</div>
+      <div class="event-grid">${curated.map((event) => renderEventCard(event, snapshot)).join("") || empty("暂无可展示事件。")}</div>
     </section>
 
     <section class="grid two">
@@ -680,7 +692,7 @@ function renderHome(snapshot: Snapshot) {
           <a href="entities/">实体</a>
         </div>
         ${noteList([
-          "打开雷达筛选多源确认、单源观察和弱信号。",
+           "打开雷达区分跨家族确认、同家族多源复述、单源观察和弱信号。",
           "查看报告质量门禁，确认哪些证据已经支撑正式报告。",
           "进入实体页判断公司、模型、产品或论文是否值得持续跟踪。",
           "只把通过人工审核和发布动作的记录展示为正式报告。",
@@ -713,6 +725,10 @@ function renderRadar(snapshot: Snapshot) {
   const families = countSourceFamilies(snapshot.radar_items);
   const eventFamilies = uniqueStrings(snapshot.event_clusters.flatMap((event) => event.source_families));
   const scoreLabels = uniqueStrings(snapshot.event_clusters.map((event) => event.event_score_label));
+  const categories = uniqueStrings([
+    ...snapshot.event_clusters.map((event) => categoryFilterValue(event.category)),
+    ...snapshot.radar_items.flatMap((item) => item.categories.map(categoryFilterValue))
+  ]).toSorted();
   const eventItemIds = new Set(snapshot.event_cluster_items.map((item) => item.radar_item_id));
   const displaySignalItems = snapshot.radar_items.filter((item) => eventItemIds.has(item.id));
   const downgradedSignalCount = snapshot.radar_items.length - displaySignalItems.length;
@@ -721,7 +737,7 @@ function renderRadar(snapshot: Snapshot) {
     <section class="page-heading">
       <div>
         <div class="pill-row">
-          ${pill(`${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} 条公开`, "success")}
+          ${pill(`${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} 条公开库 / ${snapshot.radar_items.length} 条本站展示`, "success")}
           ${pill(`${snapshot.event_count} 个事件`, "evidence")}
           ${pill(`${snapshot.coverage.attempted_sources} 个已尝试来源`, "neutral")}
           ${pill(sourceLabel(snapshot.source.data_source), "neutral")}
@@ -746,11 +762,13 @@ function renderRadar(snapshot: Snapshot) {
       <div class="controls" role="search">
         <label>搜索 <input id="radar-search" type="search" aria-label="按标题、来源、类别、标签搜索"></label>
         <label>状态 <select id="radar-status">${option("all", "全部状态")}${["included", "needs_review", "excluded", "failed"].map((status) => option(status, statusLabel(status))).join("")}</select></label>
-        <label>类别 <select id="radar-category">${option("all", "全部类别")}${snapshot.top_categories.map((entry) => option(categoryFilterValue(entry.label), categoryFilterValue(entry.label))).join("")}</select></label>
+        <label>类别 <select id="radar-category">${option("all", "全部类别")}${categories.map((category) => option(category, labelize(category))).join("")}</select></label>
         <label>来源家族 <select id="radar-family">${option("all", "全部家族")}${uniqueStrings([...Object.keys(families), ...eventFamilies]).map((family) => option(family, family)).join("")}</select></label>
         <label>评分 <select id="radar-score">${option("all", "全部评分")}${scoreLabels.map((label) => option(label, label)).join("")}</select></label>
-        <label>来源数 <select id="radar-source-count">${option("all", "全部")}${option("multi", "多源确认")}${option("single", "单源")}</select></label>
+        <label>新鲜度 <select id="radar-freshness">${option("all", "全部时间")}${option("24h", "24 小时内")}${option("7d", "2-7 天")}${option("30d", "8-30 天")}${option("archive", "历史（30 天外）")}</select></label>
+        <label>确认状态 <select id="radar-source-count">${option("all", "全部证据状态")}${option("cross", "跨家族确认")}${option("same", "同家族多源复述")}${option("single", "单源观察")}</select></label>
       </div>
+      <div class="filter-feedback"><span aria-live="polite" id="radar-result-count"></span><button class="button" id="radar-reset" type="button">重置筛选</button></div>
       <div class="distribution">
         ${distribution("状态", [
           [statusLabel("included"), snapshot.counts.included],
@@ -768,19 +786,19 @@ function renderRadar(snapshot: Snapshot) {
           ["失败", snapshot.coverage.failed_sources],
           ["跳过", snapshot.coverage.skipped_sources]
         ])}
-        ${distribution("新鲜度", freshnessBuckets(snapshot.radar_items))}
+        ${distribution("新鲜度", freshnessBuckets(snapshot.radar_items, "zh"))}
       </div>
     </section>
 
-    <section class="tab-panel active" data-tab-panel="curated">
-      <div class="event-grid">${snapshot.curated_events.map(renderEventCard).join("") || empty("暂无行业精选事件。")}</div>
+    <section aria-labelledby="radar-tab-curated" class="tab-panel active" data-tab-panel="curated" id="radar-panel-curated" role="tabpanel">
+      <div class="event-grid">${snapshot.curated_events.map((event) => renderEventCard(event, snapshot)).join("") || empty("暂无行业精选事件。")}</div>
     </section>
 
-    <section class="tab-panel" data-tab-panel="events">
-      <div class="event-grid">${snapshot.event_clusters.map(renderEventCard).join("") || empty("暂无事件聚类。")}</div>
+    <section aria-labelledby="radar-tab-events" class="tab-panel" data-tab-panel="events" hidden id="radar-panel-events" role="tabpanel">
+      <div class="event-grid">${snapshot.event_clusters.map((event) => renderEventCard(event, snapshot)).join("") || empty("暂无事件聚类。")}</div>
     </section>
 
-    <section class="tab-panel" data-tab-panel="signals">
+    <section aria-labelledby="radar-tab-signals" class="tab-panel" data-tab-panel="signals" hidden id="radar-panel-signals" role="tabpanel">
       <div class="grid radar-layout">
       <div class="row-list radar-list" id="radar-list">
         ${downgradedSignalCount > 0 ? `<div class="callout warning"><strong>已降级 ${downgradedSignalCount} 条低事件性信号</strong><p>文档入口、目录页、站点首页、仓库元数据等不进入公开事件列表和报告正文；完整审计保留在公开 JSON 快照。</p></div>` : ""}
@@ -794,15 +812,15 @@ function renderRadar(snapshot: Snapshot) {
       </div>
     </section>
 
-    <section class="tab-panel" data-tab-panel="timeline">
+    <section aria-labelledby="radar-tab-timeline" class="tab-panel" data-tab-panel="timeline" hidden id="radar-panel-timeline" role="tabpanel">
       <div class="timeline-list">${snapshot.timeline.map(renderTimelineEntry).join("") || empty("暂无时间线。")}</div>
     </section>
 
-    <section class="tab-panel" data-tab-panel="review">
-      <div class="event-grid">${snapshot.event_clusters.filter((event) => event.caveats.length > 0 || event.related_item_ids.some((id) => snapshot.radar_items.find((item) => item.id === id)?.status === "needs_review")).map(renderEventCard).join("") || empty("暂无待复核事件。")}</div>
+    <section aria-labelledby="radar-tab-review" class="tab-panel" data-tab-panel="review" hidden id="radar-panel-review" role="tabpanel">
+      <div class="event-grid">${snapshot.event_clusters.filter((event) => event.caveats.length > 0 || event.related_item_ids.some((id) => snapshot.radar_items.find((item) => item.id === id)?.status === "needs_review")).map((event) => renderEventCard(event, snapshot)).join("") || empty("暂无待复核事件。")}</div>
     </section>
 
-    <section class="tab-panel" data-tab-panel="health">
+    <section aria-labelledby="radar-tab-health" class="tab-panel" data-tab-panel="health" hidden id="radar-panel-health" role="tabpanel">
       ${sourceHealthPanel(snapshot)}
     </section>
     <script>${filterScript()}</script>
@@ -835,7 +853,7 @@ function renderEntities(snapshot: Snapshot) {
       <div class="panel">
         <div class="section-heading">
           <h2>跟踪原则</h2>
-          <a href="radar/">回到雷达</a>
+          <a href="../radar/">回到雷达</a>
         </div>
         ${noteList([
           "优先看多源、持续出现、且能回到公开引用的实体。",
@@ -859,7 +877,7 @@ function renderEntities(snapshot: Snapshot) {
     <section class="panel">
       <div class="section-heading">
         <h2>高优先级实体</h2>
-        <a href="reports/">查看报告路径</a>
+        <a href="../reports/">查看报告路径</a>
       </div>
       <div class="event-grid">${priorityEntities.map((entity) => renderEntityCard(entity, reportLinkedEntities)).join("") || empty("暂无可展示实体。")}</div>
     </section>
@@ -904,7 +922,7 @@ function renderReports(snapshot: Snapshot) {
 function renderAsk(snapshot: Snapshot) {
   const title = snapshotCuratedTitle(snapshot);
   const examples = [
-    `${snapshotWindowLabel(snapshot)}有哪些多源确认的模型发布？`,
+    `${snapshotWindowLabel(snapshot)}有哪些跨来源家族确认的模型发布？`,
     `${snapshotPeriodLabel(snapshot)} Agent / 开发工具有哪些重要变化？`,
     "哪些事件只有单一来源，可信度较低？",
     snapshotIsStale(snapshot) ? "哪些来源在本轮刷新失败或没有新内容？" : "哪些来源今天失败或没有新内容？",
@@ -920,7 +938,7 @@ function renderAsk(snapshot: Snapshot) {
           ${pill("公开快照查询", "evidence")}
         </div>
         <h1>事件提问</h1>
-        <p class="lead">围绕${escapeHtml(title)}、多源确认、来源失败和弱信号提问。Cloudflare 页面只读取公开快照，不暴露密钥或私有服务端数据。</p>
+        <p class="lead">围绕 ${escapeHtml(title)}、来源家族确认、来源失败和弱信号提问。Cloudflare 页面只读取公开快照，不暴露密钥或私有服务端数据。</p>
       </div>
     </section>
     ${freshnessAlert(snapshot, "结果只基于当前公开证据；Cloudflare 页面本身不提供实时联网聊天。")}
@@ -957,9 +975,10 @@ function renderAsk(snapshot: Snapshot) {
 
 function renderWrite(snapshot: Snapshot) {
   const title = snapshotCuratedTitle(snapshot);
+  const currentReports = latestReportsByType(snapshot);
   const prompts = [
-    `基于${title}写一段 AI 行业观察`,
-    `把${snapshotIsStale(snapshot) ? "这批可见窗口" : "本周"}多源确认事件整理成周报提纲`,
+    `基于 ${title} 写一段 AI 行业观察`,
+    `把${snapshotIsStale(snapshot) ? "这批可见窗口" : "本周"}跨家族确认、同家族复述和单源事件整理成周报提纲`,
     "找出适合写成深度分析的 3 个事件",
     "列出证据不足但值得继续跟踪的弱信号",
     ...snapshot.curated_events.slice(0, 2).map((event) => `基于“${event.canonical_title}”写一个带证据边界的观察角度。`)
@@ -969,11 +988,11 @@ function renderWrite(snapshot: Snapshot) {
     <section class="page-heading">
       <div>
         <div class="pill-row">
-          ${pill(`${snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates} 个报告候选`, "success")}
+          ${pill(`${currentReports.length} 个当前报告候选`, "caution")}
           ${pill(`${snapshot.event_count} 个事件`, "evidence")}
         </div>
         <h1>事件写作</h1>
-        <p class="lead">基于行业精选、多源确认、弱信号和报告质量状态组织写作提纲，并保留来源与不确定性。</p>
+        <p class="lead">基于行业精选、来源家族确认、弱信号和报告质量状态组织写作提纲，并保留来源与不确定性。</p>
       </div>
     </section>
     ${freshnessAlert(snapshot, "写作提纲只基于当前公开证据，不应写成超出证据时间窗的实时结论。")}
@@ -989,7 +1008,7 @@ function renderWrite(snapshot: Snapshot) {
           ${rail("最新雷达", formatDate(snapshot.freshness.latest_timestamp))}
           ${rail("事件数量", String(snapshot.event_count))}
           ${coverageRailRows(snapshot)}
-          ${rail("报告候选", String(snapshot.counts.report_candidates ?? snapshot.counts.saved_report_candidates))}
+          ${rail("当前报告候选", String(currentReports.length))}
         </dl>
       </div>
     </section>
@@ -1082,6 +1101,35 @@ function eventEnglishSummary(event: SnapshotEvent, snapshot: Snapshot) {
   return `This ${categoryLabelEn(event.category).toLowerCase()} event is supported by ${event.source_count} public source${event.source_count === 1 ? "" : "s"} and ${event.related_item_ids.length} related signal${event.related_item_ids.length === 1 ? "" : "s"}. Review the timeline and citations before drawing a firm conclusion.`;
 }
 
+function entityLabelEn(value: string) {
+  const aliases: Record<string, string> = {
+    "苹果": "Apple",
+    apple: "Apple",
+    anthropic: "Anthropic",
+    github: "GitHub",
+    "gpt 5 6": "GPT-5.6",
+    "hugging face": "Hugging Face",
+    "llama cpp": "llama.cpp",
+    microsoft: "Microsoft",
+    openai: "OpenAI",
+    vllm: "vLLM"
+  };
+  return aliases[value.trim().toLowerCase()] ?? entityDisplayLabel(value);
+}
+
+function eventEntityLabelsEn(event: SnapshotEvent) {
+  const labels: string[] = [];
+  const seen = new Set<string>();
+  for (const entity of event.related_entities) {
+    const label = entityLabelEn(entity);
+    const key = label.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    labels.push(label);
+  }
+  return labels;
+}
+
 function renderEventCardEn(event: SnapshotEvent, snapshot: Snapshot) {
   const title = eventEnglishTitle(event, snapshot);
   const summary = eventEnglishSummary(event, snapshot);
@@ -1089,17 +1137,24 @@ function renderEventCardEn(event: SnapshotEvent, snapshot: Snapshot) {
     title,
     summary,
     event.category,
+    categoryLabelEn(event.category),
     event.event_score_label,
+    eventScoreLabelEn(event.event_score_label),
     event.source_families.join(" "),
+    event.source_families.map(sourceFamilyLabelEn).join(" "),
     event.related_entities.join(" "),
+    eventEntityLabelsEn(event).join(" "),
     event.citations.map((citation) => citation.source_name).join(" ")
   ].join(" ").toLowerCase();
-  const sourceCount = event.source_count > 1 ? "multi" : "single";
+  const sourceCount = eventConfirmationFilterValue(event);
   const caveats = eventCaveatsEn(event, snapshot);
 
-  return `<article class="event-card" data-category="${escapeAttr(`${event.category} ${categoryLabelEn(event.category)}`)}" data-family="${escapeAttr(event.source_families.join(" "))}" data-score="${escapeAttr(event.event_score_label)}" data-search="${escapeAttr(search)}" data-source-count="${sourceCount}">
+  const freshness = freshnessBucket(event.latest_seen_at);
+  return `<article class="event-card" data-category="${escapeAttr(`${event.category} ${categoryLabelEn(event.category)}`)}" data-family="${escapeAttr(event.source_families.join(" "))}" data-freshness="${freshness}" data-score="${escapeAttr(event.event_score_label)}" data-search="${escapeAttr(search)}" data-source-count="${sourceCount}" data-status="${escapeAttr(eventStatus(event, snapshot))}">
     <div class="pill-row">
       ${pill(eventScoreLabelEn(event.event_score_label), eventScoreTone(event.event_score_label))}
+      ${pill(eventConfirmationLabelEn(event), eventConfirmationTone(event))}
+      ${pill(freshnessLabelEn(freshness), freshness === "archive" ? "caution" : "neutral")}
       ${pill(`Score ${event.event_score}`, "evidence")}
       ${pill(`${event.source_count} source${event.source_count === 1 ? "" : "s"}`, event.source_count > 1 ? "success" : "caution")}
       ${event.source_families.slice(0, 3).map((family) => pill(sourceFamilyLabelEn(family), "neutral")).join("")}
@@ -1114,7 +1169,7 @@ function renderEventCardEn(event: SnapshotEvent, snapshot: Snapshot) {
       ${rail("What to watch", eventWatchNoteEn(event))}
       ${rail("Score basis", eventScoreReasonEn(event))}
     </dl>
-    ${event.related_entities.length > 0 ? `<div class="pill-row">${event.related_entities.slice(0, 6).map((entity) => pill(entity, "neutral")).join("")}</div>` : ""}
+    ${event.related_entities.length > 0 ? `<div class="pill-row">${eventEntityLabelsEn(event).slice(0, 6).map((entity) => pill(entity, "neutral")).join("")}</div>` : ""}
     <details><summary>Expand timeline</summary><div class="timeline-list compact">${event.timeline.map(renderEventTimelineRowEn).join("")}</div></details>
     <details><summary>View related signals</summary><div class="citation-grid">${event.citations.map(renderEventCitationEn).join("")}</div></details>
     ${caveats.length > 0 ? `<div class="event-caveats">${noteListEn(caveats)}</div>` : ""}
@@ -1124,7 +1179,7 @@ function renderEventCardEn(event: SnapshotEvent, snapshot: Snapshot) {
 function renderFeaturedEventCardEn(event: SnapshotEvent, snapshot: Snapshot) {
   return `<article class="featured-card">
     <div class="featured-main">
-      <div class="pill-row">${pill(eventScoreLabelEn(event.event_score_label), eventScoreTone(event.event_score_label))}${pill(`${event.source_count} source${event.source_count === 1 ? "" : "s"}`, event.source_count > 1 ? "success" : "caution")}${event.source_families.slice(0, 2).map((family) => pill(sourceFamilyLabelEn(family), "neutral")).join("")}</div>
+      <div class="pill-row">${pill(eventScoreLabelEn(event.event_score_label), eventScoreTone(event.event_score_label))}${pill(eventConfirmationLabelEn(event), eventConfirmationTone(event))}${pill(`${event.source_count} source${event.source_count === 1 ? "" : "s"}`, event.source_count > 1 ? "success" : "caution")}${event.source_families.slice(0, 2).map((family) => pill(sourceFamilyLabelEn(family), "neutral")).join("")}</div>
       <h2>${escapeHtml(eventEnglishTitle(event, snapshot))}</h2>
       <p>${escapeHtml(eventEnglishSummary(event, snapshot))}</p>
       <dl class="event-meta">${rail("Why it matters", eventImpactNoteEn(event))}${rail("Next check", eventWatchNoteEn(event))}</dl>
@@ -1134,7 +1189,9 @@ function renderFeaturedEventCardEn(event: SnapshotEvent, snapshot: Snapshot) {
 }
 
 function eventImpactNoteEn(event: SnapshotEvent) {
-  const entity = event.related_entities[0] || categoryLabelEn(event.category);
+  const text = `${event.canonical_title} ${event.summary_zh} ${event.category}`.toLowerCase();
+  const category = eventDecisionCategory(event, text);
+  const entity = primaryEventEntityEn(event);
   const notes: Record<string, string> = {
     agent: `${entity} may change agent workflows, developer entry points or product integration choices.`,
     benchmark: `${entity} may change comparative evaluation, procurement shortlists or capability positioning.`,
@@ -1148,7 +1205,7 @@ function eventImpactNoteEn(event: SnapshotEvent) {
     research: `${entity} may influence technical direction or evaluation methods if it is independently reproduced.`,
     safety: `${entity} may change usage boundaries, review requirements or organizational responsibility.`
   };
-  return notes[event.category] ?? `${entity} is a public industry signal that should be evaluated against its sources and timeline.`;
+  return notes[category] ?? `${entity} is a public industry signal that should be evaluated against its sources and timeline.`;
 }
 
 function eventWatchNoteEn(event: SnapshotEvent) {
@@ -1159,7 +1216,12 @@ function eventWatchNoteEn(event: SnapshotEvent) {
 }
 
 function eventScoreReasonEn(event: SnapshotEvent) {
-  const confirmation = event.source_count > 1 ? "multi-source confirmation" : "single-source evidence";
+  const confirmation =
+    event.source_count > 1 && event.source_families.length > 1
+      ? "cross-family corroboration"
+      : event.source_count > 1
+        ? "multiple reports from one source family"
+        : "single-source evidence";
   return `${event.event_score}/100 from AI relevance, source credibility, source diversity, freshness, novelty and importance; currently ${confirmation}.`;
 }
 
@@ -1187,7 +1249,8 @@ function renderTimelineEntryEn(entry: SnapshotTimelineEntry, snapshot: Snapshot)
 
 function renderRadarItemEn(item: SnapshotItem) {
   const summary = item.summary_en?.trim() || `Public signal from ${item.source_name}. Review the original title and source before using it as evidence.`;
-  return `<article class="radar-row" data-category="${escapeAttr(`${item.categories.join(" ")} ${item.categories.map(categoryLabelEn).join(" ")}`)}" data-family="${escapeAttr(sourceFamily(item))}" data-search="${escapeAttr(`${item.title} ${summary} ${item.source_name} ${item.tags.join(" ")} ${item.entities.map((entity) => entity.name).join(" ")}`.toLowerCase())}" data-status="${escapeAttr(item.status)}">
+  const freshness = freshnessBucket(item.published_at ?? item.collected_at ?? item.processed_at);
+  return `<article class="radar-row" data-category="${escapeAttr(`${item.categories.join(" ")} ${item.categories.map(categoryLabelEn).join(" ")}`)}" data-family="${escapeAttr(sourceFamily(item))}" data-freshness="${freshness}" data-search="${escapeAttr(`${item.title} ${summary} ${item.source_name} ${item.tags.join(" ")} ${item.entities.map((entity) => entity.name).join(" ")}`.toLowerCase())}" data-status="${escapeAttr(item.status)}">
     <div><div class="pill-row">${pill(statusLabelEn(item.status), statusTone(item.status))}${pill(`Overall ${item.scores.overall.toFixed(2)}`, "evidence")}${pill(`Confidence ${formatPercent(item.confidence)}`, "success")}</div><h2><a href="${escapeAttr(item.url)}">${escapeHtml(item.title)}</a></h2><p>${escapeHtml(summary)}</p><div class="pill-row">${item.categories.map((category) => pill(categoryLabelEn(category), "evidence")).join("")}${item.tags.slice(0, 5).map((tag) => pill(tag, "neutral")).join("")}</div></div>
     <dl>${rail("Source", item.source_name)}${rail("Time", formatDateEn(item.published_at ?? item.collected_at))}${rail("Tier", item.source_tier)}${rail("Source family", sourceFamilyLabelEn(sourceFamily(item)))}</dl>
   </article>`;
@@ -1199,11 +1262,12 @@ function renderCitationEn(item: SnapshotItem) {
 
 function renderEntityCardEn(entity: EntitySummary) {
   const insight = entityTrackingInsight(entity);
+  const name = entityLabelEn(entity.name);
   const sourceEntries = [...entity.sourceCounts.entries()].toSorted((left, right) => right[1] - left[1]).slice(0, 4);
   return `<article class="event-card">
     <div class="pill-row">${pill(priorityLabelEn(insight.priorityLabel), priorityTone(insight.priorityScore))}${pill(entityTypeLabelEn(String(entity.type)), "neutral")}${pill(`${entity.totalSignals} signals`, "evidence")}</div>
-    <h2>${escapeHtml(entity.name)}</h2>
-    <p>${escapeHtml(`${entity.name} appears in ${entity.totalSignals} public signals across ${entity.sourceCounts.size} sources. Use the linked evidence to judge whether the pattern is persistent and decision-relevant.`)}</p>
+    <h2>${escapeHtml(name)}</h2>
+    <p>${escapeHtml(`${name} appears in ${entity.totalSignals} public signals across ${entity.sourceCounts.size} sources. Use the linked evidence to judge whether the pattern is persistent and decision-relevant.`)}</p>
     <dl class="event-meta">${rail("Source coverage", String(entity.sourceCounts.size))}${rail("Average confidence", formatPercent(entityAverageConfidence(entity)))}${rail("Latest signal", formatDateEn(entity.latestTimestamp))}${rail("Included / review", `${entity.statusCounts.included} / ${entity.statusCounts.needs_review}`)}</dl>
     <div class="pill-row">${sourceEntries.map(([source, count]) => pill(`${source} ${count}`, "neutral")).join("")}</div>
     <a class="source-link" href="${escapeAttr(entity.topItem.url)}">Open strongest public signal</a>
@@ -1229,7 +1293,7 @@ function entityPriorityDistributionEn(entities: EntitySummary[]): Array<[string,
 }
 
 function renderCompactReportEn(report: SnapshotReport) {
-  return `<article class="compact-row"><div><div class="pill-row">${pill(reportTypeLabelEn(report.report_type), "evidence")}${pill(qualityLabelEn(report), report.quality_gate_passed ? "success" : "caution")}${pill(statusLabelEn(report.status), statusTone(report.status))}</div><h3>${escapeHtml(`${reportTypeLabelEn(report.report_type)} evidence candidate`)}</h3><p>${escapeHtml(`${report.usable_item_count} usable items, ${report.citation_count} citations, ${report.distinct_source_count} distinct sources and ${report.category_count} categories.`)}</p></div><dl>${rail("Window", `${formatDateEn(report.time_window.start)} to ${formatDateEn(report.time_window.end)}`)}${rail("Mode", modeLabelEn(report.mode))}</dl></article>`;
+  return `<article class="compact-row"><div><div class="pill-row">${pill("Evidence draft, not published", "caution")}${pill(reportTypeLabelEn(report.report_type), "evidence")}${pill(qualityLabelEn(report), report.quality_gate_passed ? "neutral" : "caution")}</div><h3>${escapeHtml(`${reportTypeLabelEn(report.report_type)} evidence candidate`)}</h3><p>${escapeHtml(`${report.usable_item_count} usable items, ${report.citation_count} citations, ${report.distinct_source_count} distinct sources and ${report.category_count} categories.`)}</p></div><dl>${rail("Window", `${formatDateEn(report.time_window.start)} to ${formatDateEn(report.time_window.end)}`)}${rail("Mode", modeLabelEn(report.mode))}</dl></article>`;
 }
 
 function renderReportEn(report: SnapshotReport, snapshot: Snapshot) {
@@ -1239,14 +1303,17 @@ function renderReportEn(report: SnapshotReport, snapshot: Snapshot) {
     .toSorted((left, right) => right.event_score - left.event_score)
     .slice(0, 6);
   const fallbackEvents = includedEvents.length > 0 ? includedEvents : snapshot.curated_events.slice(0, 3);
+  const corroboratedEvents = fallbackEvents.filter((event) => event.source_count > 1).length;
+  const crossFamilyEvents = fallbackEvents.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
   const gateReasons = report.quality_gate_passed ? [] : reportGateReasonsEn(report.quality_gate_reasons);
+  const releaseReady = crossFamilyEvents > 0 && report.status !== "needs_review";
 
   return `<article class="report-card">
-    <div class="pill-row">${pill(reportTypeLabelEn(report.report_type), "evidence")}${pill(qualityLabelEn(report), report.quality_gate_passed ? "success" : "caution")}${pill(statusLabelEn(report.status), statusTone(report.status))}${pill(modeLabelEn(report.mode), "neutral")}</div>
+    <div class="pill-row">${pill(releaseReady ? "Editorial release controlled" : "Evidence draft, not release-ready", releaseReady ? "success" : "caution")}${pill(reportTypeLabelEn(report.report_type), "evidence")}${pill(qualityLabelEn(report), report.quality_gate_passed ? "neutral" : "caution")}${pill(statusLabelEn(report.status), statusTone(report.status))}${pill(modeLabelEn(report.mode), "neutral")}</div>
     <h2>${escapeHtml(`${reportTypeLabelEn(report.report_type)} event evidence candidate`)}</h2>
     <p class="report-summary">${escapeHtml(`This candidate organizes ${fallbackEvents.length} top event${fallbackEvents.length === 1 ? "" : "s"} from ${report.usable_item_count} usable signals. Quality status is shown separately from editorial approval.`)}</p>
-    <dl class="inline-defs">${rail("Quality gate", qualityLabelEn(report))}${rail("Usable items", report.usable_item_count)}${rail("Citations", report.citation_count)}${rail("Distinct sources", report.distinct_source_count)}${rail("Categories", report.category_count)}${rail("Missing evidence", report.missing_evidence.length)}${rail("Window", `${formatDateEn(report.time_window.start)} to ${formatDateEn(report.time_window.end)}`)}</dl>
-    ${fallbackEvents.length > 0 ? `<h3>Top events included</h3><div class="event-mini-list">${fallbackEvents.map((event) => `<article class="event-mini">${pill(eventScoreLabelEn(event.event_score_label), eventScoreTone(event.event_score_label))}<strong>${escapeHtml(eventEnglishTitle(event, snapshot))}</strong><span>${escapeHtml(`${event.source_count} sources / ${event.related_item_ids.length} signals`)}</span></article>`).join("")}</div>` : ""}
+    <dl class="inline-defs">${rail("Baseline evidence gate", qualityLabelEn(report))}${rail("Cross-family / same-family multi / single", `${crossFamilyEvents} / ${Math.max(0, corroboratedEvents - crossFamilyEvents)} / ${Math.max(0, fallbackEvents.length - corroboratedEvents)}`)}${rail("Publication readiness", crossFamilyEvents > 0 && report.status !== "needs_review" ? "Editorial status controls publication" : "Needs review: independent-family corroboration is limited")}${rail("Usable items", report.usable_item_count)}${rail("Citations", report.citation_count)}${rail("Distinct sources", report.distinct_source_count)}${rail("Categories", report.category_count)}${rail("Missing evidence", report.missing_evidence.length)}${rail("Window", `${formatDateEn(report.time_window.start)} to ${formatDateEn(report.time_window.end)}`)}</dl>
+    ${fallbackEvents.length > 0 ? `<h3>Top events included</h3><div class="event-mini-list">${fallbackEvents.map((event) => renderEventMiniEn(event, snapshot)).join("")}</div>` : ""}
     ${gateReasons.length > 0 ? `<h3>Why the gate did not pass</h3>${noteListEn(gateReasons)}` : ""}
     <h3>Caveats</h3>${noteListEn(["This is a public evidence candidate, not an editorially published report.", "Original citations should be checked before using any claim externally.", ...(report.missing_evidence.length > 0 ? ["One or more evidence gaps remain unresolved."] : [])])}
     ${report.citations.length > 0 ? `<div class="citation-grid">${report.citations.slice(0, 12).map((citation) => `<a class="citation" href="${escapeAttr(citation.url)}"><span>${escapeHtml(citation.source_name)}</span><strong>${escapeHtml(citation.title)}</strong><small>${escapeHtml(formatDateEn(citation.published_at ?? citation.collected_at))}</small></a>`).join("")}</div>` : ""}
@@ -1258,7 +1325,9 @@ function reportCoveragePanelEn(snapshot: Snapshot, reports: SnapshotReport[]) {
   const weekly = reports.find((report) => report.report_type === "weekly");
   const formalReports = snapshot.reports.filter(isFormalSnapshotReport).length;
   const evidenceDrafts = snapshot.reports.length - formalReports;
-  return `<section class="panel"><div class="section-heading"><h2>Report quality model</h2></div>${noteListEn(["Quality gates measure whether enough diverse, cited evidence exists; they do not replace editorial review.", "Daily minimums are 5 usable items, 3 citations, 2 sources and 2 categories when available. Weekly minimums are 20, 8, 5 and 3."])}<dl class="rail">${rail("Formal reports", String(formalReports))}${rail("Evidence drafts", String(evidenceDrafts))}${rail("Daily gate", daily ? qualityLabelEn(daily) : "Unavailable")}${rail("Daily items / citations / sources / categories", daily ? `${daily.usable_item_count} / ${daily.citation_count} / ${daily.distinct_source_count} / ${daily.category_count}` : "Unavailable")}${rail("Weekly gate", weekly ? qualityLabelEn(weekly) : "Unavailable")}${rail("Weekly items / citations / sources / categories", weekly ? `${weekly.usable_item_count} / ${weekly.citation_count} / ${weekly.distinct_source_count} / ${weekly.category_count}` : "Unavailable")}</dl></section>`;
+  const corroboratedEvents = snapshot.event_clusters.filter((event) => event.source_count > 1).length;
+  const crossFamilyEvents = snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
+  return `<section class="panel"><div class="section-heading"><h2>Report quality model</h2></div>${noteListEn(["The baseline evidence gate measures volume, citations, source breadth and category breadth; it does not mean every event is independently corroborated.", "Multiple reports from one family and cross-family corroboration are shown separately, and all evidence drafts still require editorial review.", "Daily minimums are 5 usable items, 3 citations, 2 sources and 2 categories when available. Weekly minimums are 20, 8, 5 and 3."])}<dl class="rail">${rail("Formal reports", String(formalReports))}${rail("Evidence drafts", String(evidenceDrafts))}${rail("Multiple reports / cross-family / all events", `${corroboratedEvents} / ${crossFamilyEvents} / ${snapshot.event_count}`)}${rail("Release readiness", crossFamilyEvents > 0 && formalReports > 0 ? "Editorially controlled" : "Needs review: cross-family confirmation or formal reports are insufficient")}${rail("Daily baseline gate", daily ? qualityLabelEn(daily) : "Unavailable")}${rail("Daily items / citations / sources / categories", daily ? `${daily.usable_item_count} / ${daily.citation_count} / ${daily.distinct_source_count} / ${daily.category_count}` : "Unavailable")}${rail("Weekly baseline gate", weekly ? qualityLabelEn(weekly) : "Unavailable")}${rail("Weekly items / citations / sources / categories", weekly ? `${weekly.usable_item_count} / ${weekly.citation_count} / ${weekly.distinct_source_count} / ${weekly.category_count}` : "Unavailable")}</dl></section>`;
 }
 
 function reportGateReasonsEn(reasons: string[]) {
@@ -1275,12 +1344,12 @@ function reportGateReasonsEn(reasons: string[]) {
 }
 
 function coveragePanelEn(snapshot: Snapshot) {
-  return `<section class="panel"><div class="section-heading"><h2>Public data coverage</h2></div><dl class="rail">${rail("Dataset", "Public read-only")}${rail("Sources total", snapshot.coverage.sources_total)}${rail("Automated eligible", snapshot.coverage.automated_eligible_sources)}${rail("Attempted", snapshot.coverage.attempted_sources)}${rail("Sources with public items", snapshot.coverage.sources_with_public_items ?? "Unavailable")}${rail("Public signals", snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)}${rail("Failed / skipped", snapshot.coverage.failed_sources + snapshot.coverage.skipped_sources)}${rail("Source visibility", snapshot.coverage.source_public_visibility === null ? "Unavailable" : formatPercent(snapshot.coverage.source_public_visibility))}${rail("Radar visibility", snapshot.coverage.radar_to_public_visibility === null ? "Unavailable" : formatPercent(snapshot.coverage.radar_to_public_visibility))}${rail("Last refresh", formatDateEn(snapshot.coverage.latest_refresh))}</dl>${Object.keys(snapshot.coverage.failure_families ?? {}).length > 0 ? `<div class="distribution">${distributionEn("Failure families", Object.entries(snapshot.coverage.failure_families ?? {}))}</div>` : ""}</section>`;
+  return `<section class="panel"><div class="section-heading"><h2>Public data coverage</h2></div><dl class="rail">${rail("Dataset", "Public read-only")}${rail("Sources total", snapshot.coverage.sources_total)}${rail("Automated eligible", snapshot.coverage.automated_eligible_sources)}${rail("Attempted", snapshot.coverage.attempted_sources)}${rail("Sources with public items", snapshot.coverage.sources_with_public_items ?? "Unavailable")}${rail("Public store signals", snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)}${rail("Displayed safe signals", snapshot.radar_items.length)}${rail("Rows withheld from display", Math.max(0, (snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items) - snapshot.radar_items.length))}${rail("Failed / skipped", snapshot.coverage.failed_sources + snapshot.coverage.skipped_sources)}${rail("Source visibility", snapshot.coverage.source_public_visibility === null ? "Unavailable" : formatPercent(snapshot.coverage.source_public_visibility))}${rail("Radar visibility", snapshot.coverage.radar_to_public_visibility === null ? "Unavailable" : formatPercent(snapshot.coverage.radar_to_public_visibility))}${rail("Evidence through", formatDateEn(snapshot.coverage.latest_refresh))}${rail("Snapshot generated", formatDateEn(snapshot.generated_at))}</dl>${Object.keys(snapshot.coverage.failure_families ?? {}).length > 0 ? `<div class="distribution">${distributionEn("Failures, warnings and exclusions", Object.entries(snapshot.coverage.failure_families ?? {}))}</div>` : ""}</section>`;
 }
 
 function sourceHealthPanelEn(snapshot: Snapshot) {
   const health = snapshot.source_health_summary;
-  return `<section class="panel"><div class="section-heading"><h2>Source health summary</h2><span>${escapeHtml(formatDateEn(snapshot.coverage.latest_refresh))}</span></div><dl class="metric-grid">${metricEn("Succeeded", health.succeeded)}${metricEn("Failed", health.failed)}${metricEn("Manual / blocked", health.manual_blocked)}${metricEn("Timeout", health.timeout)}${metricEn("403", health["403"])}${metricEn("Rate limited", health.rate_limit)}${metricEn("No new items", health.no_items)}${metricEn("Duplicate only", health.duplicate_only)}</dl><div class="distribution">${distributionEn("Failure reasons", Object.entries(snapshot.failure_family_summary))}${distributionEn("Blocked or excluded", [["Manual blocked", health.manual_blocked], ["Unsupported", health.unsupported_source], ["Low relevance excluded", health.low_relevance_excluded]])}</div></section>`;
+  return `<section class="panel"><div class="section-heading"><h2>Source health summary</h2><span>Evidence through ${escapeHtml(formatDateEn(snapshot.coverage.latest_refresh))}</span></div><dl class="metric-grid">${metricEn("Sources total", snapshot.coverage.sources_total)}${metricEn("Automated eligible", snapshot.coverage.automated_eligible_sources)}${metricEn("Succeeded", health.succeeded)}${metricEn("Failed", health.failed)}${metricEn("Manual / blocked", health.manual_blocked)}${metricEn("Timeout failures", health.timeout)}${metricEn("HTTP 403 failures", health["403"])}${metricEn("Rate-limit warnings (may overlap)", health.rate_limit)}${metricEn("No new items", health.no_items)}${metricEn("Duplicate only", health.duplicate_only)}</dl><div class="distribution">${distributionEn("Failures, warnings and exclusions (categories may overlap)", Object.entries(snapshot.failure_family_summary))}${distributionEn("Blocked or excluded", [["Manual blocked", health.manual_blocked], ["Unsupported", health.unsupported_source], ["Low relevance excluded", health.low_relevance_excluded]])}</div></section>`;
 }
 
 function metricEn(label: string, value: number | null) {
@@ -1406,7 +1475,7 @@ function modeLabelEn(mode: string) {
 }
 
 function qualityLabelEn(report: SnapshotReport) {
-  return report.quality_gate_passed ? "Quality gate passed" : "More evidence needed";
+  return report.quality_gate_passed ? "Baseline evidence gate passed" : "More evidence needed";
 }
 
 function entityTypeLabelEn(type: string) {
@@ -1424,7 +1493,13 @@ function entityTypeLabelEn(type: string) {
 }
 
 function priorityLabelEn(label: string) {
-  const labels: Record<string, string> = { "高优先级": "High priority", "关注": "Watch", "观察": "Monitor" };
+  const labels: Record<string, string> = {
+    "高优先级": "High priority",
+    "关注": "Watch",
+    "观察": "Monitor",
+    "持续跟踪": "Track",
+    "观察中": "Monitor"
+  };
   return labels[label] ?? label;
 }
 
@@ -1435,14 +1510,14 @@ function failureLabelEn(value: string) {
     duplicate_only: "Duplicate only",
     failed_403: "HTTP 403",
     failed_parse: "Parse failure",
-    failed_rate_limit: "Rate limited",
+    failed_rate_limit: "Rate-limit failure",
     failed_timeout: "Timeout",
     low_relevance_excluded: "Low relevance excluded",
     manual_blocked: "Manual / blocked",
     no_items: "No new items",
     no_new_items: "No new items",
-    rate_limit: "Rate limited",
-    timeout: "Timeout",
+    rate_limit: "Rate-limit warning (may overlap)",
+    timeout: "Timeout failure",
     unsupported_source: "Unsupported"
   };
   return labels[value] ?? value.replace(/_/g, " ");
@@ -1504,7 +1579,7 @@ function shell(snapshot: Snapshot, current: "home" | "radar" | "entities" | "rep
 </html>`;
 }
 
-function renderEventCard(event: SnapshotEvent) {
+function renderEventCard(event: SnapshotEvent, snapshot: Snapshot) {
   const search = [
     event.canonical_title,
     event.summary_zh,
@@ -1514,11 +1589,14 @@ function renderEventCard(event: SnapshotEvent) {
     event.related_entities.join(" "),
     event.citations.map((citation) => citation.source_name).join(" ")
   ].join(" ").toLowerCase();
-  const sourceCount = event.source_count > 1 ? "multi" : "single";
+  const sourceCount = eventConfirmationFilterValue(event);
 
-  return `<article class="event-card" data-category="${escapeAttr(`${event.category} ${labelize(event.category)}`)}" data-family="${escapeAttr(event.source_families.join(" "))}" data-score="${escapeAttr(event.event_score_label)}" data-search="${escapeAttr(search)}" data-source-count="${sourceCount}">
+  const freshness = freshnessBucket(event.latest_seen_at);
+  return `<article class="event-card" data-category="${escapeAttr(`${event.category} ${labelize(event.category)}`)}" data-family="${escapeAttr(event.source_families.join(" "))}" data-freshness="${freshness}" data-score="${escapeAttr(event.event_score_label)}" data-search="${escapeAttr(search)}" data-source-count="${sourceCount}" data-status="${escapeAttr(eventStatus(event, snapshot))}">
     <div class="pill-row">
       ${pill(event.event_score_label, eventScoreTone(event.event_score_label))}
+      ${pill(eventConfirmationLabel(event), eventConfirmationTone(event))}
+      ${pill(freshnessLabel(freshness), freshness === "archive" ? "caution" : "neutral")}
       ${pill(`分数 ${event.event_score}`, "evidence")}
       ${pill(`${event.source_count} 个来源`, event.source_count > 1 ? "success" : "caution")}
       ${event.source_families.slice(0, 3).map((family) => pill(family, "neutral")).join("")}
@@ -1551,6 +1629,7 @@ function renderFeaturedEventCard(event: SnapshotEvent) {
     <div class="featured-main">
       <div class="pill-row">
         ${pill(event.event_score_label, eventScoreTone(event.event_score_label))}
+        ${pill(eventConfirmationLabel(event), eventConfirmationTone(event))}
         ${pill(`${event.source_count} 个来源`, event.source_count > 1 ? "success" : "caution")}
         ${event.source_families.slice(0, 2).map((family) => pill(family, "neutral")).join("")}
       </div>
@@ -1586,7 +1665,8 @@ function readerCategoryCards(snapshot: Snapshot) {
 
 function readerBriefing(snapshot: Snapshot) {
   const highPriority = snapshot.curated_events.filter((event) => event.event_score_label === "高优先级").length;
-  const multiSource = snapshot.event_clusters.filter((event) => event.source_count > 1).length;
+  const sameFamily = snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length === 1).length;
+  const crossFamily = snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
   const formalReports = snapshot.reports.filter(isFormalSnapshotReport).length;
   const evidenceDrafts = snapshot.reports.length - formalReports;
   const staleNote = snapshotIsStale(snapshot)
@@ -1594,8 +1674,8 @@ function readerBriefing(snapshot: Snapshot) {
     : "当前可作为今日公开证据视图，但仍应以来源和引用为准。";
 
   return [
-    `${snapshot.event_count} 个事件中，${highPriority} 个为高优先级；优先阅读 Top 3 和多源确认事件。`,
-    `${multiSource} 个事件已有多源确认；单源事件应先看观察点，等待第二来源或官方补充。`,
+    `${snapshot.event_count} 个事件中，${highPriority} 个为高优先级；优先阅读 Top 3，并先核对来源家族。`,
+    `跨家族确认 ${crossFamily} 个，同家族多源复述 ${sameFamily} 个；单源事件应先看观察点，等待第二来源或官方补充。`,
     `正式报告 ${formalReports} 份，证据草稿 ${evidenceDrafts} 份；结论只从正式报告读取，草稿用于判断缺口。`,
     staleNote
   ];
@@ -1605,7 +1685,7 @@ function readerCategoryCounts(snapshot: Snapshot) {
   return [
     {
       count: snapshot.event_count,
-      description: "先看 Top3、事件层和多源确认。",
+      description: "先看 Top 3、事件层和来源家族确认。",
       label: "热点",
       query: ""
     },
@@ -1652,11 +1732,29 @@ function categoryFilterValue(value: string) {
 }
 
 function renderEventMini(event: SnapshotEvent) {
+  const primaryCitation = event.citations[0];
   return `<article class="event-mini">
     ${pill(event.event_score_label, eventScoreTone(event.event_score_label))}
     <strong>${escapeHtml(event.canonical_title)}</strong>
-    <span>${escapeHtml(`${event.source_count} 个来源 / ${event.related_item_ids.length} 条信号`)}</span>
+    <span>${escapeHtml(`${event.source_count} 个来源 / ${event.source_families.length} 个来源家族 / ${event.related_item_ids.length} 条信号`)}</span>
+    <small>${escapeHtml(`产业影响：${eventImpactNote(event)}；下一步：${eventWatchNote(event)}`)}</small>
+    ${primaryCitation ? `<a class="source-link" href="${escapeAttr(primaryCitation.url)}">主证据：${escapeHtml(primaryCitation.source_name)} · ${escapeHtml(formatDate(primaryCitation.published_at ?? primaryCitation.collected_at))}</a>` : ""}
   </article>`;
+}
+
+function renderEventMiniEn(event: SnapshotEvent, snapshot: Snapshot) {
+  const primaryCitation = event.citations[0];
+  return `<article class="event-mini">
+    ${pill(eventScoreLabelEn(event.event_score_label), eventScoreTone(event.event_score_label))}
+    <strong>${escapeHtml(eventEnglishTitle(event, snapshot))}</strong>
+    <span>${escapeHtml(`${countNounEn(event.source_count, "source")} / ${countNounEn(event.source_families.length, "source family", "source families")} / ${countNounEn(event.related_item_ids.length, "signal")}`)}</span>
+    <small>${escapeHtml(`Decision relevance: ${eventImpactNoteEn(event)} Next check: ${eventWatchNoteEn(event)}`)}</small>
+    ${primaryCitation ? `<a class="source-link" href="${escapeAttr(primaryCitation.url)}">Primary evidence: ${escapeHtml(primaryCitation.source_name)} · ${escapeHtml(formatDateEn(primaryCitation.published_at ?? primaryCitation.collected_at))}</a>` : ""}
+  </article>`;
+}
+
+function countNounEn(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function eventImpactNote(event: SnapshotEvent) {
@@ -1781,14 +1879,15 @@ function eventWatchNote(event: SnapshotEvent) {
 
 function primaryEventEntity(event: SnapshotEvent) {
   const title = event.canonical_title.toLowerCase();
+  const normalizedTitle = entityMatchText(title);
   const titleTokens = meaningfulTitleTokens(title);
   const titleMatchedEntity = event.related_entities.find((entity) => {
-    const normalized = entity.toLowerCase();
-    return normalized.length >= 4 && title.includes(normalized);
+    const normalized = entityMatchText(entity);
+    return normalized.length >= 3 && normalizedTitle.includes(normalized);
   });
 
   if (titleMatchedEntity) {
-    return publicText(titleMatchedEntity);
+    return entityDisplayLabel(publicText(titleMatchedEntity));
   }
 
   const tokenMatchedEntity = event.related_entities.find((entity) => {
@@ -1796,10 +1895,26 @@ function primaryEventEntity(event: SnapshotEvent) {
     return titleTokens.some((token) => token.length >= 4 && normalized.includes(token));
   });
 
-  return tokenMatchedEntity ? publicText(tokenMatchedEntity) : event.related_entities[0] ? publicText(event.related_entities[0]) : labelize(event.category);
+  return entityDisplayLabel(tokenMatchedEntity ? publicText(tokenMatchedEntity) : labelize(event.category));
+}
+
+function primaryEventEntityEn(event: SnapshotEvent) {
+  const entity = primaryEventEntity(event);
+  if (entity === labelize(event.category)) return "This event";
+  const originalEntity = event.related_entities.find((candidate) => entityDisplayLabel(candidate) === entity) ?? entity;
+  const directIndex = event.canonical_title.toLowerCase().indexOf(originalEntity.toLowerCase());
+  if (directIndex >= 0) return event.canonical_title.slice(directIndex, directIndex + originalEntity.length);
+  return entityLabelEn(entity);
+}
+
+function entityMatchText(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function eventDecisionCategory(event: SnapshotEvent, text: string) {
+  if (/lawsuit|litigation|sues?|court|antitrust|copyright|知识产权|诉讼|起诉|法院|监管|政策/.test(text)) return "regulation";
+  if (/vulnerabilit|exploit|breach|prompt injection|安全|漏洞|攻击|泄露/.test(text)) return "safety";
+
   switch (event.category) {
     case "agent":
     case "benchmark":
@@ -1835,6 +1950,25 @@ function eventDecisionCategory(event: SnapshotEvent, text: string) {
   if (/enterprise|企业|employee|员工|采购|rollout|部署|business|融资/.test(text)) return "business";
 
   return "other";
+}
+
+function entityDisplayLabel(value: string) {
+  const aliases: Record<string, string> = {
+    apple: "Apple",
+    anthropic: "Anthropic",
+    github: "GitHub",
+    "gpt 5 6": "GPT-5.6",
+    "hugging face": "Hugging Face",
+    "hugging face transformers": "Hugging Face Transformers",
+    "llama cpp": "llama.cpp",
+    microsoft: "Microsoft",
+    "microsoft 365 copilot": "Microsoft 365 Copilot",
+    openai: "OpenAI",
+    "openai python sdk": "OpenAI Python SDK",
+    vllm: "vLLM",
+    "vllm project vllm": "vLLM"
+  };
+  return aliases[value.trim().toLowerCase()] ?? value;
 }
 
 function meaningfulTitleTokens(title: string) {
@@ -2124,7 +2258,7 @@ function priorityTone(score: number): "caution" | "evidence" | "neutral" | "succ
 
 function watchTone(label: string): "caution" | "evidence" | "neutral" | "success" {
   if (label === "先复核") return "caution";
-  if (label === "可入报告") return "success";
+  if (label === "报告候选") return "evidence";
   return "neutral";
 }
 
@@ -2133,8 +2267,9 @@ function renderRadarItem(item: SnapshotItem) {
   const search = [item.title, item.source_name, item.status, item.categories.join(" "), item.tags.join(" "), item.summary_en, item.summary_zh].join(" ").toLowerCase();
   const timestampLabel = item.published_at ? "发布时间" : item.collected_at ? "采集时间" : "处理时间";
   const timestamp = item.published_at ?? item.collected_at ?? item.processed_at;
+  const freshness = freshnessBucket(timestamp);
 
-  return `<article class="radar-row" data-category="${escapeAttr(`${item.categories.join(" ")} ${item.categories.map(labelize).join(" ")}`)}" data-family="${escapeAttr(family)}" data-search="${escapeAttr(search)}" data-status="${escapeAttr(item.status)}">
+  return `<article class="radar-row" data-category="${escapeAttr(`${item.categories.join(" ")} ${item.categories.map(labelize).join(" ")}`)}" data-family="${escapeAttr(family)}" data-freshness="${freshness}" data-search="${escapeAttr(search)}" data-status="${escapeAttr(item.status)}">
     <div>
       <div class="pill-row">${pill(statusLabel(item.status), statusTone(item.status))}${pill(family, "neutral")}${pill(`综合 ${item.scores.overall.toFixed(2)}`, "evidence")}${pill(`置信度 ${formatPercent(item.confidence)}`, "success")}</div>
       <h2><a href="${escapeAttr(item.url)}">${escapeHtml(item.title)}</a></h2>
@@ -2225,16 +2360,19 @@ function renderReport(report: SnapshotReport, snapshot: Snapshot, traceItems: Re
   const includedEvents = (quality?.top_event_ids ?? [])
     .map((id) => snapshot.event_clusters.find((event) => event.event_cluster_id === id))
     .filter((event): event is SnapshotEvent => Boolean(event));
+  const corroboratedEvents = includedEvents.filter((event) => event.source_count > 1).length;
+  const crossFamilyEvents = includedEvents.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
+  const releaseReady = crossFamilyEvents > 0 && report.status !== "needs_review";
   const reportTraceDocument = snapshotReportTraceDocument(report);
   const traceability = reportEntityTraceability(reportTraceDocument, traceItems, 6);
   const sectionTraceability = reportSectionTraceability(reportTraceDocument, traceItems, 4);
 
   return `<article class="report-card">
-    <div class="section-heading"><div><div class="pill-row">${pill(reportTypeLabel(report.report_type), "evidence")}${qualityPill(report)}${pill(statusLabel(report.status), statusTone(report.status))}${pill(modeLabel(report.mode), "success")}${pill(`可用 ${report.usable_item_count ?? report.source_item_count}`, "neutral")}${pill(`引用 ${report.citation_count ?? report.citations.length}`, "neutral")}${pill(`来源 ${report.distinct_source_count ?? 0}`, "neutral")}${pill(`类别 ${report.category_count ?? 0}`, "neutral")}</div><h2>${escapeHtml(publicText(report.title))}</h2></div><span>${escapeHtml(formatDate(report.saved_at ?? report.generated_at))}</span></div>
+    <div class="section-heading"><div><div class="pill-row">${pill(releaseReady ? "编辑控制发布" : "证据草稿，尚未发布就绪", releaseReady ? "success" : "caution")}${pill(reportTypeLabel(report.report_type), "evidence")}${qualityPill(report)}${pill(statusLabel(report.status), statusTone(report.status))}${pill(modeLabel(report.mode), "neutral")}${pill(`可用 ${report.usable_item_count ?? report.source_item_count}`, "neutral")}${pill(`引用 ${report.citation_count ?? report.citations.length}`, "neutral")}${pill(`来源 ${report.distinct_source_count ?? 0}`, "neutral")}${pill(`类别 ${report.category_count ?? 0}`, "neutral")}</div><h2>${escapeHtml(publicText(report.title))}</h2></div><span>${escapeHtml(formatDate(report.saved_at ?? report.generated_at))}</span></div>
     <p class="report-summary">${escapeHtml(publicText(report.summary))}</p>
     ${!report.quality_gate_passed && report.report_type === "daily" ? `<div class="callout warning"><strong>今日数据不足，需补充信源或等待下一轮刷新</strong></div>` : ""}
     ${report.executive_summary ? `<p>${escapeHtml(publicText(report.executive_summary))}</p>` : ""}
-    <dl class="inline-defs">${rail("质量门禁", qualityLabel(report))}${rail("事件数", String(includedEvents.length))}${rail("可用/引用/来源/类别", `${report.usable_item_count ?? report.source_item_count} / ${report.citation_count ?? report.citations.length} / ${report.distinct_source_count ?? 0} / ${report.category_count ?? 0}`)}${rail("时间窗口", `${formatDate(report.time_window.start)} 至 ${formatDate(report.time_window.end)}`)}${rail("数据来源", sourceLabel(report.data_source))}${rail("缺失证据", String(report.missing_evidence.length))}</dl>
+    <dl class="inline-defs">${rail("基础证据门", qualityLabel(report))}${rail("跨家族/同家族多源/单源事件", `${crossFamilyEvents} / ${Math.max(0, corroboratedEvents - crossFamilyEvents)} / ${Math.max(0, includedEvents.length - corroboratedEvents)}`)}${rail("发布就绪", crossFamilyEvents > 0 && report.status !== "needs_review" ? "由编辑状态控制" : "未就绪：独立来源家族确认不足")}${rail("事件数", String(includedEvents.length))}${rail("可用/引用/来源/类别", `${report.usable_item_count ?? report.source_item_count} / ${report.citation_count ?? report.citations.length} / ${report.distinct_source_count ?? 0} / ${report.category_count ?? 0}`)}${rail("时间窗口", `${formatDate(report.time_window.start)} 至 ${formatDate(report.time_window.end)}`)}${rail("数据来源", sourceLabel(report.data_source))}${rail("缺失证据", String(report.missing_evidence.length))}</dl>
     ${includedEvents.length > 0 ? `<h3>纳入的精选事件</h3><div class="event-mini-list">${includedEvents.map(renderEventMini).join("")}</div>` : ""}
     ${renderReportTraceability(traceability, sectionTraceability)}
     ${!report.quality_gate_passed && report.quality_gate_reasons.length > 0 ? `<h3>为什么报告偏薄</h3>${noteList(report.quality_gate_reasons)}` : ""}
@@ -2403,13 +2541,31 @@ function sourceFamily(item: Pick<SnapshotItem, "source_name" | "url" | "source_t
   return "其他公开来源";
 }
 
-function freshnessBuckets(items: SnapshotItem[]): Array<[string, number]> {
-  const now = Date.now();
-  return [
-    ["24h", items.filter((item) => now - Date.parse(item.processed_at) <= 86_400_000).length],
-    ["7d", items.filter((item) => now - Date.parse(item.processed_at) <= 604_800_000).length],
-    ["30d", items.filter((item) => now - Date.parse(item.processed_at) <= 2_592_000_000).length]
-  ];
+function freshnessBucket(timestamp: string) {
+  const ageMs = Date.now() - Date.parse(timestamp);
+  if (!Number.isFinite(ageMs) || ageMs <= 86_400_000) return "24h";
+  if (ageMs <= 604_800_000) return "7d";
+  if (ageMs <= 2_592_000_000) return "30d";
+  return "archive";
+}
+
+function freshnessLabel(bucket: string) {
+  const labels: Record<string, string> = { "24h": "24 小时内", "7d": "2-7 天", "30d": "8-30 天", archive: "历史（30 天外）" };
+  return labels[bucket] ?? bucket;
+}
+
+function freshnessLabelEn(bucket: string) {
+  const labels: Record<string, string> = { "24h": "Within 24h", "7d": "2-7 days", "30d": "8-30 days", archive: "Archive (>30 days)" };
+  return labels[bucket] ?? bucket;
+}
+
+function freshnessBuckets(items: SnapshotItem[], locale: "en" | "zh"): Array<[string, number]> {
+  const counts = new Map<string, number>([["24h", 0], ["7d", 0], ["30d", 0], ["archive", 0]]);
+  for (const item of items) {
+    const bucket = freshnessBucket(item.published_at ?? item.collected_at ?? item.processed_at);
+    counts.set(bucket, (counts.get(bucket) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([bucket, count]) => [locale === "en" ? freshnessLabelEn(bucket) : freshnessLabel(bucket), count]);
 }
 
 function distribution(title: string, entries: Array<[string, number]>) {
@@ -2435,7 +2591,7 @@ function coveragePanel(snapshot: Snapshot) {
       <dl class="rail">
         ${coverageRailRows(snapshot)}
       </dl>
-      ${Object.keys(snapshot.coverage.failure_families ?? {}).length > 0 ? `<div class="distribution">${distribution("失败类别", Object.entries(snapshot.coverage.failure_families ?? {}))}</div>` : ""}
+      ${Object.keys(snapshot.coverage.failure_families ?? {}).length > 0 ? `<div class="distribution">${distribution("失败/警告/排除（类别可重叠）", Object.entries(snapshot.coverage.failure_families ?? {}))}</div>` : ""}
     </section>
   `;
 }
@@ -2447,6 +2603,8 @@ function reportCoveragePanel(snapshot: Snapshot, reports: SnapshotReport[]) {
   const evidenceDrafts = snapshot.reports.filter((report) => !isFormalSnapshotReport(report));
   const missingEvidenceCount = reports.reduce((count, report) => count + report.missing_evidence.length, 0);
   const blockedDrafts = reports.filter((report) => !report.quality_gate_passed).length;
+  const corroboratedEvents = snapshot.event_clusters.filter((event) => event.source_count > 1).length;
+  const crossFamilyEvents = snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
 
   return `
     <section class="panel">
@@ -2455,16 +2613,19 @@ function reportCoveragePanel(snapshot: Snapshot, reports: SnapshotReport[]) {
       </div>
       ${noteList([
         "正式报告用于读取结论；草稿候选只说明证据已经被组织，但仍不能当作发布结论。",
-        "缺失证据项和质量门禁决定下一步应补来源、补引用，还是缩小报告口径。"
+        "基础证据门只衡量数量、引用、来源和类别广度，不代表每个事件都已独立交叉确认。",
+        "同家族多条报道与跨家族确认分开展示；缺失证据决定下一步应补来源、补引用，还是缩小报告口径。"
       ])}
       <dl class="rail">
         ${rail("正式报告", String(formalReports.length))}
         ${rail("草稿候选", String(evidenceDrafts.length))}
         ${rail("质量未过草稿", String(blockedDrafts))}
         ${rail("缺失证据项", String(missingEvidenceCount))}
-        ${rail("日报门禁", daily ? qualityLabel(daily) : "待补")}
+        ${rail("多条报道/跨家族确认/全部事件", `${corroboratedEvents} / ${crossFamilyEvents} / ${snapshot.event_count}`)}
+        ${rail("发布就绪", crossFamilyEvents > 0 && formalReports.length > 0 ? "由编辑状态控制" : "未就绪：跨家族确认或正式报告不足")}
+        ${rail("日报基础门", daily ? qualityLabel(daily) : "待补")}
         ${rail("日报证据/引用/来源/类别", `${daily?.usable_item_count ?? daily?.source_item_count ?? 0} / ${daily?.citation_count ?? daily?.citations.length ?? 0} / ${daily?.distinct_source_count ?? 0} / ${daily?.category_count ?? 0}`)}
-        ${rail("周报门禁", weekly ? qualityLabel(weekly) : "待补")}
+        ${rail("周报基础门", weekly ? qualityLabel(weekly) : "待补")}
         ${rail("周报证据/引用/来源/类别", `${weekly?.usable_item_count ?? weekly?.source_item_count ?? 0} / ${weekly?.citation_count ?? weekly?.citations.length ?? 0} / ${weekly?.distinct_source_count ?? 0} / ${weekly?.category_count ?? 0}`)}
       </dl>
     </section>
@@ -2478,11 +2639,14 @@ function coverageRailRows(snapshot: Snapshot) {
     rail("自动合格来源", String(snapshot.coverage.automated_eligible_sources)),
     rail("已尝试来源", String(snapshot.coverage.attempted_sources)),
     rail("有公开条目的来源", String(snapshot.coverage.sources_with_public_items ?? "待补")),
-    rail("公开条目", String(snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)),
+    rail("公开库条目", String(snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)),
+    rail("本站安全展示", String(snapshot.radar_items.length)),
+    rail("未进入展示", String(Math.max(0, (snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items) - snapshot.radar_items.length))),
     rail("失败/跳过来源", String(snapshot.coverage.failed_sources + snapshot.coverage.skipped_sources)),
     rail("来源公开可见率", formatNullablePercent(snapshot.coverage.source_public_visibility)),
     rail("雷达公开可见率", formatNullablePercent(snapshot.coverage.radar_to_public_visibility)),
-    rail("更新时间", formatDate(snapshot.coverage.latest_refresh))
+    rail("证据截至", formatDate(snapshot.coverage.latest_refresh)),
+    rail("快照生成", formatDate(snapshot.generated_at))
   ].join("");
 }
 
@@ -2492,20 +2656,22 @@ function sourceHealthPanel(snapshot: Snapshot) {
   return `<section class="panel">
     <div class="section-heading">
       <h2>信息源健康摘要</h2>
-      <span>${escapeHtml(formatDate(snapshot.coverage.latest_refresh))}</span>
+      <span>证据截至 ${escapeHtml(formatDate(snapshot.coverage.latest_refresh))}</span>
     </div>
     <dl class="metric-grid">
+      ${metric("来源总数", snapshot.coverage.sources_total)}
+      ${metric("自动合格来源", snapshot.coverage.automated_eligible_sources)}
       ${metric("本轮成功源", health.succeeded)}
       ${metric("失败源", health.failed)}
       ${metric("手动/阻塞源", health.manual_blocked)}
-      ${metric("超时", health.timeout)}
-      ${metric("403", health["403"])}
-      ${metric("限流", health.rate_limit)}
+      ${metric("超时失败", health.timeout)}
+      ${metric("HTTP 403 失败", health["403"])}
+      ${metric("限流警告（可重叠）", health.rate_limit)}
       ${metric("无新内容", health.no_items)}
       ${metric("重复-only", health.duplicate_only)}
     </dl>
     <div class="distribution">
-      ${distribution("失败原因分布", Object.entries(snapshot.failure_family_summary))}
+      ${distribution("失败/警告/排除（类别可重叠）", Object.entries(snapshot.failure_family_summary))}
       ${distribution("跳过/阻塞", [["手动阻塞", health.manual_blocked], ["不支持", health.unsupported_source], ["低相关排除", health.low_relevance_excluded]])}
     </div>
   </section>`;
@@ -2550,7 +2716,7 @@ function sourceLabel(value?: string | null) {
 }
 
 function tabButton(id: string, label: string, selected = false) {
-  return `<button class="tab-button${selected ? " active" : ""}" data-tab-target="${escapeAttr(id)}" type="button">${escapeHtml(label)}</button>`;
+  return `<button aria-controls="radar-panel-${escapeAttr(id)}" aria-selected="${selected ? "true" : "false"}" class="tab-button${selected ? " active" : ""}" data-tab-target="${escapeAttr(id)}" id="radar-tab-${escapeAttr(id)}" role="tab" tabindex="${selected ? "0" : "-1"}" type="button">${escapeHtml(label)}</button>`;
 }
 
 function statusLabel(status: string) {
@@ -2583,11 +2749,44 @@ function modeLabel(mode: string) {
 }
 
 function qualityPill(report: SnapshotReport) {
-  return pill(qualityLabel(report), report.quality_gate_passed ? "success" : "caution");
+  return pill(qualityLabel(report), report.quality_gate_passed ? "neutral" : "caution");
 }
 
 function qualityLabel(report: SnapshotReport) {
-  return report.quality_gate_passed ? "质量通过" : "需要更多数据";
+  return report.quality_gate_passed ? "基础证据门通过" : "需要更多数据";
+}
+
+function eventConfirmationLabel(event: SnapshotEvent) {
+  if (event.source_count > 1 && event.source_families.length > 1) return "跨家族确认";
+  if (event.source_count > 1) return "同家族多源复述";
+  return "单源观察";
+}
+
+function eventConfirmationLabelEn(event: SnapshotEvent) {
+  if (event.source_count > 1 && event.source_families.length > 1) return "Cross-family corroboration";
+  if (event.source_count > 1) return "Multiple reports, one family";
+  return "Single-source observation";
+}
+
+function eventConfirmationFilterValue(event: SnapshotEvent) {
+  if (event.source_count > 1 && event.source_families.length > 1) return "cross";
+  if (event.source_count > 1) return "same";
+  return "single";
+}
+
+function eventConfirmationTone(event: SnapshotEvent): "caution" | "evidence" | "success" {
+  if (event.source_count > 1 && event.source_families.length > 1) return "success";
+  return event.source_count > 1 ? "evidence" : "caution";
+}
+
+function eventStatus(event: SnapshotEvent, snapshot: Snapshot) {
+  const relatedIds = new Set(event.related_item_ids);
+  const statuses = new Set(snapshot.radar_items.filter((item) => relatedIds.has(item.id)).map((item) => item.status));
+  if (statuses.has("needs_review")) return "needs_review";
+  if (statuses.has("included")) return "included";
+  if (statuses.has("failed")) return "failed";
+  if (statuses.has("excluded")) return "excluded";
+  return "included";
 }
 
 function statusTone(status: string): "caution" | "evidence" | "neutral" | "success" {
@@ -2622,8 +2821,10 @@ function labelize(value: string) {
     eligible: "自动合格",
     excluded: "已排除",
     failed: "失败",
+    funding: "融资",
     infrastructure: "基础设施",
     included: "已纳入",
+    media_interview: "媒体/访谈",
     "model release": "模型发布",
     model_release: "模型发布",
     needs_review: "待复核",
@@ -2631,9 +2832,11 @@ function labelize(value: string) {
     "open source": "开源",
     open_source: "开源",
     other: "其他",
+    policy: "政策",
     "product update": "产品更新",
     product_update: "产品更新",
     research: "研究",
+    regulation: "监管",
     safety: "安全",
     tooling: "工具",
     total: "总数",
@@ -2892,12 +3095,17 @@ function filterScript(locale: "en" | "zh" = "zh") {
         business: "Business",
         funding: "Funding",
         infrastructure: "Infrastructure",
+        media_interview: "Media / interview",
         model_release: "Model release",
         open_source: "Open source",
+        opinion: "Opinion",
+        other: "Other",
+        policy: "Policy",
         product_update: "Product update",
         regulation: "Regulation",
         research: "Research",
-        safety: "Safety"
+        safety: "Safety",
+        tooling: "Developer tooling"
       }
     : {
         agent: "智能体",
@@ -2905,12 +3113,17 @@ function filterScript(locale: "en" | "zh" = "zh") {
         business: "商业",
         funding: "融资",
         infrastructure: "基础设施",
+        media_interview: "媒体/访谈",
         model_release: "模型发布",
         open_source: "开源",
+        opinion: "观点",
+        other: "其他",
+        policy: "政策",
         product_update: "产品更新",
         regulation: "监管",
         research: "研究",
-        safety: "安全"
+        safety: "安全",
+        tooling: "开发工具"
       };
   return `
 const search = document.querySelector("#radar-search");
@@ -2918,7 +3131,10 @@ const status = document.querySelector("#radar-status");
 const category = document.querySelector("#radar-category");
 const family = document.querySelector("#radar-family");
 const score = document.querySelector("#radar-score");
+const freshness = document.querySelector("#radar-freshness");
 const sourceCount = document.querySelector("#radar-source-count");
+const resultCount = document.querySelector("#radar-result-count");
+const reset = document.querySelector("#radar-reset");
 const rows = Array.from(document.querySelectorAll(".radar-row"));
 const eventCards = Array.from(document.querySelectorAll(".event-card"));
 const tabButtons = Array.from(document.querySelectorAll("[data-tab-target]"));
@@ -2926,6 +3142,8 @@ const tabPanels = Array.from(document.querySelectorAll("[data-tab-panel]"));
 const params = new URLSearchParams(window.location.search);
 let initialCategories = parseCategoryFilter(params.get("category") || "");
 const initialStatus = (params.get("status") || "").toLowerCase();
+const requestedTab = (params.get("tab") || "curated").toLowerCase();
+search.value = params.get("q") || "";
 if (initialCategories.length === 1) {
   const option = Array.from(category.options).find((candidate) => candidate.value.toLowerCase() === initialCategories[0]);
   if (option) {
@@ -2947,6 +3165,10 @@ if (initialCategories.length === 1) {
 if (initialStatus && Array.from(status.options).some((candidate) => candidate.value === initialStatus)) {
   status.value = initialStatus;
 }
+for (const [control, key] of [[family, "family"], [score, "score"], [freshness, "freshness"], [sourceCount, "sources"]]) {
+  const value = params.get(key) || "";
+  if (value && Array.from(control.options).some((candidate) => candidate.value === value)) control.value = value;
+}
 function parseCategoryFilter(value) {
   return value
     .toLowerCase()
@@ -2967,54 +3189,124 @@ function matchesCategoryFilter(categoryText, selectedCategories) {
   const text = (categoryText || "").toLowerCase();
   return selectedCategories.some((selectedCategory) => text.includes(selectedCategory));
 }
+function updateResultCount() {
+  const activePanel = tabPanels.find((panel) => !panel.hidden);
+  if (!activePanel || !resultCount) return;
+  const candidates = Array.from(activePanel.querySelectorAll(".event-card, .radar-row"));
+  if (candidates.length === 0) {
+    resultCount.textContent = ${JSON.stringify(locale === "en" ? "Filters apply to event and signal views." : "筛选仅作用于事件与信号视图。")};
+    return;
+  }
+  const visible = candidates.filter((candidate) => !candidate.hidden).length;
+  resultCount.textContent = ${JSON.stringify(locale === "en" ? "Visible results: " : "当前结果：")} + visible + " / " + candidates.length;
+}
 function applyFilters() {
   const query = (search.value || "").toLowerCase();
   const selectedStatus = status.value;
   const selectedCategories = selectedCategoryValues();
   const selectedFamily = family.value;
   const selectedScore = score.value;
+  const selectedFreshness = freshness.value;
   const selectedSourceCount = sourceCount.value;
   for (const card of eventCards) {
     const matchesQuery = !query || card.dataset.search.includes(query);
+    const matchesStatus = selectedStatus === "all" || card.dataset.status === selectedStatus;
     const matchesCategory = matchesCategoryFilter(card.dataset.category, selectedCategories);
     const matchesFamily = selectedFamily === "all" || card.dataset.family.includes(selectedFamily);
     const matchesScore = selectedScore === "all" || card.dataset.score === selectedScore;
+    const matchesFreshness = selectedFreshness === "all" || card.dataset.freshness === selectedFreshness;
     const matchesSourceCount = selectedSourceCount === "all" || card.dataset.sourceCount === selectedSourceCount;
-    card.hidden = !(matchesQuery && matchesCategory && matchesFamily && matchesScore && matchesSourceCount);
+    card.hidden = !(matchesQuery && matchesStatus && matchesCategory && matchesFamily && matchesScore && matchesFreshness && matchesSourceCount);
   }
   for (const row of rows) {
     const matchesQuery = !query || row.dataset.search.includes(query);
     const matchesStatus = selectedStatus === "all" || row.dataset.status === selectedStatus;
     const matchesCategory = matchesCategoryFilter(row.dataset.category, selectedCategories);
     const matchesFamily = selectedFamily === "all" || row.dataset.family === selectedFamily;
-    row.hidden = !(matchesQuery && matchesStatus && matchesCategory && matchesFamily);
+    const matchesFreshness = selectedFreshness === "all" || row.dataset.freshness === selectedFreshness;
+    row.hidden = !(matchesQuery && matchesStatus && matchesCategory && matchesFamily && matchesFreshness);
   }
+  updateResultCount();
 }
-[search, status, family, score, sourceCount].forEach((control) => control.addEventListener("input", () => {
+function updateFilterUrl() {
   const next = new URLSearchParams(window.location.search);
   if (category.value !== "all") next.set("category", category.value);
   else if (initialCategories.length > 0) next.set("category", initialCategories.join(","));
   else next.delete("category");
   if (status.value === "all") next.delete("status"); else next.set("status", status.value);
+  if (family.value === "all") next.delete("family"); else next.set("family", family.value);
+  if (score.value === "all") next.delete("score"); else next.set("score", score.value);
+  if (freshness.value === "all") next.delete("freshness"); else next.set("freshness", freshness.value);
+  if (sourceCount.value === "all") next.delete("sources"); else next.set("sources", sourceCount.value);
+  if (search.value.trim()) next.set("q", search.value.trim()); else next.delete("q");
   const query = next.toString();
   window.history.replaceState(null, "", query ? "?" + query : window.location.pathname);
+}
+[search, status, family, score, freshness, sourceCount].forEach((control) => control.addEventListener("input", () => {
+  updateFilterUrl();
   applyFilters();
 }));
 category.addEventListener("input", () => {
   initialCategories = [];
-  const next = new URLSearchParams(window.location.search);
-  if (category.value === "all") next.delete("category"); else next.set("category", category.value);
-  if (status.value === "all") next.delete("status"); else next.set("status", status.value);
-  const query = next.toString();
-  window.history.replaceState(null, "", query ? "?" + query : window.location.pathname);
+  updateFilterUrl();
   applyFilters();
 });
+reset.addEventListener("click", () => {
+  search.value = "";
+  status.value = "all";
+  category.value = "all";
+  family.value = "all";
+  score.value = "all";
+  freshness.value = "all";
+  sourceCount.value = "all";
+  initialCategories = [];
+  updateFilterUrl();
+  applyFilters();
+  search.focus();
+});
+function activateTab(target, persist) {
+  const selectedButton = tabButtons.find((candidate) => candidate.dataset.tabTarget === target) || tabButtons[0];
+  if (!selectedButton) return;
+  const selectedTarget = selectedButton.dataset.tabTarget;
+  for (const candidate of tabButtons) {
+    const active = candidate === selectedButton;
+    candidate.classList.toggle("active", active);
+    candidate.setAttribute("aria-selected", active ? "true" : "false");
+    candidate.setAttribute("tabindex", active ? "0" : "-1");
+  }
+  for (const panel of tabPanels) {
+    const active = panel.dataset.tabPanel === selectedTarget;
+    panel.classList.toggle("active", active);
+    panel.hidden = !active;
+  }
+  if (persist) {
+    const next = new URLSearchParams(window.location.search);
+    if (selectedTarget === "curated") next.delete("tab"); else next.set("tab", selectedTarget);
+    const query = next.toString();
+    window.history.replaceState(null, "", query ? "?" + query : window.location.pathname);
+  }
+  updateResultCount();
+}
+const initialTab = tabButtons.some((button) => button.dataset.tabTarget === requestedTab) ? requestedTab : "curated";
+activateTab(initialTab, false);
 applyFilters();
 for (const button of tabButtons) {
   button.addEventListener("click", () => {
-    const target = button.dataset.tabTarget;
-    for (const candidate of tabButtons) candidate.classList.toggle("active", candidate === button);
-    for (const panel of tabPanels) panel.classList.toggle("active", panel.dataset.tabPanel === target);
+    activateTab(button.dataset.tabTarget, true);
+  });
+  button.addEventListener("keydown", (event) => {
+    const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+    if (!keys.includes(event.key)) return;
+    event.preventDefault();
+    const currentIndex = tabButtons.indexOf(button);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? tabButtons.length - 1
+        : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + tabButtons.length) % tabButtons.length;
+    const nextButton = tabButtons[nextIndex];
+    activateTab(nextButton.dataset.tabTarget, true);
+    nextButton.focus();
   });
 }
 `;
@@ -3083,19 +3375,71 @@ function localEvidenceToolScript(
     ].join(" ").toLowerCase();
   }
 
-  function scoreEvent(snapshot, event, query) {
+  function queryIntent(query) {
     const q = query.toLowerCase();
-    let score = Number(event.event_score || 0);
-    const text = textOf(snapshot, event);
-    for (const token of q.split(/\\s+/).filter(Boolean)) {
-      if (token.length >= 2 && text.includes(token)) score += 14;
+    const crossFamily = /cross[- ]family|multiple source families|independent source famil|跨(来源)?家族|独立来源家族/.test(q);
+    const sameFamily = /same source family|one source family|同(来源)?家族|同家族.*复述/.test(q);
+    return {
+      agent: /agent|智能体|开发工具|developer tool|coding tool|工具链/.test(q),
+      crossFamily,
+      important: /rank|ranking|priority|important|selected events|top events|deeper analysis|worth a deeper|排序|重要|高优先级|精选|深度分析|行业观察|周报|提纲/.test(q),
+      model: /model release|models? released|llm|api release|模型|发布/.test(q),
+      multiSource: !crossFamily && !sameFamily && /multi[- ]source|multiple sources|多源/.test(q),
+      sameFamily,
+      singleSource: /single[- ]source|one source|单一来源|单源|弱信号|可信度较低|limited evidence/.test(q),
+      sourceHealth: /source.*(fail|timeout|no new)|failed sources|source health|来源.*(失败|超时|没有新|无新)|来源健康/.test(q)
+    };
+  }
+
+  function queryTokens(query) {
+    const stopwords = new Set(["about", "against", "analysis", "and", "are", "around", "build", "draft", "events", "evidence", "from", "have", "into", "outline", "public", "report", "the", "this", "what", "which", "with", "write"]);
+    const latin = (query.toLowerCase().match(/[a-z0-9][a-z0-9._+-]*/g) || [])
+      .filter((token) => token.length >= 2 && !stopwords.has(token));
+    const cjk = [];
+    for (const run of query.match(/[\u3400-\u9fff]{2,}/g) || []) {
+      if (run.length <= 4) cjk.push(run);
+      for (let index = 0; index < run.length - 1; index += 1) cjk.push(run.slice(index, index + 2));
     }
-    if (/多源|确认|可信/.test(q) && Number(event.source_count || 0) > 1) score += 28;
-    if (/单一|单源|弱信号|可信度较低/.test(q) && Number(event.source_count || 0) === 1) score += 22;
-    if (/模型|model|llm|api|发布/.test(q) && /模型|model|llm|api|release|发布/i.test(text)) score += 18;
-    if (/agent|智能体|开发工具|工具/.test(q) && /agent|智能体|developer|tool|工具|coding/i.test(text)) score += 18;
-    if (/重要|排序|高优先级|精选/.test(q)) score += Number(event.event_score || 0) / 2;
-    return score;
+    return Array.from(new Set(latin.concat(cjk)));
+  }
+
+  function matchesIntent(event, text, intent) {
+    const sourceCount = Number(event.source_count || 0);
+    const familyCount = Number((event.source_families || []).length);
+    if (intent.crossFamily && !(sourceCount > 1 && familyCount > 1)) return false;
+    if (intent.sameFamily && !(sourceCount > 1 && familyCount === 1)) return false;
+    if (intent.multiSource && sourceCount <= 1) return false;
+    if (intent.singleSource && sourceCount !== 1) return false;
+    if (intent.model && !/模型|model|llm|api|release|发布/i.test(text)) return false;
+    if (intent.agent && !/agent|智能体|developer|tool|工具|coding/i.test(text)) return false;
+    return true;
+  }
+
+  function scoreEvent(snapshot, event, query, intent) {
+    const q = query.toLowerCase();
+    const text = textOf(snapshot, event);
+    if (!matchesIntent(event, text, intent)) return null;
+
+    let relevance = 0;
+    let matched = intent.crossFamily || intent.sameFamily || intent.multiSource || intent.singleSource || intent.model || intent.agent || intent.important;
+    const title = eventTitle(snapshot, event).toLowerCase();
+    if ((title.length >= 6 && q.includes(title)) || (q.length >= 6 && title.includes(q))) {
+      relevance += 80;
+      matched = true;
+    }
+    for (const token of queryTokens(q)) {
+      if (text.includes(token)) {
+        relevance += token.length >= 5 ? 18 : 8;
+        matched = true;
+      }
+    }
+    if (!matched) return null;
+    if (intent.crossFamily) relevance += 40;
+    else if (intent.sameFamily || intent.multiSource) relevance += 26;
+    if (intent.singleSource) relevance += 18;
+    if (intent.model || intent.agent) relevance += 16;
+    if (intent.important) relevance += Number(event.event_score || 0) / 2;
+    return Number(event.event_score || 0) + relevance;
   }
 
   function pickEvents(snapshot, query) {
@@ -3108,11 +3452,29 @@ function localEvidenceToolScript(
       seen.add(event.event_cluster_id);
       merged.push(event);
     }
+    const intent = queryIntent(query);
     return merged
-      .map((event) => ({ event, score: scoreEvent(snapshot, event, query) }))
+      .map((event) => ({ event, score: scoreEvent(snapshot, event, query, intent) }))
+      .filter((entry) => entry.score !== null)
       .sort((left, right) => right.score - left.score || Number(right.event.event_score || 0) - Number(left.event.event_score || 0))
       .slice(0, 6)
       .map((entry) => entry.event);
+  }
+
+  function renderSourceHealthResult(snapshot, query) {
+    const health = snapshot.source_health_summary || {};
+    const families = Object.entries(snapshot.failure_family_summary || {})
+      .filter((entry) => Number(entry[1] || 0) > 0)
+      .map((entry) => '<li>' + escapeHtml(entry[0]) + ': ' + escapeHtml(entry[1]) + '</li>')
+      .join("");
+    if (language === "en") {
+      return '<h3>Source health answer</h3><p>Question: ' + escapeHtml(query) + '</p>' +
+        '<p>Latest audited refresh: ' + escapeHtml(snapshot.coverage?.latest_refresh || "unavailable") + '.</p>' +
+        '<dl class="inline-defs"><dt>Succeeded</dt><dd>' + escapeHtml(health.succeeded || 0) + '</dd><dt>Failed</dt><dd>' + escapeHtml(health.failed || 0) + '</dd><dt>Manual / blocked</dt><dd>' + escapeHtml(health.manual_blocked || 0) + '</dd><dt>No new items</dt><dd>' + escapeHtml(health.no_items || 0) + '</dd><dt>Duplicate only</dt><dd>' + escapeHtml(health.duplicate_only || 0) + '</dd></dl><h4>Failures, warnings and exclusions</h4><ul>' + families + '</ul>';
+    }
+    return '<h3>来源健康回答</h3><p>问题：' + escapeHtml(query) + '</p>' +
+      '<p>最近审计刷新：' + escapeHtml(snapshot.coverage?.latest_refresh || "待补") + '。</p>' +
+      '<dl class="inline-defs"><dt>成功</dt><dd>' + escapeHtml(health.succeeded || 0) + '</dd><dt>失败</dt><dd>' + escapeHtml(health.failed || 0) + '</dd><dt>手动/阻塞</dt><dd>' + escapeHtml(health.manual_blocked || 0) + '</dd><dt>无新条目</dt><dd>' + escapeHtml(health.no_items || 0) + '</dd><dt>仅重复</dt><dd>' + escapeHtml(health.duplicate_only || 0) + '</dd></dl><h4>失败、警告与排除</h4><ul>' + families + '</ul>';
   }
 
   function citationHtml(event) {
@@ -3129,7 +3491,7 @@ function localEvidenceToolScript(
         '<p>Evidence boundary: this answer uses only the current public snapshot. Latest evidence: ' + escapeHtml(freshness) + '. It is not live web research.</p>' +
         '<ol>' + events.map((event) =>
           '<li><strong>' + escapeHtml(eventTitle(snapshot, event)) + '</strong><p>' + escapeHtml(eventSummary(snapshot, event)) + '</p>' +
-          '<small>' + escapeHtml(scoreLabel(event)) + ' / score ' + escapeHtml(event.event_score) + ' / ' + escapeHtml(event.source_count) + ' source(s) / ' + escapeHtml(sourceFamilies(event).join(", ")) + '</small>' +
+          '<small>' + escapeHtml(scoreLabel(event)) + ' / score ' + escapeHtml(event.event_score) + ' / ' + escapeHtml(event.source_count) + (Number(event.source_count || 0) === 1 ? ' source / ' : ' sources / ') + escapeHtml(sourceFamilies(event).join(", ")) + '</small>' +
           '<div class="local-citations">' + citationHtml(event) + '</div></li>'
         ).join("") + '</ol>';
     }
@@ -3152,11 +3514,11 @@ function localEvidenceToolScript(
         '<ol>' + events.slice(0, 4).map((event) =>
           '<li><strong>' + escapeHtml(eventTitle(snapshot, event)) + '</strong>' +
           '<p>Claim: ' + escapeHtml(eventSummary(snapshot, event)) + '</p>' +
-          '<p>Evidence: ' + escapeHtml(event.source_count) + ' source(s) across ' + escapeHtml(sourceFamilies(event).join(", ")) + '.</p>' +
-          '<p>Boundary: ' + (Number(event.source_count || 0) > 1 ? 'Compare the cited sources for agreement and later corrections.' : 'Independent confirmation is still needed.') + '</p>' +
+          '<p>Evidence: ' + escapeHtml(event.source_count) + (Number(event.source_count || 0) === 1 ? ' source from ' : ' sources from ') + escapeHtml(sourceFamilies(event).join(", ")) + '.</p>' +
+          '<p>Boundary: ' + (Number((event.source_families || []).length) > 1 ? 'Compare the independent source families for agreement and later corrections.' : Number(event.source_count || 0) > 1 ? 'Multiple reports come from one source family; independent-family confirmation is still needed.' : 'Independent confirmation is still needed.') + '</p>' +
           '<div class="local-citations">' + citationHtml(event) + '</div></li>'
         ).join("") + '</ol>' +
-        '<p>Suggested close: frame single-source events as signals to track and multi-source events as observed industry changes, not final conclusions.</p>';
+        '<p>Suggested close: frame single-source events as signals, same-family repetition as limited corroboration, and only cross-family evidence as independently corroborated observation.</p>';
     }
     return '<h3>写作提纲</h3>' +
       '<p>需求：' + escapeHtml(query) + '</p>' +
@@ -3168,7 +3530,7 @@ function localEvidenceToolScript(
         '<p>边界：' + escapeHtml((event.caveats || ["仍需补充独立来源确认。"]) [0]) + '</p>' +
         '<div class="local-citations">' + citationHtml(event) + '</div></li>'
       ).join("") + '</ol>' +
-      '<p>建议收束：把单源事件写成待跟踪信号，多源事件写成已观察到的产业变化。</p>';
+      '<p>建议收束：把单源事件写成待跟踪信号，同家族复述写成有限佐证，只有跨家族证据才写成独立交叉确认。</p>';
   }
 
   async function run() {
@@ -3182,6 +3544,11 @@ function localEvidenceToolScript(
       const response = await fetch(snapshotUrl, { cache: "no-store" });
       if (!response.ok) throw new Error("snapshot unavailable");
       const snapshot = await response.json();
+      const intent = queryIntent(query);
+      if (toolMode === "ask" && intent.sourceHealth) {
+        result.innerHTML = renderSourceHealthResult(snapshot, query);
+        return;
+      }
       const events = pickEvents(snapshot, query);
       result.innerHTML = events.length === 0
         ? (language === "en" ? '<p class="empty">No matching event was found in the public snapshot.</p>' : '<p class="empty">没有从公开快照中找到匹配事件。</p>')
@@ -3213,6 +3580,8 @@ function stylesheet() {
 body { margin: 0; background: var(--bg); color: var(--ink); font-family: Arial, Helvetica, sans-serif; line-height: 1.5; }
 a { color: var(--evidence); text-decoration: none; }
 a:hover { text-decoration: underline; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+.panel p a, .note-list a, .local-result a, .report-card p a { text-decoration: underline; text-underline-offset: 3px; }
 .site-header, .site-footer, main { margin: 0 auto; max-width: 1180px; padding: 0 20px; }
 .site-header { align-items: center; display: flex; gap: 20px; justify-content: space-between; padding-bottom: 20px; padding-top: 20px; }
 .brand { align-items: center; color: var(--ink); display: inline-flex; font-weight: 700; gap: 10px; }
@@ -3289,6 +3658,7 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .event-caveats .note-list { margin-bottom: 0; }
 .event-mini-list { display: grid; gap: 8px; margin-top: 10px; }
 .event-mini { align-items: center; border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 8px; grid-template-columns: auto minmax(0, 1fr) auto; padding: 10px; }
+.event-mini small, .event-mini .source-link { grid-column: 2 / -1; }
 .timeline-list { display: grid; gap: 10px; }
 .timeline-list.compact { margin-top: 10px; }
 .timeline-row { border: 1px solid var(--line); border-radius: 8px; color: var(--ink); display: grid; gap: 6px; grid-template-columns: 170px minmax(0, 1fr) 160px; padding: 12px; }
@@ -3299,7 +3669,9 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .compact-row p, .radar-row p, .note, .note-list, .site-footer { color: var(--muted); }
 .tag-block, .distribution { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .distribution section { border: 1px solid var(--line); border-radius: 8px; flex: 1 1 220px; padding: 12px; }
-.controls { display: grid; gap: 12px; grid-template-columns: 2fr repeat(5, minmax(130px, 1fr)); }
+.controls { display: grid; gap: 12px; grid-template-columns: 2fr repeat(6, minmax(120px, 1fr)); }
+.filter-feedback { align-items: center; display: flex; gap: 12px; justify-content: space-between; margin-top: 14px; }
+.filter-feedback span { color: var(--muted); font-weight: 700; }
 input, select, textarea { border: 1px solid var(--line); border-radius: 6px; color: var(--ink); display: block; margin-top: 6px; padding: 9px 10px; width: 100%; }
 textarea { font: inherit; line-height: 1.5; min-height: 120px; resize: vertical; }
 .interactive-tool { display: grid; gap: 12px; }
@@ -3330,6 +3702,7 @@ textarea { font: inherit; line-height: 1.5; min-height: 120px; resize: vertical;
 @media (max-width: 880px) {
   .status-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .hero, .home-desk, .featured-card, .grid.two, .radar-layout, .compact-row, .radar-row, .event-grid, .event-mini, .timeline-row { grid-template-columns: 1fr; }
+  .event-mini small, .event-mini .source-link { grid-column: 1; }
   .mini-metric { min-height: 76px; padding: 10px; }
   .mini-metric strong { font-size: 16px; }
   .featured-card aside { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; padding-top: 12px; }

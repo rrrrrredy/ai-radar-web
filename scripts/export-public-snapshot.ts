@@ -1059,10 +1059,12 @@ function buildSnapshot(input: {
   const eventInputItems = items.map((item) => ({ ...item, evidence_notes: [] }));
   const rawEventLayer = buildEventLayer(eventInputItems);
   const eventLayer = publicDisplayEventLayer(rawEventLayer);
-  const reports = buildEventAwareReports(
-    input.reports.map(publicSafeReport).filter(isPublicReportSnapshotCandidate),
-    eventLayer,
-    latest?.value ?? null
+  const reports = mergeReports(
+    buildEventAwareReports(
+      input.reports.map(publicSafeReport).filter(isPublicReportSnapshotCandidate),
+      eventLayer,
+      latest?.value ?? null
+    )
   );
   const savedReportCandidates = reports.filter((report) => report.mode === "saved_candidate").length;
   const reportCitationCount = reports.reduce((count, report) => count + report.citations.length, 0);
@@ -1302,7 +1304,9 @@ function eventAwareReport(
     usable_item_count: relatedItemIds.length
   });
   const reportLabel = report.report_type === "daily" ? "日报" : "周报";
-  const multiSourceEvents = selectedEvents.filter((event) => event.source_count > 1);
+  const multiReportEvents = selectedEvents.filter((event) => event.source_count > 1);
+  const crossFamilyEvents = multiReportEvents.filter((event) => event.source_families.length > 1);
+  const sameFamilyEvents = multiReportEvents.filter((event) => event.source_families.length === 1);
   const latestLabel = latestTimestamp ? formatPublicDate(latestTimestamp) : "未知时间";
   const evidenceBoundary = `公开证据最新到 ${latestLabel}；当前页面展示的是公开快照，不代表今日实时全网覆盖。`;
   const summary = `${reportLabel}事件预览基于 ${selectedEvents.length} 个公开事件、${relatedItemIds.length} 条相关信号、${citations.length} 条引用和 ${sourceNames.length} 个来源生成；已过滤目录页、文档首页、仓库元数据等低事件性内容。`;
@@ -1313,7 +1317,7 @@ function eventAwareReport(
     caveats: publicSafeNotes(dedupe([
       evidenceBoundary,
       "这是事件感知的公开报告视图；原始信号仍可在“全部信号”中审计。",
-      multiSourceEvents.length === 0 ? "当前精选事件多为单源信号，报告判断中需要保留不确定性。" : "",
+      crossFamilyEvents.length === 0 ? "当前没有跨来源家族确认事件，报告判断中需要保留不确定性。" : "",
       ...report.caveats
     ])),
     citation_count: citations.length,
@@ -1321,7 +1325,7 @@ function eventAwareReport(
     distinct_source_count: sourceNames.length,
     executive_summary: summary,
     missing_evidence: publicSafeNotes(dedupe([
-      multiSourceEvents.length < 3 ? "多源确认事件数量仍偏少，需要补充官方博客、研究源、开源 release 与媒体/分析源的交叉证据。" : "",
+      crossFamilyEvents.length < 3 ? "跨来源家族确认事件数量仍偏少，需要补充官方博客、研究源、开源 release 与媒体/分析源的交叉证据。" : "",
       "X 和 WeChat 未自动抓取；相关信号只能通过人工或合规来源补充。",
       evidenceBoundary,
       ...report.missing_evidence
@@ -1332,19 +1336,21 @@ function eventAwareReport(
     sections: [
       {
         bullets: selectedEvents.slice(0, 6).map(eventReportBullet),
-        caveats: selectedEvents.some((event) => event.source_count === 1) ? ["部分事件仍是单源确认，不能写成已被广泛验证的行业结论。"] : [],
+        caveats: selectedEvents.some((event) => event.source_count === 1) ? ["部分事件仍是单源观察，不能写成已被广泛验证的行业结论。"] : [],
         citations: citations.slice(0, 8).map((citation) => citation.id),
         summary: "按事件分数、来源可信度、来源多样性和新鲜度排序，优先保留能说明行业变化的事件。",
         title: "行业精选事件"
       },
       {
-        bullets: multiSourceEvents.length > 0
-          ? multiSourceEvents.slice(0, 6).map((event) => `${event.canonical_title}：${event.source_count} 个来源，覆盖 ${event.source_families.join("、")}。`)
-          : ["本轮公开快照中多源确认不足，重点事件仍需要等待下一轮刷新或人工补证。"],
+        bullets: [
+          ...crossFamilyEvents.slice(0, 3).map((event) => `跨家族确认：${event.canonical_title}，${event.source_count} 个来源，覆盖 ${event.source_families.join("、")}。`),
+          ...sameFamilyEvents.slice(0, 3).map((event) => `同家族多源复述：${event.canonical_title}，${event.source_count} 个来源，均属于 ${event.source_families.join("、")}。`),
+          ...(multiReportEvents.length === 0 ? ["本轮公开快照中没有多条报道事件，重点事件仍需要等待下一轮刷新或人工补证。"] : [])
+        ],
         caveats: [],
         citations: [],
-        summary: `本轮报告候选中有 ${multiSourceEvents.length} 个多源确认事件；其余事件主要作为待跟踪信号处理。`,
-        title: "多源确认与可信度"
+        summary: `本轮报告候选中有 ${crossFamilyEvents.length} 个跨家族确认事件、${sameFamilyEvents.length} 个同家族多源复述事件；其余事件主要作为单源待跟踪信号处理。`,
+        title: "来源家族确认与可信度"
       },
       {
         bullets: [
@@ -1781,15 +1787,20 @@ function reportSnapshotPriority(report: PublicReportSnapshot) {
 }
 
 function mergeReports(reports: PublicReportSnapshot[]) {
-  const byId = new Map<string, PublicReportSnapshot>();
+  const byKey = new Map<string, PublicReportSnapshot>();
 
-  for (const report of reports) {
-    if (!byId.has(report.id)) {
-      byId.set(report.id, report);
+  for (const report of [...reports].sort(compareReports)) {
+    const sourceIds = [...report.source_item_ids].sort();
+    const key =
+      report.mode === "saved_candidate" && sourceIds.length > 0
+        ? `candidate:${report.report_type}:${sourceIds.join(",")}`
+        : `id:${report.id}`;
+    if (!byKey.has(key)) {
+      byKey.set(key, report);
     }
   }
 
-  return Array.from(byId.values());
+  return Array.from(byKey.values());
 }
 
 function labelize(value: string) {
@@ -1993,10 +2004,12 @@ function sanitizePublicSnapshot(snapshot: PublicMirrorSnapshot): PublicMirrorSna
   const eventLayer = publicDisplayEventLayer(rawEventLayer);
   debugStep(`sanitize:public-filter-done events=${eventLayer.event_count}`);
   debugStep(`sanitize:reports-start reports=${snapshot.reports.length}`);
-  const reports = buildEventAwareReports(
-    snapshot.reports.map(publicSafeReport).filter(isPublicReportSnapshotCandidate),
-    eventLayer,
-    snapshot.freshness.latest_timestamp
+  const reports = mergeReports(
+    buildEventAwareReports(
+      snapshot.reports.map(publicSafeReport).filter(isPublicReportSnapshotCandidate),
+      eventLayer,
+      snapshot.freshness.latest_timestamp
+    )
   );
   debugStep(`sanitize:reports-done reports=${reports.length}`);
 
