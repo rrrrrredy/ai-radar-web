@@ -196,6 +196,12 @@ const knownEntityPatterns = [
   "苹果"
 ];
 
+const eventActionPatterns = [
+  ["legal", /\b(?:sue|sues|sued|suing|lawsuit|litigation|court|complaint)\b|诉讼|起诉|法律行动/i],
+  ["funding", /\b(?:raise|raises|raised|funding|fundraise|financing|investment)\b|融资|投资/i],
+  ["acquisition", /\b(?:acquire|acquires|acquired|acquisition|buyout|merger)\b|收购|并购/i]
+] as const;
+
 const itemKeywordCache = new WeakMap<ClusterableRadarItem, string[]>();
 const itemEntityCache = new WeakMap<ClusterableRadarItem, string[]>();
 const itemStrongEntityCache = new WeakMap<ClusterableRadarItem, string[]>();
@@ -267,11 +273,28 @@ function compareClusterInputItems(left: ClusterableRadarItem, right: Clusterable
 }
 
 export function sourceFamilyForEvent(item: Pick<ClusterableRadarItem, "source_name" | "url" | "source_tier">) {
-  const text = `${item.source_name} ${item.url} ${item.source_tier}`.toLowerCase();
+  const text = `${item.source_name} ${safeDomain(item.url)} ${item.source_tier}`.toLowerCase();
   if (text.includes("arxiv") || text.includes("paper") || text.includes("research")) return "研究订阅";
   if (text.includes("github") || text.includes("release") || text.includes("hugging face") || text.includes("huggingface")) return "开源项目";
   if (["openai", "anthropic", "google", "deepmind", "meta", "llama", "deepseek", "qwen", "microsoft", "nvidia"].some((term) => text.includes(term))) return "公司/实验室";
-  if (["lex", "every", "latent", "lenny", "benedict", "karpathy", "newsletter", "media"].some((term) => text.includes(term))) return "分析/媒体";
+  if ([
+    "lex",
+    "every",
+    "latent",
+    "lenny",
+    "benedict",
+    "karpathy",
+    "newsletter",
+    "media",
+    "techcrunch",
+    "venturebeat",
+    "theverge",
+    "the verge",
+    "technologyreview",
+    "technology review",
+    "arstechnica",
+    "ars technica"
+  ].some((term) => text.includes(term))) return "分析/媒体";
   return "其他公开来源";
 }
 
@@ -349,6 +372,14 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
     strongItemEntitySet.size > 0 &&
     intersectionSize(cluster.strongEntities, strongItemEntitySet) === 0;
   const weakGenericOnly = entityOverlap > 0 && intersectionValues(cluster.entities, itemEntitySet).every((entity) => genericEntityTerms.has(entity));
+  const sharedStrongEntityCount = canonicalStrongEntityOverlap(cluster.strongEntities, strongItemEntitySet);
+  const specificEventActionMatch = cluster.items.some((clusterItem) => sharesSpecificEventAction(clusterItem.title, item.title));
+  const corroboratedActionMatch =
+    specificEventActionMatch &&
+    sharedStrongEntityCount >= 2 &&
+    timeScore >= 0.7 &&
+    titleOverlap >= 0.04 &&
+    keywordOverlap >= 0.12;
 
   if (openSourceProjectConflict && (versionConflict || isReleaseVersionTitle(item.title) || cluster.items.some((clusterItem) => isReleaseVersionTitle(clusterItem.title)))) {
     return 0;
@@ -369,6 +400,10 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
     categoryOverlap * 0.12 +
     timeScore * 0.08 +
     domainScore;
+
+  if (corroboratedActionMatch) {
+    score += 0.28;
+  }
 
   if (strongEntityConflict && titleOverlap < 0.72) {
     score -= 0.32;
@@ -672,7 +707,7 @@ function eventCaveats(items: ClusterableRadarItem[], sourceFamilies: string[]) {
   return [
     items.length === 1 ? "目前只有单条公开信号，可信度需要后续来源补强。" : "",
     sourceFamilies.length === 1 ? "来源家族仍然集中，需关注是否有独立来源确认。" : "",
-    items.some((item) => item.status === "needs_review") ? "包含待复核信号，报告或写作中应保留不确定性。" : ""
+    items.some((item) => item.status === "needs_review") ? "包含待复核信号，报告中应保留不确定性。" : ""
   ].filter(Boolean);
 }
 
@@ -845,6 +880,34 @@ function intersectionValues(left: Set<string>, right: Set<string>) {
   return [...left].filter((value) => right.has(value));
 }
 
+function canonicalStrongEntityOverlap(left: Set<string>, right: Set<string>) {
+  const canonicalLeft = new Set([...left].map(canonicalEventEntity));
+  const canonicalRight = new Set([...right].map(canonicalEventEntity));
+  return intersectionSize(canonicalLeft, canonicalRight);
+}
+
+function canonicalEventEntity(value: string) {
+  switch (normalizeEntity(value)) {
+    case "苹果":
+      return "apple";
+    case "微软":
+      return "microsoft";
+    case "英伟达":
+      return "nvidia";
+    case "通义":
+      return "qwen";
+    case "hugging face":
+      return "huggingface";
+    default:
+      return normalizeEntity(value);
+  }
+}
+
+function sharesSpecificEventAction(leftTitle: string, rightTitle: string) {
+  const leftActions = new Set(eventActionPatterns.filter(([, pattern]) => pattern.test(leftTitle)).map(([name]) => name));
+  return eventActionPatterns.some(([name, pattern]) => leftActions.has(name) && pattern.test(rightTitle));
+}
+
 function safeDomain(rawUrl: string) {
   try {
     return new URL(rawUrl).hostname.replace(/^www\./, "");
@@ -875,6 +938,7 @@ function normalizeText(value: string) {
   const normalized = value
     .toLowerCase()
     .replace(/https?:\/\/\S+/g, " ")
+    .replace(/(?:\u2018|\u2019|')s\b/g, "")
     .replace(/[\u2018\u2019\u201c\u201d]/g, "")
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")

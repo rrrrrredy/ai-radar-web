@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { mockRadarItems } from "@/lib/radar/mock-data";
 import type { RadarItem } from "@/lib/radar/types";
+import { publicInternetHttpUrl } from "@/lib/public-url";
 import { loadSupabaseRadarItems } from "@/lib/retrieval/load-supabase-radar-items";
 import type { LoadedRadarItems, RetrievalRadarItem } from "@/lib/retrieval/types";
 import { RADAR_CATEGORIES, type RadarCategory } from "@/lib/understanding/types";
@@ -16,6 +17,7 @@ const DEFAULT_PUBLIC_SNAPSHOT_PATH = path.join(
   "radar-snapshot.json"
 );
 export const DEFAULT_PUBLIC_SNAPSHOT_URL = "https://ai-industry-radar.pages.dev/data/radar-snapshot.json";
+const maxPublicSnapshotBytes = 8_000_000;
 
 export async function loadRadarItems(): Promise<LoadedRadarItems> {
   const supabase = await loadSupabaseRadarItems();
@@ -115,13 +117,22 @@ async function loadLocalRadarItems(): Promise<LoadedRadarItems | null> {
   }
 }
 
-export async function loadPublicRadarSnapshot(): Promise<Record<string, unknown> | null> {
-  const localSnapshot = await loadLocalPublicRadarSnapshot();
+export async function loadPublicRadarSnapshot(
+  options: { localOnly?: boolean; preferLocal?: boolean } = {}
+): Promise<Record<string, unknown> | null> {
+  const localSnapshot = await loadLocalPublicRadarSnapshot(options.preferLocal === true);
   if (localSnapshot) {
     return localSnapshot;
   }
 
-  const snapshotUrl = process.env.PUBLIC_RADAR_SNAPSHOT_URL?.trim() || DEFAULT_PUBLIC_SNAPSHOT_URL;
+  if (options.localOnly) {
+    return null;
+  }
+
+  const snapshotUrl = publicInternetHttpUrl(process.env.PUBLIC_RADAR_SNAPSHOT_URL?.trim() || DEFAULT_PUBLIC_SNAPSHOT_URL);
+  if (!snapshotUrl) {
+    return null;
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
 
@@ -137,7 +148,26 @@ export async function loadPublicRadarSnapshot(): Promise<Record<string, unknown>
       return null;
     }
 
-    const parsed = (await response.json()) as unknown;
+    if (!publicInternetHttpUrl(response.url)) {
+      return null;
+    }
+
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > maxPublicSnapshotBytes) {
+      return null;
+    }
+
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType && !/(^|;|\s)(application\/json|text\/plain|application\/octet-stream)\b/i.test(contentType)) {
+      return null;
+    }
+
+    const textPayload = await response.text();
+    if (new TextEncoder().encode(textPayload).length > maxPublicSnapshotBytes) {
+      return null;
+    }
+
+    const parsed = JSON.parse(textPayload) as unknown;
     if (!isRecord(parsed)) {
       return null;
     }
@@ -150,9 +180,9 @@ export async function loadPublicRadarSnapshot(): Promise<Record<string, unknown>
   }
 }
 
-async function loadLocalPublicRadarSnapshot(): Promise<Record<string, unknown> | null> {
+async function loadLocalPublicRadarSnapshot(forceLocal: boolean): Promise<Record<string, unknown> | null> {
   const explicitPath = process.env.PUBLIC_RADAR_SNAPSHOT_FILE?.trim();
-  const shouldReadLocal = process.env.PREFER_LOCAL_PUBLIC_RADAR_SNAPSHOT === "true" || Boolean(explicitPath);
+  const shouldReadLocal = forceLocal || process.env.PREFER_LOCAL_PUBLIC_RADAR_SNAPSHOT === "true" || Boolean(explicitPath);
 
   if (!shouldReadLocal) {
     return null;
@@ -168,8 +198,10 @@ async function loadLocalPublicRadarSnapshot(): Promise<Record<string, unknown> |
   }
 }
 
-async function loadPublicSnapshotRadarItems(): Promise<LoadedRadarItems | null> {
-  const parsed = await loadPublicRadarSnapshot();
+export async function loadPublicSnapshotRadarItems(
+  options: { localOnly?: boolean; preferLocal?: boolean } = {}
+): Promise<LoadedRadarItems | null> {
+  const parsed = await loadPublicRadarSnapshot(options);
   if (!parsed || !Array.isArray(parsed.radar_items)) {
     return null;
   }
@@ -281,7 +313,11 @@ function normalizeSnapshotItem(value: unknown): RetrievalRadarItem | null {
     overall_score: score(scores.overall),
     categories: categories(value.categories),
     tags: stringArray(value.tags),
-    entities: [],
+    entities: Array.isArray(value.entities)
+      ? value.entities
+          .map(normalizeEntity)
+          .filter((entity): entity is RetrievalRadarItem["entities"][number] => Boolean(entity))
+      : [],
     source_tier: text(value.source_tier) || "public",
     source_weight: score(value.source_weight || 0.7),
     confidence: score(value.confidence || 0.6),
@@ -331,7 +367,7 @@ function mapMockRadarItem(item: RadarItem): RetrievalRadarItem {
     source_weight: 0.6,
     confidence: item.confidence === "high" ? 0.9 : item.confidence === "medium" ? 0.65 : 0.4,
     status: item.status === "archived" ? "excluded" : item.status === "draft" ? "needs_review" : "included",
-    why_it_matters: "Synthetic demo radar item used to validate retrieval and writing-assistant UI behavior.",
+    why_it_matters: "Synthetic demo radar item used to validate retrieval UI behavior.",
     evidence_notes: ["Synthetic mock data; not evidence of a current real-world event."],
     model_metadata: {
       mode: "mock",

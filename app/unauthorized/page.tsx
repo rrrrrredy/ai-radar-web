@@ -15,7 +15,7 @@ export default function UnauthorizedPage() {
         </h1>
         <p className="mt-3 text-sm leading-6 text-radar-muted">
           This account is authenticated but does not have the admin role required
-          for the production-safe analyst console. Public radar, Ask, Write, and
+          for the production-safe analyst console. Public radar, entities, and
           reports remain available.
         </p>
       </section>

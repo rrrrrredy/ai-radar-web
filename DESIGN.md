@@ -41,7 +41,7 @@ Tokens are semantic first. Use them to communicate evidence, freshness, operatio
 | `evidence` | citations, source proof, evidence badges | `#0f766e` |
 | `freshness` | time windows, recency, collection status | `#2563eb` |
 | `caution` | incomplete evidence, needs review, manual follow-up | `#b45309` |
-| `risk` | failed states, unsafe data, disabled write gates | `#be123c` |
+| `risk` | failed states, unsafe data, disabled mutation gates | `#be123c` |
 | `success` | verified dry-run success, read-only healthy status | `#15803d` |
 | `admin` | admin-only framing and operational labels | `#334155` |
 | `code` | command text, paths, technical metadata | `#1f2937` |
@@ -51,7 +51,7 @@ Supporting token: `bg` is the app background. It should stay near white so evide
 ## Typography
 
 - `display`: product name or major public entry point only; semibold, normal tracking, compact line height.
-- `page title`: route-level `h1`; clear noun labels such as Radar, Ask Radar, Source registry.
+- `page title`: route-level `h1`; clear noun labels such as Radar, Entities, Reports, Source registry.
 - `section title`: short analytical labels; avoid marketing copy.
 - `body`: readable neutral prose; 1.5 to 1.75 line height for bilingual text.
 - `data label`: small, semibold, never color-only.
@@ -65,8 +65,8 @@ Supporting token: `bg` is the app background. It should stay near white so evide
 - Public desk layout: synthesis should sit beside or below evidence metadata, never as the only visible object.
 - Evidence rail: citations, source tier, freshness, status, and uncertainty may use a side rail on desktop and a stacked band on mobile.
 - Dense data rows: use compact rows with strong dividers for admin tables, source lists, run logs, and score dimensions.
-- Admin console layout: denser and more operational than public pages, with disabled/write-gated controls visually distinct from read-only state.
-- Mobile compression: collapse rails into ordered blocks: data source, time window, answer/synthesis, facts, uncertainty, citations.
+- Admin console layout: denser and more operational than public pages, with disabled/mutation-gated controls visually distinct from read-only state.
+- Mobile compression: collapse rails into ordered blocks: data source, time window, evidence summary, uncertainty, citations.
 
 ## Components
 
@@ -85,46 +85,46 @@ Supporting token: `bg` is the app background. It should stay near white so evide
 - Loading state: neutral, no fabricated progress or fake intelligence.
 - Admin section: operational block for source, ingestion, scoring, settings, and review controls.
 - Table/list rows: scan-friendly, stable columns, horizontal overflow on mobile rather than broken wrapping.
-- Form controls: labeled, keyboard focusable, with disabled state that explains write gates when relevant.
+- Form controls: labeled, keyboard focusable, with disabled state that explains mutation gates when relevant.
 
 ## Evidence and Citation UI
 
-- Citations are not footnotes only; they should be visible in answer/report surfaces.
+- Citations are not footnotes only; they should be visible in radar/report surfaces.
 - Freshness and confidence must be shown near claims, not hidden in metadata.
 - `needs_review` must never look confirmed. It should use caution tone, explicit wording, and caveat copy.
-- Mock/local/Supabase data source must be disclosed before or beside generated answers and writing suggestions.
+- Mock/local/Supabase data source must be disclosed before or beside radar, entity, and report synthesis.
 - Weak evidence should lower visual certainty. Do not use confident copy, success tone, or final-report framing for unreviewed items.
 
-## Q&A and Writing UI
+## Radar, Entity, And Report UI
 
-Q&A answer anatomy:
+Radar evidence anatomy:
 
 1. Time window
 2. Data source
-3. Short answer
-4. Facts
+3. Source and status
+4. Category/entity hints
 5. Evidence-backed inference
 6. Uncertainty
 7. Citations
 
-Writing assistant anatomy:
+Report anatomy:
 
-1. Topic
-2. Why it matters
-3. Evidence
-4. Caveats
-5. Counterpoints
+1. Formal vs draft status
+2. Quality gate state
+3. Usable evidence and citations
+4. Source/category diversity
+5. Caveats
 6. Missing evidence
 
-Q&A and writing surfaces should make unsupported gaps visible. A useful answer can say that evidence is incomplete.
+Radar, entity, and report surfaces should make unsupported gaps visible. A useful report draft can say that evidence is incomplete.
 
 ## Admin UI
 
 - Admin is operational, denser, less editorial.
-- Write-gated controls must be visually distinct from read-only status.
-- No UI should imply writes are enabled unless they are.
-- Supabase writes, live DeepSeek, and scheduled jobs must appear gated until explicitly enabled in a future phase.
-- Status rows should separate configured/missing, read/write, dry-run/write, and mock/live.
+- Mutation-gated controls must be visually distinct from read-only status.
+- No UI should imply mutations are enabled unless they are.
+- Supabase mutations, live DeepSeek, and scheduled jobs must appear gated until explicitly enabled in a future phase.
+- Status rows should separate configured/missing, read/mutate, dry-run/mutate, and mock/live.
 
 ## Responsive Rules
 
@@ -150,7 +150,7 @@ Q&A and writing surfaces should make unsupported gaps visible. A useful answer c
 - No secrets in UI, logs, docs, screenshots, or commits.
 - No API shape changes without an explicit task.
 - Preserve Supabase/local/mock retrieval behavior.
-- Preserve dry-run-first write boundaries.
+- Preserve dry-run-first mutation boundaries.
 - Validation commands for design-system changes:
   - `npm run lint`
   - `npm run typecheck`
@@ -170,7 +170,7 @@ Q&A and writing surfaces should make unsupported gaps visible. A useful answer c
 - Hidden citations
 - Confidence indicators detached from freshness or evidence
 - Success styling for `needs_review`
-- UI that implies production writes, scheduled jobs, or live model calls are enabled before they are
+- UI that implies production mutations, scheduled jobs, or live model calls are enabled before they are
 - One-note monochrome palettes
 - Decorative orbs, bokeh blobs, or abstract AI wallpaper
 - Marketing claims that outrun current implementation

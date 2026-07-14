@@ -52,7 +52,6 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
         [
           "id",
           "local_id",
-          "raw_item_id",
           "source_id",
           "source_name",
           "title",
@@ -79,7 +78,7 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
           "source_weight",
           "confidence",
           "why_it_matters",
-          "evidence_notes",
+          "entities",
           "created_at",
           "updated_at"
         ].join(",")
@@ -163,7 +162,7 @@ function normalizeSupabaseRow(value: SupabaseRadarRow): RetrievalRadarItem | nul
   return {
     id,
     database_id: text(value.id) || undefined,
-    raw_item_id: text(value.raw_item_id) || id,
+    raw_item_id: id,
     source_id: text(value.source_id) || "unknown",
     source_name: sourceName,
     title,
@@ -182,14 +181,18 @@ function normalizeSupabaseRow(value: SupabaseRadarRow): RetrievalRadarItem | nul
     overall_score: score(value.overall_score),
     categories: categories(value.categories ?? value.topics),
     tags: stringArray(value.tags),
-    entities: [],
+    entities: Array.isArray(value.entities)
+      ? value.entities
+          .map(normalizeEntity)
+          .filter((entity): entity is RetrievalRadarItem["entities"][number] => Boolean(entity))
+      : [],
     source_tier: text(value.source_tier) || "unreviewed",
     source_weight: score(value.source_weight),
     confidence: score(value.confidence),
     status: normalizeStatus(value.understanding_status),
     exclusion_reason: optionalText(value.exclusion_reason),
     why_it_matters: optionalText(value.why_it_matters),
-    evidence_notes: stringArray(value.evidence_notes)
+    evidence_notes: []
   };
 }
 
@@ -272,4 +275,38 @@ function normalizeStatus(value: unknown): RetrievalRadarItem["status"] {
   }
 
   return "needs_review";
+}
+
+function normalizeEntity(value: unknown): RetrievalRadarItem["entities"][number] | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const name = text(record.name);
+  const type = text(record.type);
+  if (!name) {
+    return null;
+  }
+
+  return {
+    confidence: score(record.confidence || 0.5),
+    name,
+    type: isEntityType(type) ? type : "other"
+  };
+}
+
+function isEntityType(value: string): value is RetrievalRadarItem["entities"][number]["type"] {
+  return [
+    "company",
+    "model",
+    "product",
+    "person",
+    "paper",
+    "project",
+    "repository",
+    "investor",
+    "regulator",
+    "other"
+  ].includes(value);
 }

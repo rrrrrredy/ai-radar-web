@@ -141,13 +141,13 @@ function buildCaveats(loaded: LoadedRadarItems, counts: RadarFeedCounts) {
     ...loaded.warnings,
     dataSourceCaveat(loaded.dataSource),
     counts.included === 0 && counts.total > 0
-      ? "No retrieved item is currently marked included; treat the list as review material, not confirmed coverage."
+      ? "当前检索结果没有已纳入条目，只能作为复核材料，不能视为确认覆盖。"
       : "",
     counts.needs_review > 0
-      ? `${counts.needs_review} item(s) are marked needs_review and require human confirmation before confident synthesis.`
+      ? `${counts.needs_review} 条雷达条目仍待复核，需要人工确认后才能形成高置信度综合判断。`
       : "",
     counts.excluded + counts.failed > 0
-      ? "Excluded or failed rows are surfaced for transparency and should not be used as report evidence."
+      ? "已排除或失败条目仅用于透明展示，不能作为报告证据。"
       : "",
     counts.total === 0
       ? "当前没有检索到可展示的雷达证据。"

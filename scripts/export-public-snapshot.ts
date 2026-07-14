@@ -21,12 +21,15 @@ import {
 } from "@/lib/events/clustering";
 import { buildRadarFeed } from "@/lib/radar/feed";
 import { assessPublicSignalQuality } from "@/lib/radar/public-signal-quality";
+import { isExternalSourceRepairSignal } from "@/lib/radar/public-source-boundary";
+import { publicInternetHttpUrl } from "@/lib/public-url";
 import { loadRadarItems } from "@/lib/retrieval/load-radar-items";
 import type {
   RetrievalDataSource,
   RetrievalLanguage,
   RetrievalRadarItem
 } from "@/lib/retrieval/types";
+import { loadLocalPublicReportSnapshotRecords } from "@/lib/reports/local-public-reports";
 import {
   distinctSourcesFromCitations,
   normalizeReportQualityGate,
@@ -34,15 +37,22 @@ import {
 } from "@/lib/reports/quality-gates";
 import type { ReportPreviewType, ReportQualityGate } from "@/lib/reports/types";
 import { getSupabaseServerReadClient } from "@/lib/supabase/server-read";
-import { getSupabaseServiceClient, getSupabaseServiceStatus } from "@/lib/supabase/service";
 import { getSupabasePublicConfig } from "@/lib/config";
-import { RADAR_CATEGORIES, type RadarCategory, type UnderstandingStatus } from "@/lib/understanding/types";
+import {
+  ENTITY_TYPES,
+  RADAR_CATEGORIES,
+  type RadarCategory,
+  type UnderstandingEntity,
+  type UnderstandingEntityType,
+  type UnderstandingStatus
+} from "@/lib/understanding/types";
 
 const cloudflareUrl = "https://ai-industry-radar.pages.dev";
 const referenceAppUrl = "https://ai-radar-web-luosongred-5507s-projects.vercel.app";
 const outputPath = path.join(process.cwd(), "dist", "cloudflare-pages", "data", "radar-snapshot.json");
 const radarLimit = 500;
 const reportLimit = 24;
+const publicEntityTypes = new Set<string>(ENTITY_TYPES);
 
 type SnapshotSourceKind = "supabase_public_views" | "local_files";
 type ReportMode = "saved_candidate" | "saved_report" | "local_preview";
@@ -72,7 +82,13 @@ export type PublicRadarSnapshotItem = {
     overall: number;
   };
   why_it_matters?: string;
-  evidence_notes: string[];
+  entities: PublicRadarSnapshotEntity[];
+};
+
+export type PublicRadarSnapshotEntity = {
+  name: string;
+  type: UnderstandingEntityType;
+  confidence: number;
 };
 
 export type PublicReportSnapshot = {
@@ -90,6 +106,7 @@ export type PublicReportSnapshot = {
   };
   generated_at?: string;
   saved_at?: string;
+  source_item_ids: string[];
   source_item_count: number;
   usable_item_count: number;
   citation_count: number;
@@ -125,17 +142,9 @@ type CountEntry = {
   count: number;
 };
 
-type OperationalCounts = {
-  sources: number | null;
-  raw_items: number | null;
-  radar_items: number | null;
+type PublicSnapshotCountsInput = {
   public_radar_items: number | null;
   report_candidates: number | null;
-  ingestion_runs: number | null;
-  understanding_runs: number | null;
-  entities: number | null;
-  item_entities: number | null;
-  scores: number | null;
   latest_ingestion: string | null;
   latest_understanding: string | null;
   warnings: string[];
@@ -165,9 +174,6 @@ export type PublicMirrorSnapshot = {
     note: string;
   };
   counts: {
-    sources: number | null;
-    raw_items: number | null;
-    radar_items: number | null;
     public_radar_items: number | null;
     visible_radar_items: number;
     snapshot_radar_items: number;
@@ -179,11 +185,6 @@ export type PublicMirrorSnapshot = {
     report_snapshots: number;
     saved_report_candidates: number;
     citations: number;
-    ingestion_runs: number | null;
-    understanding_runs: number | null;
-    entities: number | null;
-    item_entities: number | null;
-    scores: number | null;
     event_clusters: number;
   };
   coverage: {
@@ -197,8 +198,6 @@ export type PublicMirrorSnapshot = {
     sources_with_public_items: number | null;
     public_radar_items: number | null;
     latest_refresh: string | null;
-    source_to_raw_coverage: number | null;
-    raw_to_radar_conversion: number | null;
     radar_to_public_visibility: number | null;
     source_public_visibility: number | null;
     failure_families: Record<string, number>;
@@ -238,10 +237,7 @@ export type PublicMirrorSnapshot = {
     failed_sources: number;
     blocked_manual_sources: number;
     sources_with_public_items: number | null;
-    raw_items: number | null;
-    radar_items: number | null;
     public_radar_items: number | null;
-    raw_to_radar_conversion: number | null;
     radar_to_public_visibility: number | null;
     source_public_visibility: number | null;
   };
@@ -447,8 +443,8 @@ async function readSupabaseSnapshot(
     readSupabaseRadarItems(supabase),
     readSupabaseReports(supabase)
   ]);
-  const operationalCounts = await readOperationalCounts(radar.count, reports.reports.length);
-  const warnings = [...radar.warnings, ...reports.warnings, ...operationalCounts.warnings];
+  const publicCounts = publicSnapshotCounts(radar.count, reports.reports.length);
+  const warnings = [...radar.warnings, ...reports.warnings, ...publicCounts.warnings];
 
   if (radar.items.length === 0) {
     return {
@@ -468,7 +464,7 @@ async function readSupabaseSnapshot(
       fallbackUsed: false,
       generatedAt,
       items: radar.items,
-      operationalCounts,
+      publicCounts,
       publicCoverage: await loadPublicDataCompletenessSummary(),
       reports: reports.reports,
       sourceKind: "supabase_public_views",
@@ -510,7 +506,7 @@ async function readSupabaseRadarItems(supabase: SupabaseClient): Promise<Supabas
           "source_tier",
           "confidence",
           "why_it_matters",
-          "evidence_notes",
+          "entities",
           "updated_at"
         ].join(","),
         { count: "exact" }
@@ -555,17 +551,16 @@ async function readSupabaseRadarItems(supabase: SupabaseClient): Promise<Supabas
 }
 
 async function readSupabaseReports(supabase: SupabaseClient): Promise<SupabaseReportRead> {
-  const [candidates, reports, service] = await Promise.all([
+  const [candidates, reports] = await Promise.all([
     readPublicReportCandidates(supabase),
-    readPublicReports(supabase),
-    readServiceReports()
+    readPublicReports(supabase)
   ]);
 
   return {
-    reports: mergeReports([...service.reports, ...candidates.reports, ...reports.reports])
+    reports: mergeReports([...candidates.reports, ...reports.reports])
       .sort(compareReports)
       .slice(0, reportLimit),
-    warnings: [...candidates.warnings, ...reports.warnings, ...service.warnings]
+    warnings: [...candidates.warnings, ...reports.warnings]
   };
 }
 
@@ -630,107 +625,14 @@ async function readPublicReports(supabase: SupabaseClient): Promise<SupabaseRepo
   }
 }
 
-async function readServiceReports(): Promise<SupabaseReportRead> {
-  const serviceStatus = getSupabaseServiceStatus();
-
-  if (!serviceStatus.publicConfigConfigured || !serviceStatus.serviceRoleConfigured) {
-    return {
-      reports: [],
-      warnings: []
-    };
-  }
-
-  try {
-    const supabase = getSupabaseServiceClient();
-    const [candidates, reports] = await Promise.all([
-      readServiceReportCandidates(supabase),
-      readServiceSavedReports(supabase)
-    ]);
-
-    return {
-      reports: [...candidates.reports, ...reports.reports],
-      warnings: [...candidates.warnings, ...reports.warnings]
-    };
-  } catch (error) {
-    return {
-      reports: [],
-      warnings: [`service report read failed: ${sanitizeError(error)}`]
-    };
-  }
-}
-
-async function readServiceReportCandidates(supabase: SupabaseClient): Promise<SupabaseReportRead> {
-  try {
-    const { data, error } = await supabase
-      .from("report_candidates")
-      .select(
-        "id, report_type, title, summary, time_window_start, time_window_end, source_item_ids, status, confidence, created_at, updated_at, metadata"
-      )
-      .in("report_type", ["daily", "weekly"])
-      .in("status", ["draft", "needs_review", "approved", "deferred", "published"])
-      .order("created_at", { ascending: false, nullsFirst: false })
-      .limit(reportLimit);
-
-    if (error) {
-      return {
-        reports: [],
-        warnings: [`report_candidates service read failed: ${sanitizeError(error.message)}`]
-      };
-    }
-
-    return {
-      reports: ((data ?? []) as unknown as SupabaseReportRow[])
-        .map(withReportDraftFromMetadata)
-        .map(normalizeCandidateReportRow)
-        .filter((report): report is PublicReportSnapshot => Boolean(report)),
-      warnings: []
-    };
-  } catch (error) {
-    return {
-      reports: [],
-      warnings: [`report_candidates service read failed: ${sanitizeError(error)}`]
-    };
-  }
-}
-
-async function readServiceSavedReports(supabase: SupabaseClient): Promise<SupabaseReportRead> {
-  try {
-    const { data, error } = await supabase
-      .from("reports")
-      .select("id, type, title, language, time_window_start, time_window_end, body, status, created_at, published_at, metadata")
-      .in("type", ["daily", "weekly"])
-      .in("status", ["draft", "reviewed", "published"])
-      .order("published_at", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false, nullsFirst: false })
-      .limit(reportLimit);
-
-    if (error) {
-      return {
-        reports: [],
-        warnings: [`reports service read failed: ${sanitizeError(error.message)}`]
-      };
-    }
-
-    return {
-      reports: ((data ?? []) as unknown as SupabaseReportRow[])
-        .map(withReportDraftFromMetadata)
-        .map(normalizeSavedReportRow)
-        .filter((report): report is PublicReportSnapshot => Boolean(report)),
-      warnings: []
-    };
-  } catch (error) {
-    return {
-      reports: [],
-      warnings: [`reports service read failed: ${sanitizeError(error)}`]
-    };
-  }
-}
-
 async function readLocalFallbackSnapshot(
   generatedAt: string,
   warnings: string[]
 ): Promise<PublicMirrorSnapshot> {
-  const loaded = await loadRadarItems();
+  const [loaded, localReports] = await Promise.all([
+    loadRadarItems(),
+    readLocalPublicReports()
+  ]);
   const feed = buildRadarFeed(loaded);
 
   return buildSnapshot({
@@ -740,12 +642,29 @@ async function readLocalFallbackSnapshot(
     fallbackUsed: true,
     generatedAt,
     items: feed.items.map(mapRetrievalItem),
-    operationalCounts: await readOperationalCounts(feed.counts.total, 0),
+    publicCounts: publicSnapshotCounts(feed.counts.total, 0),
     publicCoverage: await loadPublicDataCompletenessSummary(),
-    reports: [],
+    reports: localReports.reports,
     sourceKind: "local_files",
-    warnings: [...warnings, ...loaded.warnings]
+    warnings: [...warnings, ...loaded.warnings, ...localReports.warnings]
   });
+}
+
+async function readLocalPublicReports(): Promise<SupabaseReportRead> {
+  const loaded = await loadLocalPublicReportSnapshotRecords();
+  const reports = loaded.records
+    .map((record) => publicSafeReport(record as PublicReportSnapshot))
+    .filter(isPublicReportSnapshotCandidate)
+    .sort(compareReports)
+    .slice(0, reportLimit);
+
+  return {
+    reports,
+    warnings:
+      reports.length > 0
+        ? [`Loaded ${reports.length} reviewed local public report snapshot(s).`, ...loaded.warnings]
+        : loaded.warnings
+  };
 }
 
 async function readPreviousPublicSnapshot(
@@ -757,8 +676,10 @@ async function readPreviousPublicSnapshot(
     const parsed = JSON.parse(await fs.readFile(outputPath, "utf8")) as Partial<PublicMirrorSnapshot>;
     const items = Array.isArray(parsed.radar_items) ? parsed.radar_items : [];
     const reports = Array.isArray(parsed.reports) ? parsed.reports : [];
-    const publicItems = (items as PublicRadarSnapshotItem[]).filter(isPublicSnapshotRadarCandidate);
+    const publicItems = (items as PublicRadarSnapshotItem[]).map(publicSafeRadarItem).filter(isPublicSnapshotRadarCandidate);
+    const publicReports = (reports as PublicReportSnapshot[]).map(publicSafeReport).filter(isPublicReportSnapshotCandidate);
     const droppedItems = items.length - publicItems.length;
+    const droppedReports = reports.length - publicReports.length;
 
     if (parsed.schema_version !== 1 || items.length < 50) {
       debugStep(`previous:rejected items=${items.length}`);
@@ -772,6 +693,7 @@ async function readPreviousPublicSnapshot(
       ...(parsed as PublicMirrorSnapshot),
       generated_at: generatedAt,
       radar_items: publicItems,
+      reports: publicReports,
       source: {
         ...(parsed.source as PublicMirrorSnapshot["source"]),
         data_source: publicSnapshotDataSource(parsed.source?.data_source),
@@ -779,13 +701,16 @@ async function readPreviousPublicSnapshot(
         warnings: publicSafeNotes([
           ...warnings,
           droppedItems > 0 ? `${droppedItems} 条旧快照低事件性源页或目录页已从公开快照中过滤。` : "",
+          droppedReports > 0 ? `${droppedReports} 个旧快照非公开报告状态已从公开快照中过滤。` : "",
           "Supabase public reads were unavailable during export; reused the previous public-safe Cloudflare snapshot instead of degrading to incomplete local data.",
           ...previousWarnings
         ])
       },
       counts: {
         ...(parsed.counts as PublicMirrorSnapshot["counts"]),
-        report_snapshots: (parsed.counts?.report_snapshots ?? reports.length) as number,
+        report_candidates: publicReports.filter((report) => report.mode === "saved_candidate").length,
+        report_snapshots: publicReports.length,
+        saved_report_candidates: publicReports.filter((report) => report.mode === "saved_candidate").length,
         snapshot_radar_items: publicItems.length,
         visible_radar_items: publicItems.length
       }
@@ -813,23 +738,30 @@ async function mergeLatestActivationSnapshot(
 ): Promise<PublicMirrorSnapshot> {
   debugStep(`activation-merge:start previous=${snapshot.radar_items.length}`);
   const activation = await readLatestActivationRadarItems();
+  const localReports = await readLocalPublicReports();
   debugStep(`activation-merge:read items=${activation.items.length} dropped=${activation.droppedCount}`);
+  debugStep(`activation-merge:local-reports=${localReports.reports.length}`);
+  const mergedReports = mergeReports([...localReports.reports, ...snapshot.reports])
+    .sort(compareReports)
+    .slice(0, reportLimit);
   const sourceWarnings = publicSafeNotes([
     ...warnings,
     ...snapshot.source.warnings,
-    ...activation.warnings
+    ...activation.warnings,
+    ...localReports.warnings
   ]);
 
   if (activation.items.length === 0) {
-    return sanitizePublicSnapshot({
+    return withFinalPublicSnapshotCounts(sanitizePublicSnapshot({
       ...snapshot,
       generated_at: generatedAt,
+      reports: mergedReports,
       source: {
         ...snapshot.source,
         local_data_used: true,
         warnings: sourceWarnings
       }
-    });
+    }));
   }
 
   const previousItemCount = snapshot.radar_items.length;
@@ -839,9 +771,9 @@ async function mergeLatestActivationSnapshot(
   const latest = latestTimestamp(mergedItems);
   const statusCounts = countStatuses(mergedItems);
   const activationNote = [
-    `本轮 live DeepSeek activation ${activation.runId ?? "latest"} 公开合并 ${activation.items.length} 条事件信号。`,
+    `本轮公开证据更新合并 ${activation.items.length} 条事件信号。`,
     `去重后新增 ${addedCount} 条，当前静态快照公开信号 ${mergedItems.length} 条。`,
-    activation.droppedCount > 0 ? `${activation.droppedCount} 条非公开状态、低事件性或字段不完整的 activation 信号未进入公开快照。` : ""
+    activation.droppedCount > 0 ? `${activation.droppedCount} 条非公开状态、低事件性或字段不完整的刷新信号未进入公开快照。` : ""
   ].filter(Boolean).join(" ");
 
   debugStep("activation-merge:sanitize-start");
@@ -849,7 +781,7 @@ async function mergeLatestActivationSnapshot(
     ...snapshot,
     caveats: publicSafeNotes([
       ...snapshot.caveats,
-      "Supabase public reads were unavailable during export, so the snapshot reuses the last public-safe Cloudflare evidence and merges the newest public-safe live DeepSeek activation output.",
+      "公开证据库本轮暂不可读，因此快照复用上一版公开证据，并合并最新公开证据更新。",
       activationNote
     ]),
     coverage: {
@@ -859,9 +791,7 @@ async function mergeLatestActivationSnapshot(
     },
     data_completeness_summary: {
       ...snapshot.data_completeness_summary,
-      public_radar_items: mergedItems.length,
-      radar_items: Math.max(snapshot.data_completeness_summary.radar_items ?? 0, mergedItems.length),
-      raw_items: Math.max(snapshot.data_completeness_summary.raw_items ?? 0, mergedItems.length)
+      public_radar_items: mergedItems.length
     },
     freshness: {
       ...snapshot.freshness,
@@ -869,7 +799,7 @@ async function mergeLatestActivationSnapshot(
       latest_timestamp_source: latest?.source ?? snapshot.freshness.latest_timestamp_source,
       latest_understanding: activation.latestTimestamp ?? snapshot.freshness.latest_understanding,
       note: latest
-        ? `Latest public radar timestamp is ${latest.value} (${latest.source}); includes newest public-safe live DeepSeek activation output.`
+        ? `Latest public radar timestamp is ${latest.value} (${latest.source}); includes latest public evidence update.`
         : snapshot.freshness.note
     },
     generated_at: generatedAt,
@@ -880,12 +810,11 @@ async function mergeLatestActivationSnapshot(
       included: statusCounts.included,
       needs_review: statusCounts.needs_review,
       public_radar_items: mergedItems.length,
-      radar_items: Math.max(snapshot.counts.radar_items ?? 0, mergedItems.length),
-      raw_items: Math.max(snapshot.counts.raw_items ?? 0, mergedItems.length),
       snapshot_radar_items: mergedItems.length,
       visible_radar_items: mergedItems.length
     },
     radar_items: mergedItems,
+    reports: mergedReports,
     source: {
       data_source: "local_understanding_output",
       kind: "local_files",
@@ -898,6 +827,10 @@ async function mergeLatestActivationSnapshot(
   });
   debugStep(`activation-merge:sanitize-done events=${draft.event_count}`);
 
+  return withFinalPublicSnapshotCounts(draft);
+}
+
+function withFinalPublicSnapshotCounts(draft: PublicMirrorSnapshot): PublicMirrorSnapshot {
   const sanitizedStatusCounts = countStatuses(draft.radar_items);
   const reportCitationCount = draft.reports.reduce((count, report) => count + report.citations.length, 0);
 
@@ -937,7 +870,7 @@ async function readLatestActivationRadarItems(): Promise<LatestActivationRead> {
   } catch {
     return {
       ...empty,
-      warnings: ["No latest activation summary was available for public-safe snapshot merge."]
+      warnings: ["No latest public evidence update summary was available for public snapshot merge."]
     };
   }
 
@@ -947,7 +880,7 @@ async function readLatestActivationRadarItems(): Promise<LatestActivationRead> {
     return {
       ...empty,
       runId,
-      warnings: [`Latest activation run ${runId ?? "unknown"} is ${mode || "unknown"}; only live activation output is merged into the public snapshot.`]
+      warnings: [`Latest public evidence update is ${mode || "unknown"}; only public-readable output is merged into the public snapshot.`]
     };
   }
 
@@ -1002,8 +935,8 @@ async function readLatestActivationRadarItems(): Promise<LatestActivationRead> {
     latestTimestamp: latest,
     runId,
     warnings: publicSafeNotes([
-      `Live activation chunks contributed ${mergedItems.length} public-safe radar items from ${completedChunks} completed chunks across ${runIds.size || 1} run(s). Latest run: ${runId ?? "unknown"}.`,
-      duplicateCount > 0 ? `${duplicateCount} duplicate activation rows were removed before public snapshot merge.` : "",
+      `Public evidence update contributed ${mergedItems.length} radar items from ${completedChunks} completed chunks.`,
+      duplicateCount > 0 ? `${duplicateCount} duplicate refresh rows were removed before public snapshot merge.` : "",
       ...warnings
     ])
   };
@@ -1025,6 +958,10 @@ async function discoverActivationChunkFiles() {
 }
 
 function isPublicSnapshotRadarCandidate(item: PublicRadarSnapshotItem) {
+  if (isExternalSourceRepairSignal(item)) {
+    return false;
+  }
+
   if (item.status !== "included" && item.status !== "needs_review") {
     return false;
   }
@@ -1105,17 +1042,29 @@ function buildSnapshot(input: {
   fallbackUsed: boolean;
   generatedAt: string;
   items: PublicRadarSnapshotItem[];
-  operationalCounts: OperationalCounts;
+  publicCounts: PublicSnapshotCountsInput;
   publicCoverage: PublicDataCompletenessSummary;
   reports: PublicReportSnapshot[];
   sourceKind: SnapshotSourceKind;
   warnings: string[];
 }): PublicMirrorSnapshot {
-  const latest = latestTimestamp(input.items);
-  const statusCounts = countStatuses(input.items);
-  const rawEventLayer = buildEventLayer(input.items);
+  const items = input.items.map(publicSafeRadarItem).filter(isPublicSnapshotRadarCandidate);
+  const droppedItems = input.items.length - items.length;
+  const warnings = publicSafeNotes([
+    ...input.warnings,
+    droppedItems > 0 ? `${droppedItems} local/supabase radar row(s) were blocked by final public snapshot safety filters.` : ""
+  ]);
+  const latest = latestTimestamp(items);
+  const statusCounts = countStatuses(items);
+  const eventInputItems = items.map((item) => ({ ...item, evidence_notes: [] }));
+  const rawEventLayer = buildEventLayer(eventInputItems);
   const eventLayer = publicDisplayEventLayer(rawEventLayer);
-  const reports = buildEventAwareReports(input.reports.map(publicSafeReport), eventLayer, latest?.value ?? null);
+  const reports = buildEventAwareReports(
+    input.reports.map(publicSafeReport).filter(isPublicReportSnapshotCandidate),
+    eventLayer,
+    latest?.value ?? null
+  );
+  const savedReportCandidates = reports.filter((report) => report.mode === "saved_candidate").length;
   const reportCitationCount = reports.reduce((count, report) => count + report.citations.length, 0);
 
   return {
@@ -1132,37 +1081,29 @@ function buildSnapshot(input: {
       data_source: publicSnapshotDataSource(input.dataSource),
       kind: input.sourceKind,
       local_data_used: input.fallbackUsed,
-      warnings: publicSafeNotes(input.warnings)
+      warnings
     },
     freshness: {
-      latest_ingestion: input.operationalCounts.latest_ingestion,
+      latest_ingestion: input.publicCounts.latest_ingestion,
       latest_timestamp: latest?.value ?? null,
       latest_timestamp_source: latest?.source ?? null,
-      latest_understanding: input.operationalCounts.latest_understanding,
+      latest_understanding: input.publicCounts.latest_understanding,
       note: latest
         ? `Latest public radar timestamp is ${latest.value} (${latest.source}).`
         : "No public radar freshness timestamp is available."
     },
     counts: {
-      citations: input.items.length + reportCitationCount,
-      entities: input.operationalCounts.entities,
+      citations: items.length + reportCitationCount,
       excluded: statusCounts.excluded,
       failed: statusCounts.failed,
       included: statusCounts.included,
-      ingestion_runs: input.operationalCounts.ingestion_runs,
-      item_entities: input.operationalCounts.item_entities,
       needs_review: statusCounts.needs_review,
-      public_radar_items: input.operationalCounts.public_radar_items,
-      radar_items: input.operationalCounts.radar_items,
-      raw_items: input.operationalCounts.raw_items,
-      report_candidates: input.operationalCounts.report_candidates,
+      public_radar_items: input.publicCounts.public_radar_items,
+      report_candidates: savedReportCandidates,
       report_snapshots: reports.length,
-      saved_report_candidates: reports.filter((report) => report.mode === "saved_candidate").length,
-      scores: input.operationalCounts.scores,
-      sources: input.operationalCounts.sources,
-      snapshot_radar_items: input.items.length,
-      understanding_runs: input.operationalCounts.understanding_runs,
-      visible_radar_items: input.exactVisibleRows,
+      saved_report_candidates: savedReportCandidates,
+      snapshot_radar_items: items.length,
+      visible_radar_items: items.length,
       event_clusters: eventLayer.event_count
     },
     coverage: {
@@ -1176,17 +1117,15 @@ function buildSnapshot(input: {
       latest_refresh: input.publicCoverage.latestRefresh,
       public_radar_items: input.publicCoverage.publicRadarItems,
       radar_to_public_visibility: input.publicCoverage.rates.radarPublicVisibility,
-      raw_to_radar_conversion: input.publicCoverage.rates.rawRadarConversion,
       skipped_source_reasons: input.publicCoverage.skippedSourceReasons,
       skipped_sources: input.publicCoverage.skippedSources,
       source_public_visibility: input.publicCoverage.rates.sourcePublicVisibility,
-      source_to_raw_coverage: input.publicCoverage.rates.sourceRawCoverage,
       sources_total: input.publicCoverage.sourcesTotal,
       sources_with_public_items: input.publicCoverage.sourcesWithPublicItems
     },
-    top_categories: countEntries(input.items.flatMap((item) => item.categories.map(labelize))),
-    top_source_tiers: countEntries(input.items.map((item) => item.source_tier)),
-    top_sources: countEntries(input.items.map((item) => item.source_name)),
+    top_categories: countEntries(items.flatMap((item) => item.categories.map(labelize))),
+    top_source_tiers: countEntries(items.map((item) => item.source_tier)),
+    top_sources: countEntries(items.map((item) => item.source_name)),
     curated_events: eventLayer.curated_events,
     data_completeness_summary: {
       attempted_sources: input.publicCoverage.attemptedSources,
@@ -1195,10 +1134,7 @@ function buildSnapshot(input: {
       failed_sources: input.publicCoverage.failedSources,
       fetched_sources: input.publicCoverage.fetchedSources,
       public_radar_items: input.publicCoverage.publicRadarItems,
-      radar_items: input.publicCoverage.radarItems,
       radar_to_public_visibility: input.publicCoverage.rates.radarPublicVisibility,
-      raw_items: input.publicCoverage.rawItems,
-      raw_to_radar_conversion: input.publicCoverage.rates.rawRadarConversion,
       source_public_visibility: input.publicCoverage.rates.sourcePublicVisibility,
       sources_total: input.publicCoverage.sourcesTotal,
       sources_with_public_items: input.publicCoverage.sourcesWithPublicItems
@@ -1211,7 +1147,7 @@ function buildSnapshot(input: {
       daily: reportQualitySummary(reports, "daily", eventLayer.curated_events),
       weekly: reportQualitySummary(reports, "weekly", eventLayer.curated_events)
     },
-    radar_items: input.items,
+    radar_items: items,
     reports,
     source_health_summary: {
       "403": input.publicCoverage.failureFamilies["403"] ?? input.publicCoverage.failureFamilies.failed_403 ?? 0,
@@ -1233,8 +1169,8 @@ function buildSnapshot(input: {
         ? "This snapshot used local generated data because Supabase public reads were unavailable to the export process."
         : "Radar rows came from Supabase public-safe read views. Report candidates are projected to the same public-safe field allowlist during export.",
       ...input.caveats,
-      ...input.warnings,
-      ...input.operationalCounts.warnings
+      ...warnings,
+      ...input.publicCounts.warnings
     ])
   };
 }
@@ -1284,13 +1220,26 @@ function buildEventAwareReports(
     return reports;
   }
 
-  return reports.map((report) =>
-    eventAwareReport(
-      report,
-      selectReportEvents(report.report_type, eventLayer, latestTimestamp),
-      latestTimestamp
+  return reports
+    .map((report) =>
+      shouldPreserveReviewedPublicReport(report)
+        ? report
+        : eventAwareReport(
+            report,
+            selectReportEvents(report.report_type, eventLayer, latestTimestamp),
+            latestTimestamp
+          )
     )
-  );
+    .filter(isPublicReportSnapshotCandidate);
+}
+
+function shouldPreserveReviewedPublicReport(report: PublicReportSnapshot) {
+  return report.mode === "saved_report" &&
+    publicSavedReportStatus(report.status) !== null &&
+    report.quality_gate_passed &&
+    report.sections.length > 0 &&
+    report.citations.length > 0 &&
+    report.source_item_ids.length > 0;
 }
 
 function selectReportEvents(
@@ -1364,7 +1313,7 @@ function eventAwareReport(
     caveats: publicSafeNotes(dedupe([
       evidenceBoundary,
       "这是事件感知的公开报告视图；原始信号仍可在“全部信号”中审计。",
-      multiSourceEvents.length === 0 ? "当前精选事件多为单源信号，写作时需要保留不确定性。" : "",
+      multiSourceEvents.length === 0 ? "当前精选事件多为单源信号，报告判断中需要保留不确定性。" : "",
       ...report.caveats
     ])),
     citation_count: citations.length,
@@ -1410,7 +1359,8 @@ function eventAwareReport(
       }
     ],
     source_item_count: relatedItemIds.length,
-    status: gate.passed ? report.status : "needs_review",
+    source_item_ids: relatedItemIds,
+    status: report.status,
     summary,
     title: `AI 行业雷达${reportLabel} - 事件预览`,
     usable_item_count: relatedItemIds.length
@@ -1476,99 +1426,13 @@ function formatPublicDate(value: string) {
   return date.toISOString().slice(0, 10);
 }
 
-async function readOperationalCounts(publicRadarFallback: number, reportCandidatesFallback: number): Promise<OperationalCounts> {
-  const empty: OperationalCounts = {
-    sources: null,
-    raw_items: null,
-    radar_items: null,
+function publicSnapshotCounts(publicRadarFallback: number, reportCandidatesFallback: number): PublicSnapshotCountsInput {
+  return {
     public_radar_items: publicRadarFallback,
     report_candidates: reportCandidatesFallback,
-    ingestion_runs: null,
-    understanding_runs: null,
-    entities: null,
-    item_entities: null,
-    scores: null,
     latest_ingestion: null,
     latest_understanding: null,
     warnings: []
-  };
-  const serviceStatus = getSupabaseServiceStatus();
-
-  if (!serviceStatus.publicConfigConfigured || !serviceStatus.serviceRoleConfigured) {
-    return {
-      ...empty,
-      warnings: ["Supabase service count access is unavailable; public snapshot counts are limited to public views."]
-    };
-  }
-
-  try {
-    const supabase = getSupabaseServiceClient();
-    const tableNames = [
-      "sources",
-      "raw_items",
-      "radar_items",
-      "public_radar_items",
-      "report_candidates",
-      "ingestion_runs",
-      "understanding_runs",
-      "entities",
-      "item_entities",
-      "scores"
-    ] as const;
-    const results = await Promise.all(tableNames.map((table) => exactCount(supabase, table)));
-    const counts = Object.fromEntries(results.map((result) => [result.table, result.count]));
-    const [ingestionRun, understandingRun] = await Promise.all([
-      supabase
-        .from("ingestion_runs")
-        .select("finished_at,started_at")
-        .order("started_at", { ascending: false, nullsFirst: false })
-        .limit(1),
-      supabase
-        .from("understanding_runs")
-        .select("ended_at,started_at")
-        .order("started_at", { ascending: false, nullsFirst: false })
-        .limit(1)
-    ]);
-
-    return {
-      ...empty,
-      ...counts,
-      latest_ingestion: latestRunTimestamp((ingestionRun.data ?? [])[0] as Record<string, unknown> | undefined, "finished_at"),
-      latest_understanding: latestRunTimestamp((understandingRun.data ?? [])[0] as Record<string, unknown> | undefined, "ended_at"),
-      warnings: [
-        ...results.map((result) => result.warning ?? ""),
-        ingestionRun.error ? `ingestion_runs latest timestamp failed: ${sanitizeError(ingestionRun.error.message)}` : "",
-        understandingRun.error ? `understanding_runs latest timestamp failed: ${sanitizeError(understandingRun.error.message)}` : ""
-      ].filter(Boolean)
-    };
-  } catch (error) {
-    return {
-      ...empty,
-      warnings: [`Supabase operational counts unavailable: ${sanitizeError(error)}`]
-    };
-  }
-}
-
-function latestRunTimestamp(row: Record<string, unknown> | undefined, endField: "ended_at" | "finished_at") {
-  const ended = text(row?.[endField]);
-  const started = text(row?.started_at);
-  return ended || started || null;
-}
-
-async function exactCount(supabase: SupabaseClient, table: string) {
-  const { count, error } = await supabase.from(table).select("id", { count: "exact", head: true });
-
-  if (error) {
-    return {
-      table,
-      count: null,
-      warning: `${table} count failed: ${sanitizeError(error.message)}`
-    };
-  }
-
-  return {
-    table,
-    count: count ?? 0
   };
 }
 
@@ -1589,7 +1453,7 @@ function normalizeSupabaseRadarRow(row: SupabaseRadarRow): PublicRadarSnapshotIt
     categories: categories(row.categories ?? row.topics),
     collected_at: collectedAt,
     confidence: score(row.confidence),
-    evidence_notes: stringArray(row.evidence_notes, 8, 600),
+    entities: publicSafeEntities(row.entities ?? row.extracted_entities ?? row.item_entities),
     language: normalizeLanguage(row.language),
     processed_at: processedAt,
     published_at: optionalText(row.published_at),
@@ -1619,7 +1483,7 @@ function mapRetrievalItem(item: RetrievalRadarItem): PublicRadarSnapshotItem {
     categories: item.categories,
     collected_at: item.collected_at,
     confidence: item.confidence,
-    evidence_notes: item.evidence_notes.slice(0, 8),
+    entities: publicSafeEntities(item.entities),
     language: item.language,
     processed_at: item.processed_at,
     published_at: item.published_at,
@@ -1646,9 +1510,10 @@ function mapRetrievalItem(item: RetrievalRadarItem): PublicRadarSnapshotItem {
 function normalizeCandidateReportRow(row: SupabaseReportRow): PublicReportSnapshot | null {
   const id = text(row.id);
   const reportType = reportTypeValue(row.report_type);
+  const status = publicCandidateReportStatus(row.status);
   const title = text(row.title);
 
-  if (!id || !reportType || !title) {
+  if (!id || !reportType || !status || !title) {
     return null;
   }
 
@@ -1679,9 +1544,10 @@ function normalizeCandidateReportRow(row: SupabaseReportRow): PublicReportSnapsh
     report_type: reportType,
     saved_at: optionalText(row.created_at),
     sections: normalizeReportSections(draft.sections),
+    source_item_ids: sourceItemIds.length > 0 ? sourceItemIds : draftSourceItemIds,
     source_item_count: sourceItemCount,
     ...reportQualityGateFields(qualityGate),
-    status: qualityGate.passed ? text(row.status) || "draft" : "needs_review",
+    status,
     summary:
       text(row.summary, 1200) ||
       text(draft.one_sentence_summary, 1200) ||
@@ -1692,21 +1558,13 @@ function normalizeCandidateReportRow(row: SupabaseReportRow): PublicReportSnapsh
   };
 }
 
-function withReportDraftFromMetadata(row: SupabaseReportRow): SupabaseReportRow {
-  const metadata = record(row.metadata);
-
-  return {
-    ...row,
-    report_draft: isRecord(metadata.report_draft) ? metadata.report_draft : row.report_draft
-  };
-}
-
 function normalizeSavedReportRow(row: SupabaseReportRow): PublicReportSnapshot | null {
   const id = text(row.id);
   const reportType = reportTypeValue(row.type);
+  const status = publicSavedReportStatus(row.status);
   const title = text(row.title);
 
-  if (!id || !reportType || !title) {
+  if (!id || !reportType || !status || !title) {
     return null;
   }
 
@@ -1734,9 +1592,10 @@ function normalizeSavedReportRow(row: SupabaseReportRow): PublicReportSnapshot |
     report_type: reportType,
     saved_at: optionalText(row.published_at) ?? optionalText(row.created_at),
     sections: normalizeReportSections(draft.sections),
+    source_item_ids: draftSourceItemIds,
     source_item_count: draftSourceItemIds.length,
     ...reportQualityGateFields(qualityGate),
-    status: text(row.status) || "draft",
+    status,
     summary:
       text(draft.one_sentence_summary, 1200) ||
       firstParagraph(text(row.body, 2200)) ||
@@ -1894,10 +1753,31 @@ function countEntries(values: string[]): CountEntry[] {
 }
 
 function compareReports(left: PublicReportSnapshot, right: PublicReportSnapshot) {
+  const priority = reportSnapshotPriority(right) - reportSnapshotPriority(left);
+  if (priority !== 0) {
+    return priority;
+  }
+
   const leftTime = Date.parse(left.saved_at ?? left.generated_at ?? left.time_window.end);
   const rightTime = Date.parse(right.saved_at ?? right.generated_at ?? right.time_window.end);
 
   return (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0);
+}
+
+function reportSnapshotPriority(report: PublicReportSnapshot) {
+  if (report.mode === "saved_report" && report.status === "published") {
+    return 40;
+  }
+
+  if (report.mode === "saved_report" && report.status === "reviewed") {
+    return 30;
+  }
+
+  if (report.mode === "saved_candidate" && report.status === "approved") {
+    return 20;
+  }
+
+  return 0;
 }
 
 function mergeReports(reports: PublicReportSnapshot[]) {
@@ -1945,6 +1825,28 @@ function statusValue(value: unknown): UnderstandingStatus | null {
 
 function reportTypeValue(value: unknown): ReportPreviewType | null {
   return value === "daily" || value === "weekly" ? value : null;
+}
+
+function publicCandidateReportStatus(value: unknown): "approved" | "draft" | "needs_review" | "published" | null {
+  return value === "approved" || value === "draft" || value === "needs_review" || value === "published"
+    ? value
+    : null;
+}
+
+function publicSavedReportStatus(value: unknown): "reviewed" | "published" | null {
+  return value === "reviewed" || value === "published" ? value : null;
+}
+
+function isPublicReportSnapshotCandidate(report: PublicReportSnapshot) {
+  if (report.mode === "saved_candidate") {
+    return publicCandidateReportStatus(report.status) !== null;
+  }
+
+  if (report.mode === "saved_report") {
+    return publicSavedReportStatus(report.status) !== null;
+  }
+
+  return false;
 }
 
 function dataSourceValue(value: unknown): RetrievalDataSource | null {
@@ -2008,13 +1910,74 @@ function integer(value: unknown, fallback = 0) {
   return Math.floor(numberValue);
 }
 
-function isPublicHttpUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:";
-  } catch {
-    return false;
+function nullableInteger(value: unknown) {
+  if (value === null || value === undefined) {
+    return null;
   }
+
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue < 0) {
+    return null;
+  }
+
+  return Math.floor(numberValue);
+}
+
+function nullableNumber(value: unknown) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function numericRecord(value: unknown) {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([key, count]) => [text(key, 120), integer(count)] as const)
+      .filter(([key]) => key.length > 0)
+  );
+}
+
+function countEntryList(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry): CountEntry | null => {
+      if (!isRecord(entry)) {
+        return null;
+      }
+
+      const label = publicSafeNote(text(entry.label, 160));
+      if (!label) {
+        return null;
+      }
+
+      return {
+        count: integer(entry.count),
+        label
+      };
+    })
+    .filter((entry): entry is CountEntry => Boolean(entry));
+}
+
+function reportModeValue(value: unknown): ReportMode {
+  return value === "saved_report" || value === "local_preview" ? value : "saved_candidate";
+}
+
+function publicHttpUrl(value: unknown) {
+  return publicInternetHttpUrl(text(value, 2000));
+}
+
+function isPublicHttpUrl(value: string) {
+  return publicInternetHttpUrl(value) !== "";
 }
 
 function dedupe(values: string[]) {
@@ -2022,38 +1985,112 @@ function dedupe(values: string[]) {
 }
 
 function sanitizePublicSnapshot(snapshot: PublicMirrorSnapshot): PublicMirrorSnapshot {
-  debugStep(`sanitize:build-event-layer-start rows=${snapshot.radar_items.length}`);
-  const rawEventLayer = buildEventLayer(snapshot.radar_items);
+  const radarItems = snapshot.radar_items.map(publicSafeRadarItem).filter(isPublicSnapshotRadarCandidate);
+  debugStep(`sanitize:build-event-layer-start rows=${radarItems.length}`);
+  const eventInputItems = radarItems.map((item) => ({ ...item, evidence_notes: [] }));
+  const rawEventLayer = buildEventLayer(eventInputItems);
   debugStep(`sanitize:build-event-layer-done events=${rawEventLayer.event_count}`);
   const eventLayer = publicDisplayEventLayer(rawEventLayer);
   debugStep(`sanitize:public-filter-done events=${eventLayer.event_count}`);
   debugStep(`sanitize:reports-start reports=${snapshot.reports.length}`);
   const reports = buildEventAwareReports(
-    snapshot.reports.map(publicSafeReport),
+    snapshot.reports.map(publicSafeReport).filter(isPublicReportSnapshotCandidate),
     eventLayer,
     snapshot.freshness.latest_timestamp
   );
   debugStep(`sanitize:reports-done reports=${reports.length}`);
 
   return {
-    ...snapshot,
+    schema_version: 1,
+    generated_at: text(snapshot.generated_at) || new Date().toISOString(),
+    reference_app_url: referenceAppUrl,
+    public_site: {
+      cloudflare_url: cloudflareUrl,
+      purpose: "Primary Cloudflare public read surface for AI Industry Radar data.",
+      read_only: true,
+      reference_app_url: referenceAppUrl
+    },
     counts: {
-      ...snapshot.counts,
-      event_clusters: eventLayer.event_count
+      citations: integer(snapshot.counts.citations),
+      event_clusters: eventLayer.event_count,
+      excluded: integer(snapshot.counts.excluded),
+      failed: integer(snapshot.counts.failed),
+      included: integer(snapshot.counts.included),
+      needs_review: integer(snapshot.counts.needs_review),
+      public_radar_items: nullableInteger(snapshot.counts.public_radar_items),
+      report_candidates: nullableInteger(snapshot.counts.report_candidates),
+      report_snapshots: reports.length,
+      saved_report_candidates: reports.filter((report) => report.mode === "saved_candidate").length,
+      snapshot_radar_items: radarItems.length,
+      visible_radar_items: radarItems.length
+    },
+    coverage: {
+      attempted_sources: integer(snapshot.coverage.attempted_sources),
+      automated_eligible_sources: integer(snapshot.coverage.automated_eligible_sources),
+      failed_source_reasons: numericRecord(snapshot.coverage.failed_source_reasons),
+      failed_sources: integer(snapshot.coverage.failed_sources),
+      failure_families: numericRecord(snapshot.coverage.failure_families),
+      fetched_sources: integer(snapshot.coverage.fetched_sources),
+      label: "public snapshot",
+      latest_refresh: optionalText(snapshot.coverage.latest_refresh) ?? null,
+      public_radar_items: nullableInteger(snapshot.coverage.public_radar_items),
+      radar_to_public_visibility: nullableNumber(snapshot.coverage.radar_to_public_visibility),
+      skipped_source_reasons: numericRecord(snapshot.coverage.skipped_source_reasons),
+      skipped_sources: integer(snapshot.coverage.skipped_sources),
+      source_public_visibility: nullableNumber(snapshot.coverage.source_public_visibility),
+      sources_total: integer(snapshot.coverage.sources_total),
+      sources_with_public_items: nullableInteger(snapshot.coverage.sources_with_public_items)
     },
     source: {
-      ...snapshot.source,
+      kind: snapshot.source.kind === "supabase_public_views" ? "supabase_public_views" : "local_files",
       data_source: publicSnapshotDataSource(snapshot.source.data_source),
-      warnings: publicSafeNotes(snapshot.source.warnings)
+      local_data_used: Boolean(snapshot.source.local_data_used),
+      warnings: publicSourceWarnings(snapshot)
     },
+    freshness: {
+      latest_ingestion: optionalText(snapshot.freshness.latest_ingestion) ?? null,
+      latest_timestamp: optionalText(snapshot.freshness.latest_timestamp) ?? null,
+      latest_timestamp_source: optionalText(snapshot.freshness.latest_timestamp_source) ?? null,
+      latest_understanding: optionalText(snapshot.freshness.latest_understanding) ?? null,
+      note: publicSafeNote(text(snapshot.freshness.note) || "No public radar freshness timestamp is available.")
+    },
+    top_categories: countEntryList(snapshot.top_categories),
+    top_sources: countEntryList(snapshot.top_sources),
+    top_source_tiers: countEntryList(snapshot.top_source_tiers),
     curated_events: eventLayer.curated_events,
     event_cluster_items: eventLayer.event_cluster_items,
     event_clusters: eventLayer.event_clusters,
     event_count: eventLayer.event_count,
+    source_health_summary: {
+      "403": integer(snapshot.source_health_summary["403"]),
+      duplicate_only: integer(snapshot.source_health_summary.duplicate_only),
+      failed: integer(snapshot.source_health_summary.failed),
+      low_relevance_excluded: integer(snapshot.source_health_summary.low_relevance_excluded),
+      manual_blocked: integer(snapshot.source_health_summary.manual_blocked),
+      no_items: integer(snapshot.source_health_summary.no_items),
+      rate_limit: integer(snapshot.source_health_summary.rate_limit),
+      succeeded: integer(snapshot.source_health_summary.succeeded),
+      timeout: integer(snapshot.source_health_summary.timeout),
+      unsupported_source: integer(snapshot.source_health_summary.unsupported_source)
+    },
+    failure_family_summary: numericRecord(snapshot.failure_family_summary),
     report_quality_summary: {
       daily: publicSafeReportQuality(reportQualitySummary(reports, "daily", eventLayer.curated_events)),
       weekly: publicSafeReportQuality(reportQualitySummary(reports, "weekly", eventLayer.curated_events))
     },
+    data_completeness_summary: {
+      attempted_sources: integer(snapshot.data_completeness_summary.attempted_sources),
+      automated_eligible_sources: integer(snapshot.data_completeness_summary.automated_eligible_sources),
+      blocked_manual_sources: integer(snapshot.data_completeness_summary.blocked_manual_sources),
+      failed_sources: integer(snapshot.data_completeness_summary.failed_sources),
+      fetched_sources: integer(snapshot.data_completeness_summary.fetched_sources),
+      public_radar_items: nullableInteger(snapshot.data_completeness_summary.public_radar_items),
+      radar_to_public_visibility: nullableNumber(snapshot.data_completeness_summary.radar_to_public_visibility),
+      source_public_visibility: nullableNumber(snapshot.data_completeness_summary.source_public_visibility),
+      sources_total: integer(snapshot.data_completeness_summary.sources_total),
+      sources_with_public_items: nullableInteger(snapshot.data_completeness_summary.sources_with_public_items)
+    },
+    radar_items: radarItems,
     reports,
     timeline: eventLayer.timeline,
     caveats: publicSafeNotes(snapshot.caveats)
@@ -2061,26 +2098,169 @@ function sanitizePublicSnapshot(snapshot: PublicMirrorSnapshot): PublicMirrorSna
 }
 
 function publicSafeReport(report: PublicReportSnapshot): PublicReportSnapshot {
+  const qualityGate = report.quality_gate ?? {
+    category_count: integer(report.category_count),
+    category_gate_applicable: integer(report.category_count) > 0,
+    citation_count: integer(report.citation_count),
+    distinct_source_count: integer(report.distinct_source_count),
+    passed: Boolean(report.quality_gate_passed),
+    reasons: [],
+    report_type: reportTypeValue(report.report_type) ?? "daily",
+    thresholds: {
+      categories: 0,
+      citations: 0,
+      distinct_sources: 0,
+      usable_items: 0
+    },
+    usable_item_count: integer(report.usable_item_count)
+  };
+  const sections = Array.isArray(report.sections) ? report.sections : [];
+  const citations = Array.isArray(report.citations) ? report.citations : [];
+
   return {
-    ...report,
+    id: text(report.id, 160),
+    report_type: reportTypeValue(report.report_type) ?? "daily",
+    mode: reportModeValue(report.mode),
+    status: text(report.status, 40),
     data_source: publicSnapshotDataSource(report.data_source),
     title: publicSafeNote(report.title),
     summary: publicSafeNote(report.summary),
     executive_summary: report.executive_summary ? publicSafeNote(report.executive_summary) : undefined,
+    time_window: {
+      end: text(report.time_window?.end, 80) || new Date().toISOString(),
+      start: text(report.time_window?.start, 80) || new Date(0).toISOString()
+    },
+    generated_at: optionalText(report.generated_at),
+    saved_at: optionalText(report.saved_at),
+    source_item_ids: stringArray(report.source_item_ids, 100, 160),
+    source_item_count: integer(report.source_item_count),
+    usable_item_count: integer(report.usable_item_count),
+    citation_count: integer(report.citation_count),
+    distinct_source_count: integer(report.distinct_source_count),
+    category_count: integer(report.category_count),
+    quality_gate_passed: Boolean(report.quality_gate_passed),
     quality_gate_reasons: publicSafeNotes(report.quality_gate_reasons),
     quality_gate: {
-      ...report.quality_gate,
-      reasons: publicSafeNotes(report.quality_gate.reasons)
+      category_count: integer(qualityGate.category_count),
+      category_gate_applicable: Boolean(qualityGate.category_gate_applicable),
+      citation_count: integer(qualityGate.citation_count),
+      distinct_source_count: integer(qualityGate.distinct_source_count),
+      passed: Boolean(qualityGate.passed),
+      reasons: publicSafeNotes(qualityGate.reasons),
+      report_type: reportTypeValue(qualityGate.report_type) ?? (reportTypeValue(report.report_type) ?? "daily"),
+      thresholds: {
+        categories: integer(qualityGate.thresholds?.categories),
+        citations: integer(qualityGate.thresholds?.citations),
+        distinct_sources: integer(qualityGate.thresholds?.distinct_sources),
+        usable_items: integer(qualityGate.thresholds?.usable_items)
+      },
+      usable_item_count: integer(qualityGate.usable_item_count)
     },
-    sections: report.sections.map((section) => ({
-      ...section,
+    confidence: optionalScore(report.confidence),
+    sections: sections.map((section) => ({
+      title: publicSafeNote(section.title),
       summary: publicSafeNote(section.summary),
       bullets: publicSafeNotes(section.bullets),
+      citations: publicSafeNotes(section.citations),
       caveats: publicSafeNotes(section.caveats)
+    })),
+    citations: citations.map((citation) => ({
+      collected_at: optionalText(citation.collected_at),
+      confidence: optionalScore(citation.confidence),
+      id: text(citation.id, 160),
+      published_at: optionalText(citation.published_at),
+      source_name: publicSafeNote(citation.source_name),
+      status: statusValue(citation.status) ?? undefined,
+      title: publicSafeNote(citation.title),
+      url: publicHttpUrl(citation.url)
     })),
     caveats: publicSafeNotes(report.caveats),
     missing_evidence: publicSafeNotes(report.missing_evidence)
   };
+}
+
+function publicSafeRadarItem(item: PublicRadarSnapshotItem): PublicRadarSnapshotItem {
+  const scores = item.scores ?? {
+    ai_relevance: 0,
+    credibility: 0,
+    freshness: 0,
+    importance: 0,
+    novelty: 0,
+    overall: 0
+  };
+
+  return {
+    id: text(item.id, 160),
+    title: publicSafeNote(item.title),
+    url: publicHttpUrl(item.url),
+    source_name: publicSafeNote(item.source_name) || "Unknown source",
+    status: normalizeStatus(item.status),
+    language: normalizeLanguage(item.language),
+    published_at: optionalText(item.published_at),
+    collected_at: text(item.collected_at, 80) || new Date(0).toISOString(),
+    processed_at: text(item.processed_at, 80) || new Date().toISOString(),
+    summary_zh: item.summary_zh ? publicSafeNote(item.summary_zh) : undefined,
+    summary_en: item.summary_en ? publicSafeNote(item.summary_en) : undefined,
+    categories: categories(item.categories),
+    tags: publicSafeNotes(stringArray(item.tags, 12, 80)),
+    source_tier: text(item.source_tier, 20) || "unreviewed",
+    confidence: score(item.confidence),
+    scores: {
+      ai_relevance: score(scores.ai_relevance),
+      credibility: score(scores.credibility),
+      freshness: score(scores.freshness),
+      importance: score(scores.importance),
+      novelty: score(scores.novelty),
+      overall: score(scores.overall)
+    },
+    why_it_matters: item.why_it_matters ? publicSafeNote(item.why_it_matters) : undefined,
+    entities: publicSafeEntities(item.entities)
+  };
+}
+
+function publicSafeEntities(value: unknown): PublicRadarSnapshotEntity[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const entities: PublicRadarSnapshotEntity[] = [];
+
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      continue;
+    }
+
+    const entity = entry as Partial<UnderstandingEntity>;
+    const name = publicSafeNote(text(entity.name, 80));
+    if (!name) {
+      continue;
+    }
+
+    const type = entityTypeValue(entity.type);
+    const key = `${type}:${name.toLowerCase()}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    entities.push({
+      confidence: score(entity.confidence),
+      name,
+      type
+    });
+
+    if (entities.length >= 12) {
+      break;
+    }
+  }
+
+  return entities;
+}
+
+function entityTypeValue(value: unknown): UnderstandingEntityType {
+  const normalized = text(value, 40).toLowerCase().replace(/\s+/g, "_");
+  return publicEntityTypes.has(normalized) ? (normalized as UnderstandingEntityType) : "other";
 }
 
 function publicSafeReportQuality(summary: ReportQualitySummary | null): ReportQualitySummary | null {
@@ -2089,10 +2269,17 @@ function publicSafeReportQuality(summary: ReportQualitySummary | null): ReportQu
   }
 
   return {
-    ...summary,
+    id: text(summary.id, 160),
+    status: text(summary.status, 40),
+    quality_gate_passed: Boolean(summary.quality_gate_passed),
+    usable_item_count: integer(summary.usable_item_count),
+    citation_count: integer(summary.citation_count),
+    distinct_source_count: integer(summary.distinct_source_count),
+    category_count: integer(summary.category_count),
     quality_gate_reasons: publicSafeNotes(summary.quality_gate_reasons),
     missing_evidence: publicSafeNotes(summary.missing_evidence),
-    caveats: publicSafeNotes(summary.caveats)
+    caveats: publicSafeNotes(summary.caveats),
+    top_event_ids: stringArray(summary.top_event_ids, 12, 160)
   };
 }
 
@@ -2121,18 +2308,51 @@ function publicSnapshotDataSource(value: string | null | undefined) {
 }
 
 function publicSafeNotes(values: string[]) {
-  return dedupe(values.map(publicSafeNote));
+  return dedupe(values.map(publicSafeNote).filter((value) => value && !isInternalRunLogNote(value)));
+}
+
+function publicSourceWarnings(snapshot: PublicMirrorSnapshot) {
+  const warnings = [
+    "此快照仅展示可公开引用的结构化证据字段，不包含内部采集日志、后台运行状态或凭据。"
+  ];
+
+  if (snapshot.source.local_data_used || snapshot.source.kind !== "supabase_public_views") {
+    warnings.push("当前展示使用已生成的公开证据快照；新鲜度以页面时间戳和来源引用为准。");
+  }
+
+  if (snapshot.counts.visible_radar_items === 0) {
+    warnings.push("当前公开快照没有可展示雷达条目。");
+  }
+
+  return dedupe(warnings);
 }
 
 function publicSafeNote(value: string) {
   return value
+    .replace(/\b(NEXT_PUBLIC_SUPABASE_ANON_KEY|SUPABASE_SERVICE_ROLE_KEY|DEEPSEEK_API_KEY|api[-_]?key|token|cookie|authorization)\b/gi, "secret")
+    .replace(/AI Radar reviewed daily evidence snapshot/g, "AI 行业雷达已复核日报")
+    .replace(/reviewed or published/gi, "已复核或已发布")
+    .replace(/reviewed\/published/gi, "已复核或已发布")
+    .replace(/without running live model generation or writing to Supabase/gi, "基于既有公开证据完成复核")
+    .replace(/without writing to Supabase/gi, "基于既有公开证据")
+    .replace(/local public report/g, "公开报告")
+    .replace(/local repository snapshot/gi, "当前公开证据快照")
+    .replace(/repository snapshot/gi, "公开证据快照")
     .replace(
       "Cloudflare Pages is the primary public read surface. Auth, Admin, server actions, and write workflows remain outside this public Cloudflare surface.",
-      "Cloudflare Pages 是主要公开只读页面；登录、Admin、服务端操作和写入流程不在公开页面中运行。"
+      "此页面是公开只读情报快照，不提供账号、后台操作或写入能力。"
+    )
+    .replace(
+      "Cloudflare Pages 是主要公开只读页面；登录、Admin、服务端操作和写入流程不在公开页面中运行。",
+      "此页面是公开只读情报快照，不提供账号、后台操作或写入能力。"
     )
     .replace(
       "Only public-safe radar and report fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
-      "只纳入公开安全的雷达和报告字段；私有原文、供应商元数据、内部备注、service-role 访问和密钥均已排除。"
+      "只纳入可公开引用的雷达和报告字段；私有原文、内部备注和凭据均不展示。"
+    )
+    .replace(
+      "只纳入公开安全的雷达和报告字段；私有原文、供应商元数据、内部备注、service-role 访问和密钥均已排除。",
+      "只纳入可公开引用的雷达和报告字段；私有原文、内部备注和凭据均不展示。"
     )
     .replace(
       "Read-only Supabase public radar retrieval was used; no Supabase write path ran.",
@@ -2140,7 +2360,7 @@ function publicSafeNote(value: string) {
     )
     .replace(
       "Radar rows came from Supabase public-safe read views. Report candidates are projected to the same public-safe field allowlist during export.",
-      "雷达条目来自公开安全证据视图；报告候选在导出时投影到同一组公开安全字段。"
+      "雷达条目和报告摘要使用同一组公开可读字段。"
     )
     .replace(
       "No live DeepSeek call, Supabase write, or scheduled persistence job was run.",
@@ -2157,15 +2377,15 @@ function publicSafeNote(value: string) {
     )
     .replace(
       "Supabase public reads were unavailable during export; reused the previous public-safe Cloudflare snapshot instead of degrading to incomplete local data.",
-      "本次导出无法读取公开证据库，已复用上一版 public-safe Cloudflare 快照，避免降级为空数据。"
+      "本次展示复用上一版公开快照，避免因来源暂不可用而降级为空数据。"
     )
     .replace(
       "Supabase public radar view returned no public-safe rows; local generated radar data was used.",
-      "公开雷达视图没有返回可展示条目，本次导出使用本地生成数据。"
+      "公开雷达视图没有返回可展示条目，本次展示使用已生成的公开证据数据。"
     )
     .replace(
       "This snapshot used local generated data because Supabase public reads were unavailable to the export process.",
-      "本次导出使用本地生成数据，因为导出进程无法读取公开证据库。"
+      "本次展示使用已生成的公开证据数据。"
     )
     .replace(
       "This surface shows available AI Radar evidence only; it is not a claim of complete current AI industry coverage.",
@@ -2204,8 +2424,48 @@ function publicSafeNote(value: string) {
     .replace(/public_report_candidates read failed: TypeError: fetch failed/g, "公开报告候选读取失败：网络连接失败")
     .replace(/public_reports read failed: TypeError: fetch failed/g, "公开报告读取失败：网络连接失败")
     .replace(/service report read failed: TypeError: fetch failed/g, "报告服务读取失败：网络连接失败")
-    .replace(/report_candidates service read failed: TypeError: fetch failed/g, "报告候选服务读取失败：网络连接失败")
-    .replace(/reports service read failed: TypeError: fetch failed/g, "报告服务读取失败：网络连接失败");
+    .replace(/reports service read failed: TypeError: fetch failed/g, "报告服务读取失败：网络连接失败")
+    .replace(/includes newest public-safe live DeepSeek activation output/gi, "includes latest public evidence update")
+    .replace(/includes newest public-safe refresh output/gi, "includes latest public evidence update")
+    .replace(/includes latest public-safe refresh output/gi, "includes latest public evidence update")
+    .replace(/live DeepSeek activation/gi, "public evidence update")
+    .replace(/public-safe refresh/gi, "public evidence update")
+    .replace(/public evidence refresh/gi, "public evidence update")
+    .replace(/activation_[a-z0-9_-]+/gi, "refresh run")
+    .replace(/\bactivation\b/gi, "refresh");
+}
+
+function isInternalRunLogNote(value: string) {
+  const normalized = value.toLowerCase();
+  return (
+    normalized.includes("refresh run") ||
+    normalized.includes("public-safe refresh public-safe refresh") ||
+    normalized.includes("public evidence update contributed") ||
+    normalized.includes("cloudflare_snapshot") ||
+    normalized.includes("cloudflare static snapshot export") ||
+    normalized.includes("getaddrinfo") ||
+    normalized.includes("enotfound") ||
+    normalized.includes("typeerror: fetch failed") ||
+    normalized.includes("read failed") ||
+    normalized.includes("count failed") ||
+    normalized.includes("latest timestamp failed") ||
+    normalized.includes("读取失败") ||
+    normalized.includes("计数读取失败") ||
+    normalized.includes("最新时间读取失败") ||
+    normalized.includes("网络连接失败") ||
+    normalized.includes("duplicate refresh rows") ||
+    normalized.includes("reviewed local public report snapshot") ||
+    (normalized.includes("loaded ") && normalized.includes("public report")) ||
+    (normalized.includes("loaded ") && normalized.includes("公开报告")) ||
+    normalized.includes("去重后新增") ||
+    normalized.includes("本轮 public evidence update") ||
+    normalized.includes("本轮公开证据更新") ||
+    normalized.includes("supabase public reads were unavailable") ||
+    normalized.includes("public-safe cloudflare") ||
+    normalized.includes("activation_") ||
+    normalized.includes("live deepseek activation") ||
+    normalized.includes("activation merge")
+  );
 }
 
 function publicReportCategoryLabel(value: string) {
@@ -2251,7 +2511,10 @@ function sanitizeError(error: unknown) {
   return message
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
     .replace(/\bsk-(?:proj-)?[A-Za-z0-9_-]{8,}/gi, "sk-[redacted]")
-    .replace(/\b(authorization|api[-_]?key|token|cookie|NEXT_PUBLIC_SUPABASE_ANON_KEY|SUPABASE_SERVICE_ROLE_KEY)\b\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .replace(
+      /\b(authorization|api[-_]?key|token|cookie|NEXT_PUBLIC_SUPABASE_ANON_KEY|SUPABASE_SERVICE_ROLE_KEY|DEEPSEEK_API_KEY)\b\s*[:=]\s*[^\s,;]+/gi,
+      "[redacted secret]"
+    )
     .slice(0, 400);
 }
 

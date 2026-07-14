@@ -8,14 +8,13 @@ import { LanguageToggle } from "@/components/language-toggle";
 const publicNavItems = [
   { href: "/", label: "今日" },
   { href: "/radar", label: "雷达" },
-  { href: "/clusters", label: "聚类" },
   { href: "/entities", label: "实体" },
   { href: "/reports", label: "报告" },
   { href: "/ask", label: "提问" },
   { href: "/write", label: "写作" }
 ];
 
-const adminNavItem = { href: "/admin", label: "运维/Admin" };
+const adminNavItem = { href: "/admin", label: "运维" };
 
 export function Nav({ isSignedIn = false }: { isSignedIn?: boolean }) {
   const pathname = usePathname();
@@ -46,14 +45,7 @@ export function Nav({ isSignedIn = false }: { isSignedIn?: boolean }) {
                   退出
                 </a>
               </div>
-            ) : (
-              <Link
-                className="rounded-md border border-radar-line px-3 py-2 text-sm font-medium text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
-                href="/auth/login"
-              >
-                登录
-              </Link>
-            )}
+            ) : null}
           </div>
         </div>
         <nav
@@ -71,18 +63,20 @@ export function Nav({ isSignedIn = false }: { isSignedIn?: boolean }) {
               </NavLink>
             ))}
           </div>
-          <div className="flex flex-wrap items-center gap-2 border-l border-radar-line pl-3 max-sm:border-l-0 max-sm:pl-0">
-            <span className="text-xs font-semibold uppercase tracking-normal text-radar-muted">
-              运维
-            </span>
-            <NavLink
-              href={adminNavItem.href}
-              isActive={isActivePath(pathname, adminNavItem.href)}
-              variant="admin"
-            >
-              {adminNavItem.label}
-            </NavLink>
-          </div>
+          {isSignedIn ? (
+            <div className="flex flex-wrap items-center gap-2 border-l border-radar-line pl-3 max-sm:border-l-0 max-sm:pl-0">
+              <span className="text-xs font-semibold uppercase tracking-normal text-radar-muted">
+                运维
+              </span>
+              <NavLink
+                href={adminNavItem.href}
+                isActive={isActivePath(pathname, adminNavItem.href)}
+                variant="admin"
+              >
+                {adminNavItem.label}
+              </NavLink>
+            </div>
+          ) : null}
         </nav>
       </div>
     </header>

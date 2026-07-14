@@ -24,7 +24,7 @@ Set `ADMIN_EMAIL` in the server environment for the initial admin bootstrap. The
 npm run auth:bootstrap-admin
 ```
 
-The command is dry-run by default. Write mode requires `--write`, `ENABLE_SUPABASE_WRITES=true`, `SUPABASE_SERVICE_ROLE_KEY`, and `ADMIN_EMAIL`. It upserts `users_profile` and `user_roles` only for the existing Auth user; it does not create Auth users and does not print the configured email or secrets.
+The command is dry-run by default. Mutation mode requires `--write`, `ENABLE_SUPABASE_WRITES=true`, `SUPABASE_SERVICE_ROLE_KEY`, and `ADMIN_EMAIL`. It upserts `users_profile` and `user_roles` only for the existing Auth user; it does not create Auth users and does not print the configured email or secrets.
 
 ## Admin Areas
 
@@ -41,7 +41,7 @@ The command is dry-run by default. Write mode requires `--write`, `ENABLE_SUPABA
 
 Middleware may redirect users without a Supabase session, but final admin authorization is enforced server-side in the admin layout using the Supabase user plus `user_roles`.
 
-Public/product pages remain public. `/ask` and `/write` do not require login.
+Public/product radar, entity, and report pages remain public.
 
 ## Migration
 

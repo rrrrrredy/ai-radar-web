@@ -5,16 +5,34 @@ import { EvidenceBadge } from "@/components/evidence-badge";
 import { ReportMarkdownExport } from "@/components/report-markdown-export";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import {
-  loadPublicDataCompletenessSummary,
+  buildEventLayer,
+  filterPublicDisplayEventLayer,
+  type PublicEventCluster
+} from "@/lib/events/clustering";
+import {
   type PublicDataCompletenessSummary
-} from "@/lib/data-completeness/public-summary";
+} from "@/lib/data-completeness/types";
+import { loadPublicSafeDataCompletenessSummary } from "@/lib/data-completeness/public-safe-summary";
+import { buildRadarFeed, loadRadarFeed, type RadarFeed } from "@/lib/radar/feed";
+import {
+  reportEntityTraceability,
+  reportSectionTraceability,
+  type ReportSectionTraceability,
+  type ReportEntityTraceability
+} from "@/lib/reports/entity-traceability";
 import { loadReportWorkflowData } from "@/lib/reports/load-report-data";
+import {
+  reportPublishingReadiness,
+  summarizePublishingReadiness
+} from "@/lib/reports/publishing-readiness";
 import type {
   GeneratedReportSection,
   GeneratedReportStatus,
   ReportPreviewType,
   ReportWorkflowDocument
 } from "@/lib/reports/types";
+import { loadPublicSnapshotRadarItems } from "@/lib/retrieval/load-radar-items";
+import type { LoadedRadarItems, RetrievalRadarItem } from "@/lib/retrieval/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -28,12 +46,53 @@ export default async function ReportsPage({
 }) {
   const params = searchParams ? await searchParams : {};
   const selectedType = readReportType(firstParam(params.type));
+  const feed = await loadRadarFeed();
   const [data, coverage] = await Promise.all([
-    loadReportWorkflowData(),
-    loadPublicDataCompletenessSummary()
+    loadReportWorkflowData({ feed, publicSnapshotLocalOnly: true }),
+    loadPublicSafeDataCompletenessSummary(feed)
   ]);
   const selectedReport =
     data.reports.find((report) => report.report_type === selectedType) ?? data.reports[0];
+  const eventLayer = filterPublicDisplayEventLayer(buildEventLayer(
+    feed.items.map((item) => ({
+      categories: item.categories,
+      collected_at: item.collected_at,
+      confidence: item.confidence,
+      entities: item.entities,
+      evidence_notes: item.evidence_notes,
+      id: item.id,
+      language: item.language,
+      processed_at: item.processed_at,
+      published_at: item.published_at,
+      scores: {
+        ai_relevance: item.ai_relevance_score,
+        credibility: item.credibility_score,
+        freshness: item.freshness_score,
+        importance: item.importance_score,
+        novelty: item.novelty_score,
+        overall: item.overall_score
+      },
+      source_name: item.source_name,
+      source_tier: item.source_tier,
+      status: item.status,
+      summary_en: item.summary_en,
+      summary_zh: item.summary_zh,
+      tags: item.tags,
+      title: item.title,
+      url: item.url,
+      why_it_matters: item.why_it_matters
+    }))
+  ));
+  const reportEventContext = eventsForReport(selectedReport, eventLayer.event_clusters, eventLayer.curated_events);
+  const traceFeed = await loadReportTraceFeed(data.reports, feed);
+  const formalReports = data.reports.filter(isFormalPublicReport);
+  const evidenceDrafts = data.reports.filter((report) => !isFormalPublicReport(report));
+  const readinessSummary = summarizePublishingReadiness(data.reports);
+  const selectedTraceability = reportEntityTraceability(selectedReport, traceFeed.items);
+  const selectedSectionTraceability = reportSectionTraceability(selectedReport, traceFeed.items);
+  const selectedSectionTraceabilityById = new Map(
+    selectedSectionTraceability.map((traceability) => [traceability.section.id, traceability])
+  );
 
   return (
     <div className="space-y-8">
@@ -43,23 +102,24 @@ export default async function ReportsPage({
             <DataSourceChip detail={modeLabel(selectedReport)} source={selectedReport.data_source} />
             <StatusChip label="报告状态" tone={statusTone(selectedReport.status)} value={statusLabel(selectedReport.status)} />
             <StatusChip label="质量门禁" tone={qualityTone(selectedReport)} value={qualityLabel(selectedReport)} />
-            <StatusChip label="保存模式" tone={isSavedReportSource(selectedReport) ? "success" : "caution"} value={readSourceLabel(selectedReport)} />
+            <StatusChip label="事件上下文" tone="evidence" value={reportEventContext.events.length} />
+            <StatusChip label="来源状态" tone={isSavedReportSource(selectedReport) ? "success" : "caution"} value={readSourceLabel(selectedReport)} />
             <StatusChip label="发布状态" tone={publicationTone(selectedReport)} value={publicationLabel(selectedReport)} />
           </div>
           <h1 className="mt-4 text-3xl font-semibold text-radar-ink">报告</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-            日报和周报优先读取已保存的公开报告记录。没有保存记录时，页面回退到基于检索证据的证据草稿，并保留不确定性。
+            报告页把已审核/已发布内容和证据草稿分开。没有正式公开报告时，页面显示正常空态，并保留基于公开证据的草稿预览。
           </p>
         </div>
 
         <aside className="rounded-lg border border-radar-line bg-radar-panel p-4">
           <h2 className="text-sm font-semibold uppercase tracking-normal text-radar-muted">
-            工作流边界
+            发布说明
           </h2>
           <dl className="mt-3 space-y-3 text-sm">
             <RailRow label="选中类型" value={reportTypeLabel(selectedReport.report_type)} />
-            <RailRow label="候选数量" value={String(coverage.reportCandidates ?? data.reports.length)} />
-            <RailRow label="保存/生成" value={readSourceLabel(selectedReport)} />
+            <RailRow label="待复核报告" value={String(coverage.reportCandidates ?? data.reports.length)} />
+            <RailRow label="来源状态" value={readSourceLabel(selectedReport)} />
             <RailRow label="质量门禁" value={qualityLabel(selectedReport)} />
             <RailRow label="生成时间" value={selectedReport.generated_at} />
             <RailRow label="时间窗口" value={`${selectedReport.time_window.start} 至 ${selectedReport.time_window.end}`} />
@@ -84,30 +144,81 @@ export default async function ReportsPage({
       ) : null}
 
       <ReportCoveragePanel coverage={coverage} reports={data.reports} />
+      <ReportEventContext context={reportEventContext} />
+      <PublishingReadinessPanel summary={readinessSummary} />
+      <EvidenceToReportPath
+        draftCount={evidenceDrafts.length}
+        formalCount={formalReports.length}
+        selectedReport={selectedReport}
+      />
+      <ReportEntityTraceabilityPanel
+        report={selectedReport}
+        sectionTraceability={selectedSectionTraceability}
+        traceability={selectedTraceability}
+      />
 
       <section className="rounded-lg border border-radar-line bg-radar-panel p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-semibold text-radar-ink">最新已保存候选</h2>
+            <h2 className="text-2xl font-semibold text-radar-ink">已审核/已发布报告</h2>
             <p className="mt-2 text-sm leading-6 text-radar-muted">
-              日报和周报工作流记录是报告台入口。完整草稿前会先显示状态、时间窗口、引用、局限和导出状态。
+              只有已复核或已发布的报告记录属于正式公开内容；未审核候选不会出现在这里。
             </p>
           </div>
           <StatusChip
-            label="已保存候选模式"
-            tone={data.reports.some(isSavedReportSource) ? "success" : "caution"}
-            value={data.reports.filter(isSavedReportSource).length}
+            label="正式报告"
+            tone={formalReports.length > 0 ? "success" : "caution"}
+            value={formalReports.length}
           />
         </div>
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          {data.reports.map((report) => (
-            <ReportOverviewCard
-              isSelected={report.report_type === selectedReport.report_type}
-              key={report.report_type}
-              report={report}
+        {formalReports.length > 0 ? (
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            {formalReports.map((report) => (
+              <ReportOverviewCard
+                isSelected={report.report_type === selectedReport.report_type}
+                key={`${report.mode}:${report.report_type}:${report.id ?? report.generated_at}`}
+                report={report}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="mt-5">
+            <EmptyState
+              description="暂无已审核或已发布报告。当前页面下方仅显示基于公开证据生成的草稿预览，不代表正式结论。"
+              title="暂无已发布报告"
             />
-          ))}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-semibold text-radar-ink">证据草稿</h2>
+            <p className="mt-2 text-sm leading-6 text-radar-muted">
+              草稿来自当前公开雷达证据，用于判断是否具备发布条件；发布前仍需要人工审核。
+            </p>
+          </div>
+          <StatusChip label="草稿" tone="caution" value={evidenceDrafts.length} />
         </div>
+        {evidenceDrafts.length > 0 ? (
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            {evidenceDrafts.map((report) => (
+              <ReportOverviewCard
+                isSelected={report.report_type === selectedReport.report_type}
+                key={`${report.mode}:${report.report_type}:${report.id ?? report.generated_at}`}
+                report={report}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="mt-5">
+            <EmptyState
+              description="当前既没有证据草稿，也没有正式报告。请先刷新公开雷达证据。"
+              title="暂无证据草稿"
+            />
+          </div>
+        )}
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2" aria-label="报告选择">
@@ -124,7 +235,7 @@ export default async function ReportsPage({
         <aside className="space-y-4 rounded-lg border border-radar-line bg-radar-panel p-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-normal text-radar-muted">
-              选中草稿
+              选中内容
             </p>
             <h2 className="mt-2 text-lg font-semibold leading-7 text-radar-ink">
               {selectedReport.title}
@@ -156,9 +267,9 @@ export default async function ReportsPage({
             ) : null}
             <a
               className="inline-flex rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black"
-              href="/write"
+              href="/radar"
             >
-              到写作台展开
+              查看雷达证据
             </a>
           </div>
         </aside>
@@ -169,7 +280,7 @@ export default async function ReportsPage({
               <EvidenceBadge kind="evidence" label="摘要" />
               <StatusChip label="报告状态" tone={statusTone(selectedReport.status)} value={statusLabel(selectedReport.status)} />
               <StatusChip label="质量门禁" tone={qualityTone(selectedReport)} value={qualityLabel(selectedReport)} />
-              <StatusChip label="候选保存" tone="neutral" value={readSourceLabel(selectedReport)} />
+              <StatusChip label="内容类型" tone="neutral" value={readSourceLabel(selectedReport)} />
             </div>
             <p className="mt-4 text-lg leading-8 text-radar-ink">
               {publicText(selectedReport.one_sentence_summary)}
@@ -192,7 +303,11 @@ export default async function ReportsPage({
             </div>
             {selectedReport.sections.length > 0 ? (
               selectedReport.sections.map((section) => (
-                <ReportSectionView key={section.id} section={section} />
+                <ReportSectionView
+                  key={section.id}
+                  section={section}
+                  traceability={selectedSectionTraceabilityById.get(section.id)}
+                />
               ))
             ) : (
               <EmptyState
@@ -216,6 +331,164 @@ export default async function ReportsPage({
       </section>
     </div>
   );
+}
+
+async function loadReportTraceFeed(
+  reports: ReportWorkflowDocument[],
+  currentFeed: RadarFeed
+): Promise<RadarFeed> {
+  const missingIds = missingReportEvidenceIds(reports, currentFeed.items);
+
+  if (missingIds.length === 0) {
+    return currentFeed;
+  }
+
+  const snapshot = await loadPublicSnapshotRadarItems({ localOnly: true, preferLocal: true });
+
+  if (!snapshot) {
+    return currentFeed;
+  }
+
+  const items = mergeRetrievalRadarItems([...snapshot.items, ...currentFeed.items]);
+
+  return buildRadarFeed({
+    dataSource: snapshot.dataSource,
+    freshness: snapshot.freshness,
+    items,
+    warnings: [
+      ...snapshot.warnings,
+      `报告实体追踪补充使用公开快照证据；当前常规 feed 缺少 ${missingIds.length} 个报告引用。`
+    ]
+  } satisfies LoadedRadarItems);
+}
+
+function missingReportEvidenceIds(
+  reports: ReportWorkflowDocument[],
+  items: RetrievalRadarItem[]
+) {
+  const availableIds = new Set(items.map((item) => normalizeIdentity(item.id)).filter(Boolean));
+  const requiredIds = new Set(
+    reports.flatMap((report) => [
+      ...report.source_item_ids,
+      ...report.citations.map((citation) => citation.id)
+    ]).map(normalizeIdentity).filter(Boolean)
+  );
+
+  return Array.from(requiredIds).filter((id) => !availableIds.has(id));
+}
+
+function mergeRetrievalRadarItems(items: RetrievalRadarItem[]) {
+  const byId = new Map<string, RetrievalRadarItem>();
+
+  for (const item of items) {
+    const key = normalizeIdentity(item.id);
+    if (key && !byId.has(key)) {
+      byId.set(key, item);
+    }
+  }
+
+  return Array.from(byId.values());
+}
+
+function normalizeIdentity(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function eventsForReport(
+  report: ReportWorkflowDocument,
+  events: PublicEventCluster[],
+  curatedEvents: PublicEventCluster[]
+) {
+  const itemIds = new Set(report.source_item_ids);
+  const citationUrls = new Set(report.citations.map((citation) => citation.url).filter(Boolean));
+  const matched = events.filter((event) =>
+    event.citations.some((citation) => itemIds.has(citation.item_id) || citationUrls.has(citation.url))
+  );
+
+  return {
+    events: (matched.length > 0 ? matched : curatedEvents).slice(0, 8),
+    mappedFromReport: matched.length > 0
+  };
+}
+
+function ReportEventContext({
+  context
+}: {
+  context: ReturnType<typeof eventsForReport>;
+}) {
+  const signalCount = context.events.reduce((sum, event) => sum + event.related_item_ids.length, 0);
+  const duplicateReduction = Math.max(0, signalCount - context.events.length);
+  const sourceNames = new Set(
+    context.events.flatMap((event) => event.citations.map((citation) => citation.source_name))
+  );
+
+  return (
+    <section className="space-y-4" aria-label="报告事件上下文">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-radar-line pb-4">
+        <div>
+          <h2 className="text-2xl font-semibold text-radar-ink">纳入的精选事件</h2>
+          <p className="mt-2 text-sm leading-6 text-radar-muted">
+            {context.mappedFromReport
+              ? "按报告引用映射到事件层；同一事件的重复信号在这里合并展示。"
+              : "当前候选缺少稳定事件引用，暂用本轮行业精选作为报告上下文。"}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <EvidenceBadge detail={String(context.events.length)} kind="evidence" label="事件" />
+          <EvidenceBadge detail={String(signalCount)} kind="citation" label="相关信号" />
+          <EvidenceBadge detail={String(duplicateReduction)} kind="freshness" label="合并减少" />
+          <EvidenceBadge detail={String(sourceNames.size)} kind="citation" label="独立来源" />
+        </div>
+      </div>
+
+      {context.events.length > 0 ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {context.events.map((event) => (
+            <article className="rounded-lg border border-radar-line bg-white p-5 shadow-soft" key={event.event_cluster_id}>
+              <div className="flex flex-wrap gap-2">
+                <StatusChip
+                  label={event.event_score_label}
+                  tone={event.event_score_label === "高优先级" ? "success" : "evidence"}
+                />
+                <EvidenceBadge detail={String(event.event_score)} kind="evidence" label="分数" />
+                <EvidenceBadge detail={String(event.source_count)} kind="citation" label="来源" />
+                <EvidenceBadge detail={String(event.related_item_ids.length)} kind="freshness" label="信号" />
+              </div>
+              <h3 className="mt-3 text-base font-semibold leading-7 text-radar-ink">{event.canonical_title}</h3>
+              <p className="mt-2 text-sm leading-6 text-radar-muted">{event.summary_zh}</p>
+              <dl className="mt-4 space-y-2 text-sm">
+                <RailRow label="来源家族" value={event.source_families.join("、") || "待补"} />
+                <RailRow label="最新证据" value={formatEventTime(event.latest_seen_at)} />
+                <RailRow label="评分依据" value={event.score_reason} />
+              </dl>
+              <div className="mt-4 flex flex-wrap gap-3 text-sm font-semibold">
+                {event.citations.slice(0, 3).map((citation) => (
+                  <a
+                    className="text-radar-evidence hover:underline"
+                    href={citation.url}
+                    key={`${event.event_cluster_id}:${citation.item_id}`}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {citation.source_name}
+                  </a>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <EmptyState description="当前报告候选还没有可映射的公开事件。" title="暂无事件上下文" />
+      )}
+    </section>
+  );
+}
+
+function formatEventTime(value: string) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
 }
 
 function ReportCoveragePanel({
@@ -271,6 +544,213 @@ function ReportCoverageRow({
   );
 }
 
+function PublishingReadinessPanel({
+  summary
+}: {
+  summary: ReturnType<typeof summarizePublishingReadiness>;
+}) {
+  return (
+    <section className="rounded-lg border border-radar-line bg-radar-panel p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-lg font-semibold text-radar-ink">发布准备度</h2>
+        <StatusChip label="正式报告" tone={summary.formalReports > 0 ? "success" : "caution"} value={summary.formalReports} />
+        <StatusChip label="可发布候选" tone={summary.publishableCandidates > 0 ? "success" : "caution"} value={summary.publishableCandidates} />
+        <StatusChip label="待复核" tone={summary.needsReview > 0 ? "caution" : "neutral"} value={summary.needsReview} />
+      </div>
+      <p className="mt-3 text-sm leading-6 text-radar-muted">
+        正式公开报告只来自已经完成复核并发布的记录。草稿即使质量通过，也会继续留在待复核区，避免被读者误当成结论。
+      </p>
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
+        <ReadinessMetric label="已发布" tone="success" value={summary.publishedReports} />
+        <ReadinessMetric label="已审核报告" tone="admin" value={summary.reviewedReports} />
+        <ReadinessMetric label="已批准候选" tone="evidence" value={summary.approvedCandidates} />
+        <ReadinessMetric label="草稿/阻塞" tone="caution" value={summary.drafts + summary.blocked} />
+      </div>
+    </section>
+  );
+}
+
+function EvidenceToReportPath({
+  draftCount,
+  formalCount,
+  selectedReport
+}: {
+  draftCount: number;
+  formalCount: number;
+  selectedReport: ReportWorkflowDocument;
+}) {
+  const readiness = reportPublishingReadiness(selectedReport);
+  const nextAction =
+    formalCount > 0
+      ? "继续用实体和雷达页面监控正式报告之后的新证据。"
+      : draftCount > 0
+        ? "先补齐草稿缺口，再完成复核和发布。"
+        : "先刷新公开雷达证据，再生成候选报告。";
+
+  return (
+    <section className="scroll-mt-32 rounded-lg border border-radar-line bg-white p-5 shadow-soft" id="evidence-to-report-path">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-semibold text-radar-ink">证据到报告路径</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
+            报告不是单独生成的页面，而是公开证据、实体跟踪、证据草稿和人工发布动作连起来后的结果。
+          </p>
+        </div>
+        <StatusChip label={readiness.actionLabel} tone={readiness.isFormalPublicReport ? "success" : "caution"} />
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <ReportPathStep
+          detail={`${selectedReport.usable_item_count}/${selectedReport.retrieved_item_count}`}
+          href="/radar"
+          label="1. 补证据"
+          text="回到雷达确认可用条目、来源覆盖和缺失证据。"
+        />
+        <ReportPathStep
+          detail="跟踪对象"
+          href="/entities"
+          label="2. 看实体"
+          text="判断公司、模型、产品或论文是否只是单点噪音。"
+        />
+        <ReportPathStep
+          detail={`${selectedReport.citations.length} 引用`}
+          href="/reports"
+          label="3. 草稿核查"
+          text="检查引用、来源/类别覆盖和缺失证据，不把草稿当正式结论。"
+        />
+        <ReportPathStep
+          detail={formalCount > 0 ? `${formalCount} 正式` : `${draftCount} 草稿`}
+          href="/reports"
+          label="4. 发布结论"
+          text="完成复核并发布后，才进入正式报告区。"
+        />
+      </div>
+
+      <p className="mt-4 rounded-md border border-radar-line bg-radar-panel px-3 py-3 text-sm leading-6 text-radar-muted">
+        下一步：{nextAction}
+      </p>
+    </section>
+  );
+}
+
+function ReportPathStep({
+  detail,
+  href,
+  label,
+  text
+}: {
+  detail: string;
+  href: string;
+  label: string;
+  text: string;
+}) {
+  return (
+    <a className="rounded-lg border border-radar-line bg-radar-panel p-4 hover:border-radar-evidence" href={href}>
+      <StatusChip label={label} tone="evidence" value={detail} />
+      <p className="mt-3 text-sm leading-6 text-radar-muted">{text}</p>
+    </a>
+  );
+}
+
+function ReportEntityTraceabilityPanel({
+  report,
+  sectionTraceability,
+  traceability
+}: {
+  report: ReportWorkflowDocument;
+  sectionTraceability: ReportSectionTraceability[];
+  traceability: ReportEntityTraceability;
+}) {
+  const coveredSections = sectionTraceability.filter((section) => section.entityTraces.length > 0).length;
+
+  return (
+    <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft" id="report-entity-traceability">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-semibold text-radar-ink">报告关联实体</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
+            这部分把当前报告的公开引用反查到雷达证据，再映射到实体详情页。它说明报告正在支持哪些跟踪对象，也暴露哪些结论仍缺少实体级证据。
+          </p>
+        </div>
+        <StatusChip
+          label="traceability"
+          tone={traceability.entityTraces.length > 0 ? "success" : "caution"}
+          value={traceability.entityTraces.length}
+        />
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-4">
+        <ReadinessMetric label="回溯证据" tone={traceability.evidenceItems.length > 0 ? "evidence" : "caution"} value={traceability.evidenceItems.length} />
+        <ReadinessMetric label="关联实体" tone={traceability.entityTraces.length > 0 ? "success" : "caution"} value={traceability.entityTraces.length} />
+        <ReadinessMetric label="章节覆盖" tone={coveredSections > 0 ? "success" : "caution"} value={coveredSections} />
+        <ReadinessMetric label="待复核证据" tone={traceability.needsReviewCount > 0 ? "caution" : "success"} value={traceability.needsReviewCount} />
+      </div>
+
+      {traceability.entityTraces.length > 0 ? (
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          {traceability.entityTraces.map((trace) => (
+            <article className="rounded-lg border border-radar-line bg-radar-panel p-4" key={trace.href}>
+              <div className="flex flex-wrap gap-2">
+                <StatusChip label={trace.entity.name} tone="evidence" />
+                <StatusChip label={trace.insight.priorityLabel} tone={trace.insight.priorityScore >= 80 ? "success" : "evidence"} />
+                <EvidenceBadge detail={String(trace.evidenceItemCount)} kind="evidence" label="报告证据" />
+                <EvidenceBadge detail={String(trace.sourceCount)} kind="citation" label="来源" />
+                <EvidenceBadge detail={String(trace.needsReviewCount)} kind="uncertainty" label="待复核" />
+              </div>
+              <p className="mt-3 text-sm leading-6 text-radar-muted">
+                {publicText(trace.insight.reasons[0] ?? "该实体与当前报告引用存在公开证据关联。")}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <a
+                  className="rounded-md bg-radar-ink px-3 py-2 text-sm font-semibold text-white hover:bg-black"
+                  href={trace.href}
+                >
+                  打开实体详情
+                </a>
+                <a
+                  className="rounded-md border border-radar-line bg-white px-3 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
+                  href={`/radar?entity=${encodeURIComponent(trace.entity.name)}`}
+                >
+                  查看雷达证据
+                </a>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-5">
+          <EmptyState
+            description={`“${publicText(report.title)}”当前没有可回溯到实体详情页的公开引用。请补齐 source_item_ids、citations 或更多可用雷达证据后再发布正式结论。`}
+            title="暂无可回溯实体"
+          />
+        </div>
+      )}
+
+      {traceability.missingEvidenceCount > 0 ? (
+        <p className="mt-4 rounded-md border border-radar-caution/30 bg-radar-caution/5 px-3 py-3 text-sm leading-6 text-radar-caution">
+          当前报告仍有 {traceability.missingEvidenceCount} 条缺失证据说明；实体关联只能解释已有引用，不能替代补证据。
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function ReadinessMetric({
+  label,
+  tone,
+  value
+}: {
+  label: string;
+  tone: StatusTone;
+  value: number;
+}) {
+  return (
+    <div className="rounded-md border border-radar-line bg-white p-3">
+      <StatusChip label={label} tone={tone} value={value} />
+    </div>
+  );
+}
+
 function ReportOverviewCard({
   isSelected,
   report
@@ -278,6 +758,8 @@ function ReportOverviewCard({
   isSelected: boolean;
   report: ReportWorkflowDocument;
 }) {
+  const readiness = reportPublishingReadiness(report);
+
   return (
     <article
       className={`rounded-lg border p-5 shadow-soft ${
@@ -286,6 +768,10 @@ function ReportOverviewCard({
     >
       <div className="flex flex-wrap gap-2">
         <StatusChip label={reportTypeLabel(report.report_type)} tone="evidence" />
+        <StatusChip
+          label={readiness.actionLabel}
+          tone={readiness.isFormalPublicReport ? "success" : readiness.isPublishableCandidate ? "admin" : "caution"}
+        />
         <StatusChip label={qualityLabel(report)} tone={qualityTone(report)} />
         <StatusChip label={statusLabel(report.status)} tone={statusTone(report.status)} />
         <StatusChip label={readSourceLabel(report)} tone={isSavedReportSource(report) ? "success" : "caution"} />
@@ -301,8 +787,13 @@ function ReportOverviewCard({
         <RailRow label="时间窗口" value={`${report.time_window.start} 至 ${report.time_window.end}`} />
         <RailRow label="质量门禁" value={qualityLabel(report)} />
         <RailRow label="缺失证据" value={String(report.missing_evidence.length)} />
-        <RailRow label="Markdown 字节" value={String(report.markdown.length)} />
+        <RailRow label="报告正文" value={report.markdown.trim().length > 0 ? "已生成" : "未生成"} />
       </dl>
+      {readiness.reasons.length > 0 ? (
+        <div className="mt-4 rounded-md border border-radar-caution/30 bg-radar-caution/5 px-3 py-3 text-sm leading-6 text-radar-caution">
+          {publicText(readiness.reasons[0])}
+        </div>
+      ) : null}
       <div className="mt-4 flex flex-wrap gap-2">
         <a
           className="rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black"
@@ -358,7 +849,13 @@ function ReportTabCard({
   );
 }
 
-function ReportSectionView({ section }: { section: GeneratedReportSection }) {
+function ReportSectionView({
+  section,
+  traceability
+}: {
+  section: GeneratedReportSection;
+  traceability: ReportSectionTraceability | undefined;
+}) {
   return (
     <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -384,6 +881,8 @@ function ReportSectionView({ section }: { section: GeneratedReportSection }) {
         />
       )}
 
+      <SectionEntityCoverage traceability={traceability} />
+
       {section.citations.length > 0 || section.caveats.length > 0 || section.missing_evidence.length > 0 ? (
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <InlineList items={section.citations} label="引用 ID" tone="evidence" />
@@ -392,6 +891,52 @@ function ReportSectionView({ section }: { section: GeneratedReportSection }) {
         </div>
       ) : null}
     </section>
+  );
+}
+
+function SectionEntityCoverage({
+  traceability
+}: {
+  traceability: ReportSectionTraceability | undefined;
+}) {
+  if (!traceability) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 border-t border-radar-line pt-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h4 className="text-sm font-semibold text-radar-ink">章节实体覆盖</h4>
+        <EvidenceBadge detail={String(traceability.evidenceItems.length)} kind="evidence" label="证据" />
+        <EvidenceBadge detail={String(traceability.entityTraces.length)} kind="freshness" label="实体" />
+        <EvidenceBadge detail={String(traceability.sourceCount)} kind="citation" label="来源" />
+        <EvidenceBadge detail={String(traceability.needsReviewCount)} kind="uncertainty" label="待复核" />
+      </div>
+
+      {traceability.entityTraces.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {traceability.entityTraces.map((trace) => (
+            <a
+              className="rounded-md border border-radar-line bg-radar-panel px-3 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
+              href={trace.href}
+              key={trace.href}
+            >
+              {trace.entity.name} · {trace.evidenceItemCount} 证据
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-md border border-radar-line bg-radar-panel px-3 py-3 text-sm leading-6 text-radar-muted">
+          本章节引用暂未回溯到可展示实体；如果该章节要进入正式报告，需要补齐 citation id 或可复核公开证据。
+        </p>
+      )}
+
+      {traceability.missingEvidenceCount > 0 ? (
+        <p className="mt-3 text-sm leading-6 text-radar-caution">
+          本章节仍有 {traceability.missingEvidenceCount} 条缺失证据说明，实体覆盖不能替代补证据。
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -532,6 +1077,10 @@ function publicationTone(report: ReportWorkflowDocument): StatusTone {
   return "neutral";
 }
 
+function isFormalPublicReport(report: ReportWorkflowDocument) {
+  return report.mode === "saved_report" && (report.status === "reviewed" || report.status === "published");
+}
+
 function publicationLabel(report: ReportWorkflowDocument) {
   if (report.read_source === "generated_preview") {
     return "生成预览";
@@ -601,8 +1150,8 @@ function modeLabel(report: ReportWorkflowDocument) {
     return "已保存报告记录";
   }
 
-  if (report.model_metadata.mode === "live_deepseek") {
-    return "DeepSeek 草稿";
+  if (report.mode === "live_deepseek") {
+    return "证据草稿";
   }
 
   return "证据草稿";
@@ -612,19 +1161,19 @@ function publicText(value: string) {
   return value
     .replace(
       "Cloudflare Pages is the primary public read surface. Auth, Admin, server actions, and write workflows remain outside this public Cloudflare surface.",
-      "Cloudflare Pages 是主要公开只读页面；登录、Admin、服务端操作和写入流程不在这个公开页面中运行。"
+      "此页面是公开只读情报快照，不提供账号、后台操作或写入能力。"
     )
     .replace(
       "Only public-safe radar and report fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
-      "只纳入公开安全的雷达和报告字段；私有原文、供应商元数据、内部备注、service-role 访问和密钥均已排除。"
+      "只纳入可公开引用的雷达和报告字段；私有原文、内部备注和凭据均不展示。"
     )
     .replace(
       "Snapshot data came from Supabase public-safe read views using anon read access.",
-      "快照数据来自公开安全只读证据面。"
+      "快照数据来自公开只读证据视图。"
     )
     .replace(
       "Radar rows came from Supabase public-safe read views. Report candidates are projected to the same public-safe field allowlist during export.",
-      "雷达条目和报告候选均投影到公开安全字段。"
+      "雷达条目和报告摘要使用同一组公开可读字段。"
     )
     .replace(
       "Full article text or original announcements are needed beyond metadata-level evidence.",

@@ -4,8 +4,7 @@ export const deepSeekPromptVersions = {
   extractEntities: "extract-entities-v0",
   scoreRadarItem: "score-radar-item-v0",
   transformRawItemToRadarItem: "transform-raw-item-to-radar-item-v0",
-  generateDailyBrief: "generate-daily-brief-v0",
-  answerRadarQuestion: "answer-radar-question-v0"
+  generateDailyBrief: "generate-daily-brief-v0"
 } as const;
 
 export const radarSystemPromptBoundary = [

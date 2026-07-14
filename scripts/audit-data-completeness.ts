@@ -15,7 +15,7 @@ import {
   incrementFailureFamily,
   type FailureFamilyCounts
 } from "@/lib/ops/failure-families";
-import { isSourceHealthEligible } from "@/lib/supabase/persistence";
+import { isSourceHealthEligible } from "@/lib/ingestion/source-health";
 import { getSupabaseServiceClient, getSupabaseServiceStatus } from "@/lib/supabase/service";
 import type { UnderstandingRadarItem, UnderstandingStatus } from "@/lib/understanding/types";
 

@@ -4,7 +4,7 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 export function resolveTimeWindow(
   query: NormalizedQuery,
-  purpose: RetrievalPurpose,
+  _purpose: RetrievalPurpose,
   now = new Date()
 ): ResolvedTimeWindow {
   const raw = query.raw_query.toLowerCase();
@@ -56,14 +56,10 @@ export function resolveTimeWindow(
   }
 
   if (raw.includes("最近") || raw.includes("recent")) {
-    const duration = purpose === "writing_assistant" ? 7 * ONE_DAY_MS : ONE_DAY_MS;
-    const label = purpose === "writing_assistant" ? "最近 7 天" : "最近 24 小时";
-    return windowFromDuration(now, duration, phrase ?? "最近", label);
+    return windowFromDuration(now, ONE_DAY_MS, phrase ?? "最近", "最近 24 小时");
   }
 
-  const defaultDuration = purpose === "writing_assistant" ? 7 * ONE_DAY_MS : ONE_DAY_MS;
-  const defaultLabel = purpose === "writing_assistant" ? "默认最近 7 天" : "默认最近 24 小时";
-  return windowFromDuration(now, defaultDuration, undefined, defaultLabel);
+  return windowFromDuration(now, ONE_DAY_MS, undefined, "默认最近 24 小时");
 }
 
 function windowFromDuration(

@@ -323,16 +323,16 @@ function isInsideWindow(item: RetrievalRadarItem, start: Date, end: Date) {
 }
 
 function titleForReport(reportType: ReportPreviewType, anchor: Date) {
-  const date = new Intl.DateTimeFormat("en", {
+  const date = new Intl.DateTimeFormat("zh-CN", {
     day: "2-digit",
-    month: "short",
+    month: "2-digit",
     timeZone: "UTC",
     year: "numeric"
   }).format(anchor);
 
   return reportType === "daily"
-    ? `Daily AI Radar preview - ${date}`
-    : `Weekly AI Radar preview - ending ${date}`;
+    ? `AI 行业雷达日报候选 - ${date}`
+    : `AI 行业雷达周报候选 - 截至 ${date}`;
 }
 
 function dedupe(values: string[]) {

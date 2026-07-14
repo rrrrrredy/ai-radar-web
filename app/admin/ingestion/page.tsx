@@ -75,7 +75,7 @@ const pipelineStages = [
     tone: "admin" as const
   },
   {
-    detail: "Local fetchers collect public metadata/feed items and write ignored JSON artifacts.",
+    detail: "Local fetchers collect public metadata/feed items and produce ignored JSON artifacts.",
     label: "Ingestion",
     tone: "freshness" as const
   },
@@ -85,12 +85,12 @@ const pipelineStages = [
     tone: "caution" as const
   },
   {
-    detail: "Supabase persistence scripts are dry-run first and require both CLI and env write gates.",
+    detail: "Supabase persistence scripts are dry-run first and require both CLI and env mutation gates.",
     label: "Supabase persistence",
     tone: "risk" as const
   },
   {
-    detail: "Ask and Write can read Supabase public view when enabled, then local output, then mock data.",
+    detail: "Radar, reports, and entities can read Supabase public view when enabled, then local output, then mock data.",
     label: "Retrieval",
     tone: "evidence" as const
   }
@@ -109,17 +109,17 @@ const dryRunCommands = [
   },
   {
     command: "npm run supabase:import:sources",
-    detail: "Prints the cleaned source import plan. Default mode does not write to Supabase.",
+    detail: "Prints the cleaned source import plan. Default mode does not mutate Supabase.",
     title: "Source import"
   },
   {
     command: "npm run supabase:persist:ingestion",
-    detail: "Prints the ingestion persistence plan. Default mode does not write to Supabase.",
+    detail: "Prints the ingestion persistence plan. Default mode does not mutate Supabase.",
     title: "Ingestion persistence"
   },
   {
     command: "npm run supabase:persist:understanding",
-    detail: "Prints the understanding persistence plan. Default mode does not write to Supabase.",
+    detail: "Prints the understanding persistence plan. Default mode does not mutate Supabase.",
     title: "Understanding persistence"
   },
   {
@@ -129,12 +129,12 @@ const dryRunCommands = [
   },
   {
     command: "npm run scheduled:hourly:dry-run",
-    detail: "Runs bounded public ingestion and mock understanding, then writes an ignored scheduled summary artifact.",
+    detail: "Runs bounded public ingestion and mock understanding, then emits an ignored scheduled summary artifact.",
     title: "Scheduled dry-run"
   }
 ];
 
-const writeGatedCommands = [
+const mutationGatedCommands = [
   {
     command: "npm run supabase:import:sources -- --write",
     detail: "Requires ENABLE_SUPABASE_WRITES=true, public Supabase config, and service-role credentials.",
@@ -142,18 +142,18 @@ const writeGatedCommands = [
   },
   {
     command: "npm run supabase:persist:ingestion -- --write",
-    detail: "Requires the same write gate and persists local ingestion run/raw item records.",
-    title: "Ingestion write"
+    detail: "Requires the same mutation gate and persists local ingestion run/raw item records.",
+    title: "Ingestion persist"
   },
   {
     command: "npm run supabase:persist:understanding -- --write",
-    detail: "Requires the same write gate and persists validated understanding output.",
-    title: "Understanding write"
+    detail: "Requires the same mutation gate and persists validated understanding output.",
+    title: "Understanding persist"
   },
   {
-    command: "source-health write path: not enabled",
-    detail: "No source-health write command is exposed for this phase. Keep source-health review dry-run only.",
-    title: "Source-health writes"
+    command: "source-health persistence path: not enabled",
+    detail: "No source-health persistence command is exposed for this phase. Keep source-health review dry-run only.",
+    title: "Source-health history"
   }
 ];
 
@@ -166,7 +166,7 @@ const operatingLoopCommands: Array<{
 }> = [
   {
     command: "npm run ops:dry-run",
-    detail: "Runs the full mock operating loop summary without Supabase writes, scheduled jobs, X/WeChat crawl, or live DeepSeek by default.",
+    detail: "Runs the full mock operating loop summary without Supabase mutations, scheduled jobs, X/WeChat crawl, or live DeepSeek by default.",
     label: "dry-run",
     title: "Operating loop dry-run",
     tone: "success"
@@ -180,29 +180,29 @@ const operatingLoopCommands: Array<{
   },
   {
     command: "$env:ENABLE_SUPABASE_WRITES=\"true\"\nnpm run ops:refresh:live:persist -- --limit 10 --max-items-per-source 3\nRemove-Item Env:ENABLE_SUPABASE_WRITES",
-    detail: "Requires the temporary write gate, Supabase public config, service role credentials, and live DeepSeek readiness in the CLI process.",
-    label: "write-gated",
+    detail: "Requires the temporary mutation gate, Supabase public config, service role credentials, and live DeepSeek readiness in the CLI process.",
+    label: "mutation-gated",
     title: "Live refresh + persist",
     tone: "risk"
   },
   {
     command: "npm run ops:reports",
-    detail: "Generates daily and weekly candidate previews from current radar evidence. Add -- --persist with the temporary write gate to save needs_review candidates.",
+    detail: "Generates daily and weekly candidate previews from current radar evidence. Add -- --persist with the temporary mutation gate to save needs_review candidates.",
     label: "candidate generation",
     title: "Report candidates",
     tone: "evidence"
   },
   {
     command: "npm run ops:full:dry-run",
-    detail: "Runs the full operating loop in dry-run mode without Supabase writes, scheduled jobs, X/WeChat crawl, or live DeepSeek by default.",
+    detail: "Runs the full operating loop in dry-run mode without Supabase mutations, scheduled jobs, X/WeChat crawl, or live DeepSeek by default.",
     label: "full dry-run",
     title: "Full loop dry-run",
     tone: "success"
   },
   {
     command: "$env:ENABLE_SUPABASE_WRITES=\"true\"\nnpm run ops:full:live:persist -- --limit 10 --max-items-per-source 3\nRemove-Item Env:ENABLE_SUPABASE_WRITES",
-    detail: "Runs the combined live refresh plus report-candidate persist path only with the temporary write gate, Supabase credentials, and live DeepSeek readiness.",
-    label: "full write-gated",
+    detail: "Runs the combined live refresh plus report-candidate persist path only with the temporary mutation gate, Supabase credentials, and live DeepSeek readiness.",
+    label: "full mutation-gated",
     title: "Full loop live + persist",
     tone: "risk"
   }
@@ -306,8 +306,8 @@ export default async function AdminIngestionPage() {
               value="disabled"
             />
             <BoundaryItem
-              detail="Supabase writes require an explicit CLI write path plus ENABLE_SUPABASE_WRITES=true and service credentials."
-              label="Writes"
+              detail="Supabase mutations require an explicit CLI mutation path plus ENABLE_SUPABASE_WRITES=true and service credentials."
+              label="Mutations"
               tone="risk"
               value="CLI gate"
             />
@@ -358,8 +358,9 @@ export default async function AdminIngestionPage() {
             <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
               Ingestion and understanding outputs can now feed review-only
               admin queues for radar items, source changes, report candidates,
-              and audit visibility. No scheduled write job, live DeepSeek, source-health
-              write, or Supabase write is started by the review route.
+              and audit visibility. No scheduled mutation job, live DeepSeek,
+              source-health history update, or Supabase mutation is started by
+              the review route.
             </p>
           </div>
           <Link
@@ -371,8 +372,8 @@ export default async function AdminIngestionPage() {
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <StatusChip label="Review-only" tone="admin" />
-          <StatusChip label="Writes gated" tone="risk" />
-          <StatusChip label="No write jobs run" tone="caution" />
+          <StatusChip label="Mutations gated" tone="risk" />
+          <StatusChip label="No mutation jobs run" tone="caution" />
         </div>
       </section>
 
@@ -415,7 +416,7 @@ export default async function AdminIngestionPage() {
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <BoundaryItem
-              detail="False means Supabase write scripts cannot obtain a write client. True would still require CLI write mode."
+              detail="False means Supabase mutation scripts cannot obtain a mutation client. True would still require CLI mutation mode."
               label="ENABLE_SUPABASE_WRITES"
               tone={config.featureFlags.enableSupabaseWrites ? "risk" : "success"}
               value={String(config.featureFlags.enableSupabaseWrites)}
@@ -433,8 +434,8 @@ export default async function AdminIngestionPage() {
               value="opt-in only"
             />
             <BoundaryItem
-              detail="Source-health history writes are not enabled; keep source-health review dry-run only."
-              label="Source-health writes"
+              detail="Source-health history persistence is not enabled; keep source-health review dry-run only."
+              label="Source-health history"
               tone="risk"
               value="not enabled"
             />
@@ -504,16 +505,16 @@ export default async function AdminIngestionPage() {
       </section>
 
       <section
-        aria-labelledby="write-gated-commands-title"
+        aria-labelledby="mutation-gated-commands-title"
         className="min-w-0 rounded-lg border border-radar-risk/30 bg-white p-4 shadow-soft"
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2
               className="text-lg font-semibold text-radar-ink"
-              id="write-gated-commands-title"
+              id="mutation-gated-commands-title"
             >
-              Write-gated commands
+              Mutation-gated commands
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
               These are high-risk CLI documentation paths. They require explicit
@@ -523,12 +524,12 @@ export default async function AdminIngestionPage() {
           <StatusChip label="Not executed here" tone="risk" />
         </div>
         <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
-          {writeGatedCommands.map((command) => (
+          {mutationGatedCommands.map((command) => (
             <AdminCommandBlock
               command={command.command}
               detail={command.detail}
               key={command.command}
-              label="write-gated"
+              label="mutation-gated"
               title={command.title}
               tone="risk"
             />

@@ -100,16 +100,8 @@ function detectLanguage(value: string): RetrievalLanguage {
 }
 
 function detectIntent(value: string): RetrievalIntent {
-  if (/写|选题|提纲|角度|文章|观察|outline|angle|write|draft/i.test(value)) {
-    return "writing_assistant";
-  }
-
   if (/报告|周报|日报|report|brief/i.test(value)) {
     return "report_seed";
-  }
-
-  if (/[?？]|谁|什么|哪些|如何|why|what|which|who|how/i.test(value)) {
-    return "qa";
   }
 
   return "unknown";
@@ -136,7 +128,7 @@ function detectOutputStyle(value: string): RetrievalOutputStyle {
     return "outline";
   }
 
-  if (/选题|候选|topics?|list|列表/i.test(value)) {
+  if (/候选|topics?|list|列表/i.test(value)) {
     return "topic_list";
   }
 

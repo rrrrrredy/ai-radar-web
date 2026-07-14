@@ -1,89 +1,64 @@
 # Release Candidate Data Status
 
-Generated: 2026-06-17
+Updated: 2026-07-14
 
-## What Completed
+## Coverage
 
-- Live DeepSeek resumable activation ran in bounded chunks.
-- Additional targeted live runs were executed for high-quality sources:
-  - OpenAI News + arXiv cs.AI
-  - arXiv cs.CL
-  - arXiv cs.CV
-  - arXiv cs.LG
-- Cloudflare snapshot export now merges completed live activation chunks from `data/activation/runs`.
-- Public snapshot filtering removes homepages, archive pages, source directories, Substack/publication landing pages, repository metadata pages, docs entry pages, and generic category pages.
-- Event clustering is regenerated from the filtered public-safe snapshot.
-
-## Current Public Snapshot
-
-2026-06-22 refresh:
-
-| metric | count |
+| metric | value |
 | --- | ---: |
-| public radar signals | 208 |
-| public event clusters | 204 |
-| curated events | 8 |
-| report snapshots | 22 |
-| latest public evidence timestamp | 2026-06-22 |
+| sources total | 317 |
+| automated eligible | 91 |
+| attempted | 91 |
+| fetched | 82 |
+| failed | 9 |
+| blocked/manual | 226 |
+| sources with public items | 64 |
+| raw items | 268 |
+| radar items | 264 |
+| public radar items | 242 |
+| report candidates | 26 |
 
-The 2026-06-22 refresh added a bounded live DeepSeek run without Supabase writes. It produced 23 raw/radar items, with 17 included, 2 needs_review, and 4 low-relevance exclusions. GitHub API sources were still limited by unauthenticated rate limits.
+- source-to-raw coverage: 91.2%;
+- raw-to-radar conversion: 98.5%;
+- radar-to-public conversion: 91.7%;
+- visible sources/configured sources: 20.2%;
+- completed/persisted activation chunks: 19/19;
+- missing persisted raw or radar IDs from the latest run: 0.
 
-Current report gate status after the 2026-06-22 refresh:
+The preferred `public_radar_items >= 200` gate is met. Low visible-source coverage is not hidden: 226 configured sources require manual handling, a future API, a public URL repair, or an unsupported crawl path.
 
-- Daily quality gate: not passed; the public UI must show `今日数据不足，需补充信源或等待下一轮刷新`.
-- Weekly quality gate: passed.
+## Status and Failures
 
-2026-06-17 release-candidate baseline:
-
-| metric | count |
+| family | count |
 | --- | ---: |
-| public radar signals | 203 |
-| public event clusters | 200 |
-| event cluster item links | 201 |
-| curated events | 8 |
-| report snapshots | 22 |
-| latest public evidence timestamp | 2026-06-17T03:57:11.281Z |
+| included | 241 |
+| needs review | 4 |
+| excluded for low relevance | 19 |
+| failed radar rows | 0 |
+| source timeout | 6 |
+| source HTTP 403 | 3 |
+| rate-limit warnings | 2 |
 
-Target status:
+All 317 sources have a row in `docs/data-completeness-release-candidate.md`. The ignored machine-readable ledger is `data/reports/data-completeness.latest.json`.
 
-- preferred 200 public items: yes
-- minimum 180 public items: yes
+## Event Projection
 
-## Source Completeness
+| layer | signals/relationships | events | curated | multi-source display events |
+| --- | ---: | ---: | ---: | ---: |
+| current deterministic run | 242 | 234 | 8 | 2 total, 1 public-display quality |
+| Cloudflare public-safe projection | 192 | 188 | 8 | 1 |
 
-Persisted/source-audit baseline remains:
+The second multi-source cluster is a low-score multilingual Gemini documentation/changelog grouping and is excluded from public display. The Apple/OpenAI lawsuit is the genuine public multi-source event.
 
-- sources total: 312
-- automated eligible: 86
-- attempted: 86
-- fetched: 62
-- failed: 24
-- blocked/manual: 226
-- source health failure families: timeout 5, rate_limit 16, 403 4, low_relevance_excluded 16
+## Report Candidates
 
-Known blockers:
+| type | ID | status | generation metrics | public event metrics |
+| --- | --- | --- | --- | --- |
+| daily | `2daba147-d851-41c4-a8ee-efed66eedcdf` | `needs_review` | 60 / 12 / 13 / 12 | 9 / 9 / 5 / 4 |
+| weekly | `ba8dbe90-30ef-4f60-8460-04456ad7be21` | `needs_review` | 75 / 12 / 13 / 11 | 25 / 25 / 15 / 8 |
 
-- Supabase host is unavailable to this runner, so fresh DB public reads and persistence were not available.
-- GitHub API sources can hit unauthenticated rate limits without `GITHUB_TOKEN`.
-- Many configured sources are manual/blocked or produce only source pages instead of event-level URLs.
-- X and WeChat are intentionally not crawled automatically.
+Metrics are usable items, citations, distinct sources, and categories. Both source-stage gates and both public event projections pass. Neither candidate is presented as published.
 
-## Conversion
+## Data Boundary
 
-The Cloudflare public snapshot is now based on filtered public evidence rather than raw Supabase counts:
-
-- raw to radar conversion in successful targeted runs: 100% for the latest arXiv/OpenAI chunks
-- radar to public snapshot visibility: filtered by public event quality
-- low-event source pages are intentionally excluded even when DeepSeek scored them as AI-related
-
-## Report Gates
-
-- 2026-06-22 daily quality gate: not passed; the report page shows the required insufficient-data notice.
-- 2026-06-22 weekly quality gate: passed.
-- Daily remains `needs_review` until enough current-window evidence exists and editorial review is complete.
-
-## Safety
-
-- This pass did not run Supabase writes.
-- Generated activation checkpoints/chunks remain ignored operational artifacts.
-- Cloudflare JSON excludes `raw_text`, `raw_metadata`, `model_metadata`, provider payloads, secrets, private notes, and operational logs.
+Cloudflare exports allowlisted public signal, event, timeline, citation, report-quality, source-health, and completeness fields. It excludes raw text, raw/model metadata, provider payloads, service credentials, private notes, admin logs, and wrong-domain model-radar tables.

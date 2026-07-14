@@ -24,8 +24,7 @@ export type DeepSeekPurpose =
   | "classification"
   | "entity_extraction"
   | "scoring"
-  | "report_generation"
-  | "radar_qa";
+  | "report_generation";
 
 export type DeepSeekConfig = {
   baseUrl: string;
@@ -72,13 +71,6 @@ export type DeepSeekJsonResult<T> =
     };
 
 type DeepSeekError = Extract<DeepSeekJsonResult<unknown>, { ok: false }>["error"];
-
-export type RadarQuestionAnswer = {
-  answer: string;
-  citations: string[];
-  uncertainty: string;
-  phase: "phase-2-mock";
-};
 
 type LegacyClassification = {
   itemId: string;
@@ -135,7 +127,7 @@ export function getDeepSeekConfig(): DeepSeekConfig {
     hasApiKey: deepSeek.hasApiKey,
     intendedUse: {
       fast: ["relevance_filtering", "summarization", "tagging", "classification", "entity_extraction"],
-      smart: ["scoring", "report_generation", "radar_qa"]
+      smart: ["scoring", "report_generation"]
     }
   };
 }
@@ -235,18 +227,6 @@ export async function generateDailyBrief(items: RadarItem[]) {
     body:
       "Daily brief generation is not implemented in Phase 2. This mock response keeps build and UI flows typed.",
     phase: "phase-2-mock" as const
-  };
-}
-
-export async function answerRadarQuestion(question: string): Promise<RadarQuestionAnswer> {
-  return {
-    answer:
-      "Radar Q&A is not implemented in Phase 2. Future answers will retrieve database evidence first and then use DeepSeek V4 Pro for synthesis.",
-    citations: [],
-    uncertainty: question
-      ? "No retrieval or model generation has been run for this placeholder answer."
-      : "No question was provided.",
-    phase: "phase-2-mock"
   };
 }
 

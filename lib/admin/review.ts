@@ -82,8 +82,11 @@ export type ReportCandidateRow = {
   timeWindowEnd?: string;
   caveats: string[];
   citationsCount: number;
+  distinctSourceCount: number;
   missingEvidence: string[];
+  qualityGatePassed: boolean | null;
   sourceItemCount: number;
+  usableItemCount: number;
   createdAt?: string;
   source: "supabase" | "local_preview";
 };
@@ -505,11 +508,13 @@ function normalizeReportCandidate(value: Record<string, unknown>): ReportCandida
 
   return {
     caveats: reportDraftStringArray(value.metadata, "caveats"),
-    citationsCount: reportDraftArrayCount(value.metadata, "citations"),
+    citationsCount: reportDraftInteger(value.metadata, "citation_count") ?? reportDraftArrayCount(value.metadata, "citations"),
     confidence: optionalScore(value.confidence),
     createdAt: optionalText(value.created_at),
+    distinctSourceCount: reportDraftInteger(value.metadata, "distinct_source_count") ?? 0,
     id,
     missingEvidence: reportDraftStringArray(value.metadata, "missing_evidence"),
+    qualityGatePassed: reportDraftQualityGatePassed(value.metadata),
     reportType,
     source: "supabase",
     sourceItemCount: Array.isArray(value.source_item_ids) ? value.source_item_ids.length : 0,
@@ -517,7 +522,8 @@ function normalizeReportCandidate(value: Record<string, unknown>): ReportCandida
     summary: text(value.summary) || "No candidate summary recorded.",
     timeWindowEnd: optionalText(value.time_window_end),
     timeWindowStart: optionalText(value.time_window_start),
-    title
+    title,
+    usableItemCount: reportDraftInteger(value.metadata, "usable_item_count") ?? 0
   };
 }
 
@@ -647,6 +653,32 @@ function reportDraftArrayCount(metadata: unknown, key: string) {
   const value = reportDraft?.[key];
 
   return Array.isArray(value) ? value.length : 0;
+}
+
+function reportDraftInteger(metadata: unknown, key: string) {
+  const reportDraft = reportDraftRecord(metadata);
+  const numberValue = Number(reportDraft?.[key]);
+
+  if (!Number.isFinite(numberValue) || numberValue < 0) {
+    return undefined;
+  }
+
+  return Math.floor(numberValue);
+}
+
+function reportDraftQualityGatePassed(metadata: unknown) {
+  const reportDraft = reportDraftRecord(metadata);
+  const qualityGate: Record<string, unknown> = isRecord(reportDraft?.quality_gate) ? reportDraft.quality_gate : {};
+
+  if (reportDraft?.quality_gate_passed === false || qualityGate.passed === false) {
+    return false;
+  }
+
+  if (reportDraft?.quality_gate_passed === true || qualityGate.passed === true) {
+    return true;
+  }
+
+  return null;
 }
 
 function reportDraftStringArray(metadata: unknown, key: string) {

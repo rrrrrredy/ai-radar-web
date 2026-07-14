@@ -22,6 +22,7 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 tmp/
+.codex-run/
 
 # Environment and secrets
 .env
@@ -41,6 +42,7 @@ profiles/
 # Local data exports
 local-input/
 data/local/
+data/external/
 exports/
 cache/
 data/ingestion/latest/*.json

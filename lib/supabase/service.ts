@@ -14,6 +14,8 @@ export type SupabaseServiceStatus = {
 };
 
 export function getSupabaseServiceStatus(): SupabaseServiceStatus {
+  assertServerRuntime();
+
   const publicConfig = getSupabasePublicConfig();
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   const writesEnabled = isEnabled(process.env.ENABLE_SUPABASE_WRITES);
@@ -27,6 +29,8 @@ export function getSupabaseServiceStatus(): SupabaseServiceStatus {
 }
 
 export function getSupabaseServiceClient(): SupabaseClient {
+  assertServerRuntime();
+
   const publicConfig = getSupabasePublicConfig();
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
@@ -60,4 +64,10 @@ export function assertSupabaseWriteGate(writeRequested: boolean) {
   }
 
   getSupabaseServiceClientForWrite();
+}
+
+function assertServerRuntime() {
+  if (typeof window !== "undefined") {
+    throw new Error("Supabase service access is server-only.");
+  }
 }

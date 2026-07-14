@@ -72,8 +72,8 @@ function shouldScan(filePath: string) {
   return textExtensions.has(extension) || textBasenames.has(basename) || basename.startsWith(".env");
 }
 
-function trackedFiles() {
-  const output = execFileSync("git", ["ls-files", "-z"], {
+function gitFiles(args: string[]) {
+  const output = execFileSync("git", [...args, "-z"], {
     cwd: root,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
@@ -82,8 +82,19 @@ function trackedFiles() {
   return output
     .split("\0")
     .filter(Boolean)
-    .map((file) => path.join(root, file))
-    .filter((file) => fs.existsSync(file) && shouldScan(file));
+    .map((file) => path.join(root, file));
+}
+
+function trackedFiles() {
+  return gitFiles(["ls-files"]).filter((file) => fs.existsSync(file) && shouldScan(file));
+}
+
+function untrackedFiles() {
+  return gitFiles(["ls-files", "--others", "--exclude-standard"]).filter((file) => fs.existsSync(file) && shouldScan(file));
+}
+
+function scanTargets() {
+  return Array.from(new Set([...trackedFiles(), ...untrackedFiles()]));
 }
 
 function checkEnvLine(line: string) {
@@ -139,7 +150,9 @@ function scanFile(filePath: string): Finding[] {
 }
 
 function main() {
-  const files = trackedFiles();
+  const trackedCount = trackedFiles().length;
+  const untrackedCount = untrackedFiles().length;
+  const files = scanTargets();
   const findings = files.flatMap(scanFile);
 
   if (findings.length > 0) {
@@ -150,7 +163,7 @@ function main() {
     process.exit(1);
   }
 
-  console.log(`Sensitive scan passed across ${files.length} text files.`);
+  console.log(`Sensitive scan passed across ${files.length} text files (${trackedCount} tracked, ${untrackedCount} untracked).`);
 }
 
 function repoPath(filePath: string) {

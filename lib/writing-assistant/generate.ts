@@ -9,6 +9,7 @@ import type {
 } from "@/lib/writing-assistant/types";
 import { validateWritingLiveOutput } from "@/lib/writing-assistant/validate";
 import { generateMockWritingOutput } from "@/lib/writing-assistant/mock-writing";
+import { isEnabled } from "@/lib/utils";
 
 export async function generateWritingAssistantOutput(
   request: Required<Pick<WritingAssistantRequest, "query" | "generationMode" | "outputType">> & Omit<WritingAssistantRequest, "query" | "generationMode" | "outputType">
@@ -64,6 +65,13 @@ async function generateLiveWriting(
   const config = getDeepSeekConfig();
   const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
 
+  if (!isEnabled(process.env.ENABLE_PUBLIC_LIVE_DEEPSEEK)) {
+    throw {
+      status: 403,
+      message: "Public live DeepSeek generation is disabled on this server."
+    } satisfies SafeGenerationError;
+  }
+
   if (!config.hasApiKey || !apiKey) {
     throw {
       status: 400,
@@ -71,21 +79,30 @@ async function generateLiveWriting(
     } satisfies SafeGenerationError;
   }
 
-  const response = await fetch(completionUrl(config.baseUrl), {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      model: config.smartModel,
-      messages: buildWritingMessages(request, retrieval),
-      temperature: 0.1,
-      response_format: {
-        type: "json_object"
-      }
-    })
-  });
+  let response: Response;
+  try {
+    response = await fetch(completionUrl(config.baseUrl), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: config.smartModel,
+        messages: buildWritingMessages(request, retrieval),
+        temperature: 0.1,
+        response_format: {
+          type: "json_object"
+        }
+      }),
+      signal: AbortSignal.timeout(45_000)
+    });
+  } catch (error) {
+    throw {
+      status: isAbortError(error) ? 504 : 502,
+      message: isAbortError(error) ? "DeepSeek request timed out." : "DeepSeek request failed before a safe response was available."
+    } satisfies SafeGenerationError;
+  }
   const body = (await response.json().catch(() => ({}))) as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
 
   if (!response.ok) {
@@ -134,4 +151,8 @@ function sanitizeProviderError(value: string) {
     .replace(/\bsk-(?:proj-)?[A-Za-z0-9_-]{8,}/gi, "sk-[redacted]")
     .replace(/\b(authorization|api[-_]?key|token|cookie)\b\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
     .slice(0, 400);
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError");
 }

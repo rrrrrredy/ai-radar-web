@@ -9,7 +9,8 @@ import { StatusChip, type StatusTone } from "@/components/status-chip";
 import { SAFE_CRAWL_METHODS } from "@/lib/ingestion/config";
 import { readCleanedSources } from "@/lib/ingestion/select-sources";
 import type { CleanedSource } from "@/lib/ingestion/types";
-import { countBy, isSourceHealthEligible } from "@/lib/supabase/persistence";
+import { isSourceHealthEligible } from "@/lib/ingestion/source-health";
+import { countBy } from "@/lib/supabase/persistence";
 
 export default function AdminSourcesPage() {
   const cleanedSources = readCleanedSources();
@@ -33,7 +34,7 @@ export default function AdminSourcesPage() {
         <div className="flex flex-wrap items-center gap-2">
           <StatusChip label="Read-only review surface" tone="admin" />
           <StatusChip label="Dry-run import" tone="caution" />
-          <StatusChip label="No source-health writes" tone="risk" />
+          <StatusChip label="No source-health history" tone="risk" />
         </div>
         <h1 className="mt-4 text-3xl font-semibold text-radar-ink">
           Source registry
@@ -109,7 +110,7 @@ export default function AdminSourcesPage() {
         <div className="mt-4 flex flex-wrap gap-2">
           <StatusChip label="Review-only" tone="admin" />
           <StatusChip label="Approve/reject disabled" tone="risk" />
-          <StatusChip label="No source-health writes" tone="risk" />
+          <StatusChip label="No source-health history" tone="risk" />
         </div>
       </section>
 
@@ -187,7 +188,7 @@ export default function AdminSourcesPage() {
               weight, and risk flags. This is a review table only.
             </p>
           </div>
-          <StatusChip label="No write controls" tone="risk" />
+          <StatusChip label="No mutation controls" tone="risk" />
         </div>
         <div className="mt-4">
           <AdminDataTable
@@ -245,7 +246,7 @@ export default function AdminSourcesPage() {
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
               The import script upserts cleaned registry rows by stable slug. Dry
-              run and write-gated commands are documentation surfaces, not UI
+              run and mutation-gated commands are documentation surfaces, not UI
               actions.
             </p>
           </div>
@@ -254,21 +255,21 @@ export default function AdminSourcesPage() {
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           <AdminCommandBlock
             command="npm run supabase:import:sources"
-            detail="Dry-run plan for cleaned source rows. No Supabase writes are performed in default mode."
+            detail="Dry-run plan for cleaned source rows. No Supabase mutations are performed in default mode."
             label="dry-run"
             title="Import sources"
             tone="caution"
           />
           <AdminCommandBlock
             command="npm run supabase:import:sources -- --write"
-            detail="Write-gated CLI path. Requires ENABLE_SUPABASE_WRITES=true and service-role credentials outside the browser."
-            label="write-gated"
+            detail="Mutation-gated CLI path. Requires ENABLE_SUPABASE_WRITES=true and service-role credentials outside the browser."
+            label="mutation-gated"
             title="Import sources"
             tone="risk"
           />
           <AdminCommandBlock
             command="npm run source-health:dry-run"
-            detail="Dry-run source-health review only. This page does not run checks and source-health writes are not enabled."
+            detail="Dry-run source-health review only. This page does not run checks and source-health history persistence is not enabled."
             label="dry-run only"
             title="Source health"
             tone="caution"

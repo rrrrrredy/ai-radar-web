@@ -2,10 +2,6 @@ name: Radar Scheduled Dry Run
 
 on:
   workflow_dispatch:
-  schedule:
-    # Dry-run only. Beijing daily 08:00 and Monday 09:00 report jobs are documented
-    # for later phases and are not implemented as write/report workflows here.
-    - cron: "17 * * * *"
 
 permissions:
   contents: read

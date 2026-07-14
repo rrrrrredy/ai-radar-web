@@ -22,6 +22,7 @@ import {
 import { requireUserRole } from "@/lib/auth/roles";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
+import { isEnabled } from "@/lib/utils";
 
 type AdminActionResult<T> =
   | {
@@ -379,6 +380,7 @@ export async function publishReportCandidate(
     const now = new Date().toISOString();
     const candidateMetadata = isRecord(existing.metadata) ? existing.metadata : {};
     const draft = reportDraftRecord(candidateMetadata);
+    assertReportCandidatePublishable(existing, draft);
     const timeWindow = resolveReportTimeWindow(existing, draft, now);
     const title = text(existing.title) || "Untitled report";
     const summary = text(existing.summary) || title;
@@ -561,6 +563,10 @@ async function resolveAdminActionContext(user: User): Promise<AdminActionContext
 }
 
 function getAdminServiceClient() {
+  if (!isEnabled(process.env.ENABLE_ADMIN_REVIEW_WRITES)) {
+    throw new SafeActionError("Admin review writes require ENABLE_ADMIN_REVIEW_WRITES=true.");
+  }
+
   try {
     return getSupabaseServiceClient();
   } catch {
@@ -801,12 +807,60 @@ function reportBody(draft: Record<string, unknown>, summary: string) {
   return text(draft.markdown) || text(draft.executive_summary) || text(draft.one_sentence_summary) || summary;
 }
 
+function assertReportCandidatePublishable(existing: Record<string, unknown>, draft: Record<string, unknown>) {
+  const blockers: string[] = [];
+  const qualityGate = isRecord(draft.quality_gate) ? draft.quality_gate : {};
+  const sourceItemCount = stringArray(existing.source_item_ids).length;
+  const citationCount = positiveInteger(draft.citation_count) ?? (Array.isArray(draft.citations) ? draft.citations.length : 0);
+  const usableItemCount = positiveInteger(draft.usable_item_count);
+  const distinctSourceCount = positiveInteger(draft.distinct_source_count);
+  const missingEvidence = stringArray(draft.missing_evidence);
+  const qualityGatePassed = draft.quality_gate_passed !== false && qualityGate.passed !== false;
+
+  if (sourceItemCount === 0) {
+    blockers.push("source items are missing");
+  }
+
+  if (usableItemCount === undefined || usableItemCount === 0) {
+    blockers.push("usable item count is missing");
+  }
+
+  if (citationCount === 0) {
+    blockers.push("citations are missing");
+  }
+
+  if (distinctSourceCount === undefined || distinctSourceCount === 0) {
+    blockers.push("distinct source count is missing");
+  }
+
+  if (missingEvidence.length > 0) {
+    blockers.push("missing evidence remains unresolved");
+  }
+
+  if (!qualityGatePassed) {
+    blockers.push("quality gate has not passed");
+  }
+
+  if (blockers.length > 0) {
+    throw new SafeActionError(`Report candidate is not ready for publication: ${blockers.join("; ")}.`);
+  }
+}
+
 function stringArray(value: unknown) {
   if (!Array.isArray(value)) {
     return [];
   }
 
   return Array.from(new Set(value.map(text).filter(Boolean))).slice(0, 48);
+}
+
+function positiveInteger(value: unknown) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue <= 0) {
+    return undefined;
+  }
+
+  return Math.floor(numberValue);
 }
 
 function isoDate(value: unknown) {

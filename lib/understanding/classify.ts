@@ -216,7 +216,7 @@ function inferCategoryEvidence(rawItem: IngestionRawItem, text: string, haystack
 
   if (
     rawItem.source_type === "podcast" ||
-    matchesAny(haystack, [/podcast/i, /\binterview\b/i, /\bconversation with\b/i, /\btranscript\b/i, /\bQ&A\b/i])
+    matchesAny(haystack, [/podcast/i, /\binterview\b/i, /\bconversation with\b/i, /\btranscript\b/i])
   ) {
     add("media_interview", 3);
   }

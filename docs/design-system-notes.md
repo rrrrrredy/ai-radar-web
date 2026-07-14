@@ -6,8 +6,8 @@ The current app already has a sober foundation: white surfaces, quiet borders, c
 
 Observed design signals:
 
-- Public pages use a card-led skeleton for Today, Radar, Clusters, Entities, Reports, Ask, and Write.
-- Ask and Write already expose data source, time window, facts, uncertainty, and citations in the response UI.
+- Public pages use a card-led skeleton for Today, Radar, Entities, and Reports.
+- Radar, entity, and report surfaces expose data source, time window, evidence, uncertainty, and citations in the response UI.
 - Admin pages are denser than public pages and already emphasize dry-run boundaries, feature flags, and missing configuration.
 - Footer preserves the maintainer identity and public-information-only product contract.
 - `bg-radar-bg` is referenced in `app/admin/ingestion/page.tsx` but was not defined in Tailwind before Phase 8.1.
@@ -55,7 +55,7 @@ The shared design system should make evidence, freshness, uncertainty, status, a
 ## What Not To Redesign Yet
 
 - Do not redesign the homepage in Phase 8.1.
-- Do not redesign Ask, Write, Radar, Reports, Clusters, Entities, or Admin route layouts yet.
-- Do not replace current retrieval, Q&A, or writing assistant contracts.
+- Do not redesign Radar, Reports, Entities, or Admin route layouts yet.
+- Do not reintroduce public generation assistants.
 - Do not alter Supabase write gates or live DeepSeek gates.
 - Do not introduce a charting, animation, icon, or component dependency for foundation work.

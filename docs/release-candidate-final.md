@@ -1,114 +1,67 @@
 # Final Release Candidate
 
-Date: 2026-06-17
+Updated: 2026-07-14
 
-## Status
+## Product Status
 
-Release candidate is ready for internal review.
+Cloudflare Pages is the primary public product. Vercel remains the dynamic/reference application. The Cloudflare build is event-first, Chinese by default, and has a complete English route tree with a top-right `中文 / EN` switch.
 
-- Cloudflare primary: https://ai-industry-radar.pages.dev
-- Vercel reference/dynamic app: https://ai-radar-web-luosongred-5507s-projects.vercel.app
-- Branch: `codex/release-candidate-event-radar`
-- Current Cloudflare snapshot: 203 public radar signals, 200 public event clusters, 22 report snapshots
+- Primary: https://ai-industry-radar.pages.dev
+- Reference: https://ai-radar-web-luosongred-5507s-projects.vercel.app
+- Release branch: `codex/release-candidate-event-radar`
+- GitHub Pages: not used
 
-2026-06-22 update: a bounded live refresh raised the Cloudflare snapshot to 208 public radar signals and 204 public event clusters. Weekly report quality passes. Daily report quality does not pass for the current 24-hour window, so the public reports page must show `今日数据不足，需补充信源或等待下一轮刷新`.
+## Final Data State
 
-## Current Data State
-
-Cloudflare is using a public-safe local evidence snapshot because the configured Supabase host is not reachable from the runner. The exporter now merges all completed live DeepSeek activation chunks from `data/activation/runs`, filters source pages/homepages/directories, strips private fields, and rebuilds the event layer.
-
-Current public snapshot counts:
-
-| metric | count |
+| metric | value |
 | --- | ---: |
-| sources | 312 |
-| automated eligible sources | 86 |
-| attempted sources | 86 |
-| fetched sources | 62 |
-| failed sources | 24 |
-| blocked/manual sources | 226 |
-| raw_items | 205 |
-| radar_items | 205 |
-| public_radar_items / snapshot rows | 203 |
-| included / needs_review / excluded / failed | 199 / 4 / 0 / 0 |
-| report candidates / snapshots | 22 |
+| configured sources | 317 |
+| automated eligible / attempted | 91 / 91 |
+| fetched / failed / manual-blocked | 82 / 9 / 226 |
+| raw / radar / public radar items | 268 / 264 / 242 |
+| included / needs review / excluded / failed | 241 / 4 / 19 / 0 |
+| sources with public items | 64 |
+| report candidates | 26 |
 
-Targets:
-
-- preferred 200 public items: yes
-- minimum 180 public items: yes
-
-Current blockers:
-
-- Supabase project host is unavailable to the exporter, so fresh public DB reads/writes were not used in this pass.
-- GitHub API sources hit unauthenticated rate limits when no token is available.
-- Many configured sources are manual, blocked, unsupported, or only expose home/category/archive pages.
+The preferred public-item target of 200 is met. Raw-to-radar conversion is 98.5%; radar-to-public conversion is 91.7%. Failure families are timeout 6, HTTP 403 3, rate-limit warnings 2, and low-relevance exclusions 19.
 
 ## Event Layer
 
-- event clustering implemented: yes
-- event layer exported in Cloudflare snapshot: yes
-- public event count: 200
-- average items per event: about 1.00 after over-merge safeguards
-- same-version duplicate release events are merged; different release versions are no longer merged
-- `行业精选` visible: yes
-- timeline visible: yes
-- source health visible: yes
-- source diversity scoring visible: yes
+- current deterministic layer: 234 clusters and 242 item relationships;
+- Cloudflare public-safe projection: 188 events from 192 visible signals;
+- curated events: 8;
+- multi-item clusters: 3;
+- genuine multi-source display events: 1;
+- average items per current-run cluster: 1.03.
 
-Raw signal view remains available under `/radar/` -> `全部信号`.
+The Apple/OpenAI lawsuit is merged across The Verge and Ars Technica into one 82-point high-priority event with two citations and a timeline. Generic entities, conflicting companies, different release versions, different partnership counterparts, weak title overlap, and distant timestamps prevent unsafe merges. Raw items remain under `/radar/` -> `全部信号`.
 
 ## Reports
 
-Latest public event-aware report summaries:
+| type | candidate ID | status | source-stage gate | public event projection |
+| --- | --- | --- | --- | --- |
+| daily | `2daba147-d851-41c4-a8ee-efed66eedcdf` | `needs_review` | passed: 60 usable / 12 citations / 13 sources / 12 categories | passed: 9 / 9 / 5 / 4 |
+| weekly | `ba8dbe90-30ef-4f60-8460-04456ad7be21` | `needs_review` | passed: 75 / 12 / 13 / 11 | passed: 25 / 25 / 15 / 8 |
 
-| type | candidate ID | status | gate | usable | citations | sources | categories |
-| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| daily | `201ed3b3-a2e8-47aa-afa8-f64d14513db0` | needs_review | passed | 9 | 9 | 3 | 3 |
-| weekly | `7f5e7074-3cb5-470b-aa68-0b89e9641f4c` | needs_review | passed | 26 | 26 | 5 | 10 |
-
-If a future daily candidate fails its quality gate, `/reports/` renders:
-
-```text
-今日数据不足，需补充信源或等待下一轮刷新
-```
+Gate success means enough evidence for review, not publication. A failed daily gate renders `今日数据不足，需补充信源或等待下一轮刷新`.
 
 ## Public Surface
 
-Cloudflare is Chinese-first and event-first:
+- `/`: real counts, today's selected events, multi-source evidence, source health, industry pulse, and limits;
+- `/radar/`: `行业精选`, `全部事件`, `全部信号`, `最新时间线`, `待复核`, and `来源健康`;
+- `/reports/`: event-aware quality gates, evidence counts, citations, caveats, and missing evidence;
+- `/ask/` and `/write/`: browser-local event query and evidence-led writing tools;
+- `/en/...`: equivalent English home, radar, entities, reports, ask, and write routes;
+- `/data/radar-snapshot.json`: allowlisted public snapshot only.
 
-- `/`: status strip, `今日行业精选`, industry pulse, source health, coverage caveats, query/write entry.
-- `/radar/`: defaults to `行业精选`; tabs include `行业精选`, `全部事件`, `全部信号`, `最新时间线`, `待复核`, `来源健康`.
-- `/reports/`: event-aware quality cards, included events, missing evidence, caveats.
-- `/ask/`: event-aware query hub with current-event examples.
-- `/write/`: event-aware writing hub with current-event writing prompts.
-- `/data/radar-snapshot.json`: public-safe event, signal, report, source-health, and completeness snapshot.
+Browser validation covers desktop and 390px mobile layouts, both languages, language switching, radar tabs, source health, and horizontal overflow. The first curated event begins inside the mobile first viewport.
 
-Wrong-domain AI Model Radar / LLM Ecosystem data is not read by public routes.
+## Operations and Safety
 
-## Operations
+`.github/workflows/radar-refresh-cloudflare.yml` is manual `workflow_dispatch` only. It supports mock/live, controlled persistence, bounded source/chunk limits, event clustering, report generation, Cloudflare deployment, resumable state, and a redacted summary artifact.
 
-Manual workflow:
+Supabase writes in this release were limited to controlled source, raw, radar, event, relationship, score, entity, report-candidate, and audit persistence with a temporary process-level write gate. No schedule, X/WeChat crawl, source-health write, destructive SQL, or automatic report publication was run. Deployed environments keep writes disabled.
 
-```text
-.github/workflows/radar-refresh-cloudflare.yml
-```
+## Remaining Limitation
 
-It is `workflow_dispatch` only. There is no schedule. Inputs support mock/live, persist true/false, source limit, chunk size, max items per source, Cloudflare deploy true/false, report generation true/false, and event clustering true/false. The workflow uploads a safe run summary artifact.
-
-Cloudflare Pages build configuration is committed in `wrangler.toml`. The output directory is `dist/cloudflare-pages`, and `npm run build` now produces both the Next.js build and the Cloudflare static public site so Git-based Cloudflare deployments cannot silently publish a Next-only output.
-
-## Safety
-
-- Supabase writes were not run in this recovery pass.
-- Deployed environments keep `ENABLE_SUPABASE_WRITES=false`.
-- No scheduled jobs were run.
-- No X or WeChat automatic crawl was run.
-- No source-health writes were run.
-- No secrets were printed.
-- `.env.local` was not read back or committed.
-- Cloudflare snapshot excludes private raw/model/provider fields.
-
-## Recommendation
-
-Ready for internal review. Next milestone only: source repair and authenticated GitHub/Supabase recovery so multi-source confirmation improves without reintroducing homepage/archive noise.
+Only one current public event has genuine independent multi-source confirmation. This is disclosed in the UI rather than inflated through loose clustering. The next milestone is one thing: increase official-plus-independent-media overlap for high-value events while preserving the current over-merge tests.

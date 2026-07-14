@@ -5,6 +5,7 @@ import { useState } from "react";
 import { AnswerSection } from "@/components/answer-section";
 import { CitationList } from "@/components/citation-list";
 import { DataSourceChip } from "@/components/data-source-chip";
+import { EvidenceCoverageStrip } from "@/components/evidence-coverage-strip";
 import { EvidenceBadge } from "@/components/evidence-badge";
 import { EvidenceRail } from "@/components/evidence-rail";
 import { StatusChip } from "@/components/status-chip";
@@ -54,8 +55,7 @@ export function WriteRadarClient({
           query,
           language: "zh",
           audience: WRITING_AUDIENCE,
-          outputType: WRITING_OUTPUT_TYPE,
-          generationMode: "live"
+          outputType: WRITING_OUTPUT_TYPE
         })
       });
       const body = (await response.json()) as WritingAssistantOutput | { error?: string };
@@ -84,7 +84,7 @@ export function WriteRadarClient({
             <EvidenceBadge detail={dataSummary.latestRadarTime} kind="freshness" label="更新时间" />
             <StatusChip label="已尝试来源" tone="evidence" value={dataSummary.attemptedSources} />
             <StatusChip label="公开来源" tone="success" value={dataSummary.sourcesWithPublicItems} />
-            <StatusChip label="生成" tone="evidence" value="DeepSeek" />
+            <StatusChip label="生成" tone="caution" value="证据草稿" />
           </div>
           <h1 className="mt-4 text-3xl font-semibold text-radar-ink">事件写作</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
@@ -196,6 +196,16 @@ function WritingOutputView({ output }: { output: WritingAssistantOutput }) {
         />
 
         <div className="space-y-5">
+          <EvidenceCoverageStrip
+            citations={output.citations}
+            dataSource={output.data_source}
+            gapCount={output.missing_evidence.length}
+            gapLabel="缺失证据"
+            generationMode={output.mode}
+            itemCount={output.candidate_topics.length}
+            itemLabel="候选选题"
+          />
+
           <section className="space-y-4">
             <div className="max-w-3xl">
               <h2 className="text-lg font-semibold text-radar-ink">候选选题</h2>

@@ -20,7 +20,7 @@ with candidate_rows as (
     metadata -> 'report_draft' as stored_report_draft
   from public.report_candidates
   where report_type in ('daily', 'weekly')
-    and status in ('draft', 'needs_review', 'approved', 'deferred', 'published')
+    and status in ('approved', 'published')
 )
 select
   id,
@@ -60,7 +60,7 @@ select
           ),
           'generated_at', coalesce(stored_report_draft ->> 'generated_at', updated_at::text, created_at::text),
           'language', stored_report_draft ->> 'language',
-          'markdown', stored_report_draft ->> 'markdown',
+          'markdown', '',
           'source_item_ids', coalesce(stored_report_draft -> 'source_item_ids', to_jsonb(source_item_ids)),
           'retrieved_item_count',
             case
@@ -130,7 +130,7 @@ with report_rows as (
     metadata -> 'report_draft' as stored_report_draft
   from public.reports
   where type in ('daily', 'weekly')
-    and status in ('draft', 'reviewed', 'published')
+    and status in ('reviewed', 'published')
 )
 select
   id,
@@ -169,7 +169,7 @@ select
           ),
           'generated_at', coalesce(stored_report_draft ->> 'generated_at', published_at::text, created_at::text),
           'language', coalesce(nullif(stored_report_draft ->> 'language', ''), language),
-          'markdown', stored_report_draft ->> 'markdown',
+          'markdown', '',
           'source_item_ids', stored_report_draft -> 'source_item_ids',
           'retrieved_item_count',
             case

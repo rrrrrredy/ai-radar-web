@@ -3,11 +3,14 @@ import "server-only";
 import { loadRadarFeed, type RadarFeed } from "@/lib/radar/feed";
 import { buildDeterministicReportDraft, formatMarkdownReport } from "@/lib/reports/generate-live-report";
 import { generateReportPreview } from "@/lib/reports/generate-report-preview";
+import { loadLocalPublicReportSnapshotRecords } from "@/lib/reports/local-public-reports";
+import { publicReportMarkdown } from "@/lib/reports/public-markdown";
 import {
   distinctSourcesFromCitations,
   normalizeReportQualityGate,
   reportQualityGateFields
 } from "@/lib/reports/quality-gates";
+import { publicInternetHttpUrl } from "@/lib/public-url";
 import type {
   GeneratedReportDraft,
   GeneratedReportMode,
@@ -22,7 +25,6 @@ import type {
 import type { RetrievalCitation, RetrievalDataSource, ResolvedTimeWindow } from "@/lib/retrieval/types";
 import { loadPublicRadarSnapshot } from "@/lib/retrieval/load-radar-items";
 import { getSupabaseServerReadClient } from "@/lib/supabase/server-read";
-import { getSupabaseServiceClient, getSupabaseServiceStatus } from "@/lib/supabase/service";
 
 type PublicCandidateRow = Record<string, unknown>;
 type PublicReportRow = Record<string, unknown>;
@@ -38,13 +40,20 @@ const publicReportCandidateSelect =
   "id, report_type, title, summary, time_window_start, time_window_end, source_item_ids, status, confidence, created_at, updated_at, report_draft";
 const publicReportSelect =
   "id, type, title, language, time_window_start, time_window_end, body, status, created_at, published_at, report_draft";
-const serviceReportCandidateSelect =
-  "id, report_type, title, summary, time_window_start, time_window_end, source_item_ids, status, confidence, created_at, updated_at, metadata";
-const serviceReportSelect =
-  "id, type, title, language, time_window_start, time_window_end, body, status, created_at, published_at, metadata";
 
-export async function loadReportWorkflowData(): Promise<ReportWorkflowData> {
-  const [feed, saved] = await Promise.all([loadRadarFeed(), loadSavedReportDocuments()]);
+type LoadReportWorkflowDataOptions = {
+  feed?: RadarFeed;
+  publicSnapshotLocalOnly?: boolean;
+};
+
+export async function loadReportWorkflowData(
+  options: LoadReportWorkflowDataOptions = {}
+): Promise<ReportWorkflowData> {
+  const snapshotOptions = {
+    publicSnapshotLocalOnly: options.publicSnapshotLocalOnly ?? true
+  };
+  const feed = options.feed ?? await loadRadarFeed();
+  const saved = await loadSavedReportDocuments(snapshotOptions);
   const savedByType = latestByType(saved.documents);
   const reports = reportTypes.map((reportType) => {
     const savedDocument = savedByType.get(reportType);
@@ -95,54 +104,49 @@ function buildDeterministicReportDraftFromFeed(
   );
 }
 
-async function loadSavedReportDocuments(): Promise<{
+async function loadSavedReportDocuments(options: { publicSnapshotLocalOnly?: boolean } = {}): Promise<{
   documents: ReportWorkflowDocument[];
   warnings: string[];
 }> {
   const supabase = getSupabaseServerReadClient();
-  const snapshot = await readPublicSnapshotReportDocuments();
+  const [snapshot, local] = await Promise.all([
+    readPublicSnapshotReportDocuments(options),
+    readLocalPublicReportDocuments()
+  ]);
 
   if (!supabase) {
-    const service = await readServiceReportDocuments();
-    const documents = mergeDocuments([...service.documents, ...snapshot.documents]).sort(compareSavedDocuments);
+    const documents = mergeDocuments([...local.documents, ...snapshot.documents]).sort(compareSavedDocuments);
 
     return {
       documents,
       warnings:
         documents.length > 0
-          ? [...service.warnings, ...snapshot.warnings]
-          : ["公开报告库暂不可读，页面将基于当前雷达证据生成预览。", ...service.warnings, ...snapshot.warnings]
+          ? [...local.warnings, ...snapshot.warnings]
+          : ["公开报告库暂不可读，页面将基于当前雷达证据生成预览。", ...local.warnings, ...snapshot.warnings]
     };
   }
 
-  const [reports, candidates, service] = await Promise.all([
+  const [reports, candidates] = await Promise.all([
     readPublicReports(supabase),
-    readPublicReportCandidates(supabase),
-    readServiceReportDocuments()
+    readPublicReportCandidates(supabase)
   ]);
 
   return {
     documents: mergeDocuments([
-      ...service.documents,
       ...reports.documents,
       ...candidates.documents,
+      ...local.documents,
       ...snapshot.documents
     ]).sort(compareSavedDocuments),
-    warnings: [...reports.warnings, ...candidates.warnings, ...service.warnings, ...snapshot.warnings]
+    warnings: [...reports.warnings, ...candidates.warnings, ...local.warnings, ...snapshot.warnings]
   };
 }
 
-async function loadSavedReportDocumentById(id: string) {
-  const serviceDocument = await readServiceReportDocumentById(id);
-
-  if (serviceDocument) {
-    return serviceDocument;
-  }
-
+async function loadSavedReportDocumentById(id: string, options: { publicSnapshotLocalOnly?: boolean } = {}) {
   const supabase = getSupabaseServerReadClient();
 
   if (!supabase) {
-    return readPublicSnapshotReportDocumentById(id);
+    return readPublicSnapshotReportDocumentById(id, options);
   }
 
   const [candidate, report] = await Promise.all([
@@ -150,14 +154,17 @@ async function loadSavedReportDocumentById(id: string) {
     readPublicReportById(supabase, id)
   ]);
 
-  return candidate ?? report ?? readPublicSnapshotReportDocumentById(id);
+  return candidate ?? report ?? readPublicSnapshotReportDocumentById(id, options);
 }
 
-async function readPublicSnapshotReportDocuments(): Promise<{
+async function readPublicSnapshotReportDocuments(options: { publicSnapshotLocalOnly?: boolean } = {}): Promise<{
   documents: ReportWorkflowDocument[];
   warnings: string[];
 }> {
-  const snapshot = await loadPublicRadarSnapshot();
+  const snapshot = await loadPublicRadarSnapshot({
+    localOnly: options.publicSnapshotLocalOnly ?? true,
+    preferLocal: true
+  });
   if (!snapshot || !Array.isArray(snapshot.reports)) {
     return {
       documents: [],
@@ -175,61 +182,33 @@ async function readPublicSnapshotReportDocuments(): Promise<{
   };
 }
 
-async function readPublicSnapshotReportDocumentById(id: string) {
-  const snapshot = await readPublicSnapshotReportDocuments();
-  return snapshot.documents.find((report) => report.id === id) ?? null;
-}
-
-async function readServiceReportDocuments(): Promise<{
+async function readLocalPublicReportDocuments(): Promise<{
   documents: ReportWorkflowDocument[];
   warnings: string[];
 }> {
-  const status = getSupabaseServiceStatus();
+  const loaded = await loadLocalPublicReportSnapshotRecords();
+  const documents = loaded.records
+    .map(normalizeSnapshotReportDocument)
+    .filter((report): report is ReportWorkflowDocument => Boolean(report))
+    .sort(compareSavedDocuments);
 
-  if (!status.publicConfigConfigured || !status.serviceRoleConfigured) {
-    return {
-      documents: [],
-      warnings: []
-    };
-  }
-
-  try {
-    const supabase = getSupabaseServiceClient();
-    const [reports, candidates] = await Promise.all([
-      readServiceReports(supabase),
-      readServiceReportCandidates(supabase)
-    ]);
-
-    return {
-      documents: [...reports.documents, ...candidates.documents],
-      warnings: [...reports.warnings, ...candidates.warnings]
-    };
-  } catch {
-    return {
-      documents: [],
-      warnings: ["报告服务读取异常，已尝试使用公开报告快照。"]
-    };
-  }
+  return {
+    documents,
+    warnings:
+      documents.length > 0
+        ? ["使用本地已审核公开报告快照作为只读报告源。", ...loaded.warnings]
+        : loaded.warnings
+  };
 }
 
-async function readServiceReportDocumentById(id: string) {
-  const status = getSupabaseServiceStatus();
-
-  if (!status.publicConfigConfigured || !status.serviceRoleConfigured) {
-    return null;
-  }
-
-  try {
-    const supabase = getSupabaseServiceClient();
-    const [candidate, report] = await Promise.all([
-      readServiceReportCandidateById(supabase, id),
-      readServiceReportById(supabase, id)
-    ]);
-
-    return candidate ?? report;
-  } catch {
-    return null;
-  }
+async function readPublicSnapshotReportDocumentById(id: string, options: { publicSnapshotLocalOnly?: boolean } = {}) {
+  const [local, snapshot] = await Promise.all([
+    readLocalPublicReportDocuments(),
+    readPublicSnapshotReportDocuments(options)
+  ]);
+  return mergeDocuments([...local.documents, ...snapshot.documents])
+    .sort(compareSavedDocuments)
+    .find((report) => report.id === id) ?? null;
 }
 
 async function readPublicReportCandidates(supabase: NonNullable<ReturnType<typeof getSupabaseServerReadClient>>) {
@@ -333,119 +312,14 @@ async function readPublicReportById(
   }
 }
 
-async function readServiceReportCandidates(supabase: ReturnType<typeof getSupabaseServiceClient>) {
-  try {
-    const { data, error } = await supabase
-      .from("report_candidates")
-      .select(serviceReportCandidateSelect)
-      .in("report_type", ["daily", "weekly"])
-      .in("status", ["draft", "needs_review", "approved", "deferred", "published"])
-      .order("created_at", { ascending: false, nullsFirst: false })
-      .limit(12);
-
-    if (error) {
-      return {
-        documents: [],
-        warnings: ["报告候选服务读取失败，已尝试使用公开报告快照。"]
-      };
-    }
-
-    return {
-      documents: ((data ?? []) as PublicCandidateRow[])
-        .map(withReportDraftFromMetadata)
-        .map(normalizeCandidateRow)
-        .filter((row): row is ReportWorkflowDocument => Boolean(row)),
-      warnings: []
-    };
-  } catch {
-    return {
-      documents: [],
-      warnings: ["报告候选服务读取异常，已尝试使用公开报告快照。"]
-    };
-  }
-}
-
-async function readServiceReportCandidateById(
-  supabase: ReturnType<typeof getSupabaseServiceClient>,
-  id: string
-) {
-  try {
-    const { data, error } = await supabase
-      .from("report_candidates")
-      .select(serviceReportCandidateSelect)
-      .eq("id", id)
-      .maybeSingle();
-
-    if (error || !data) {
-      return null;
-    }
-
-    return normalizeCandidateRow(withReportDraftFromMetadata(data as PublicCandidateRow));
-  } catch {
-    return null;
-  }
-}
-
-async function readServiceReports(supabase: ReturnType<typeof getSupabaseServiceClient>) {
-  try {
-    const { data, error } = await supabase
-      .from("reports")
-      .select(serviceReportSelect)
-      .in("type", ["daily", "weekly"])
-      .in("status", ["draft", "reviewed", "published"])
-      .order("published_at", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false, nullsFirst: false })
-      .limit(12);
-
-    if (error) {
-      return {
-        documents: [],
-        warnings: ["报告服务读取失败，已尝试使用公开报告快照。"]
-      };
-    }
-
-    return {
-      documents: ((data ?? []) as PublicReportRow[])
-        .map(withReportDraftFromMetadata)
-        .map(normalizeReportRow)
-        .filter((row): row is ReportWorkflowDocument => Boolean(row)),
-      warnings: []
-    };
-  } catch {
-    return {
-      documents: [],
-      warnings: ["报告服务读取异常，已尝试使用公开报告快照。"]
-    };
-  }
-}
-
-async function readServiceReportById(
-  supabase: ReturnType<typeof getSupabaseServiceClient>,
-  id: string
-) {
-  try {
-    const { data, error } = await supabase
-      .from("reports")
-      .select(serviceReportSelect)
-      .eq("id", id)
-      .maybeSingle();
-
-    if (error || !data) {
-      return null;
-    }
-
-    return normalizeReportRow(withReportDraftFromMetadata(data as PublicReportRow));
-  } catch {
-    return null;
-  }
-}
 
 function normalizeCandidateRow(row: PublicCandidateRow): ReportWorkflowDocument | null {
   const id = text(row.id);
   const reportType = reportTypeValue(row.report_type);
+  const status = publicCandidateStatus(row.status);
   const title = text(row.title);
 
-  if (!id || !reportType || !title) {
+  if (!id || !reportType || !status || !title) {
     return null;
   }
 
@@ -456,7 +330,7 @@ function normalizeCandidateRow(row: PublicCandidateRow): ReportWorkflowDocument 
     mode: "saved_candidate",
     reportType,
     savedAt: optionalText(row.created_at),
-    status: candidateStatus(row.status),
+    status,
     summary: text(row.summary) || "No candidate summary recorded.",
     timeWindow: timeWindow(row.time_window_start, row.time_window_end),
     title
@@ -469,25 +343,17 @@ function normalizeCandidateRow(row: PublicCandidateRow): ReportWorkflowDocument 
     read_source: "supabase",
     saved_at: optionalText(row.created_at),
     source_item_ids: stringArray(row.source_item_ids),
-    status: draft.quality_gate_passed ? candidateStatus(row.status) : "needs_review"
-  };
-}
-
-function withReportDraftFromMetadata<T extends Record<string, unknown>>(row: T): T {
-  const metadata = isRecord(row.metadata) ? row.metadata : {};
-
-  return {
-    ...row,
-    report_draft: isRecord(metadata.report_draft) ? metadata.report_draft : row.report_draft
+    status
   };
 }
 
 function normalizeReportRow(row: PublicReportRow): ReportWorkflowDocument | null {
   const id = text(row.id);
   const reportType = reportTypeValue(row.type);
+  const status = publicReportStatus(row.status);
   const title = text(row.title);
 
-  if (!id || !reportType || !title) {
+  if (!id || !reportType || !status || !title) {
     return null;
   }
 
@@ -498,7 +364,7 @@ function normalizeReportRow(row: PublicReportRow): ReportWorkflowDocument | null
     mode: "saved_report",
     reportType,
     savedAt: optionalText(row.published_at) ?? optionalText(row.created_at),
-    status: reportStatus(row.status),
+    status,
     summary: text(row.body) || "No report body recorded.",
     timeWindow: timeWindow(row.time_window_start, row.time_window_end),
     title
@@ -511,7 +377,7 @@ function normalizeReportRow(row: PublicReportRow): ReportWorkflowDocument | null
     mode: "saved_report",
     read_source: "supabase",
     saved_at: optionalText(row.published_at) ?? optionalText(row.created_at),
-    status: reportStatus(row.status)
+    status
   };
 }
 
@@ -522,9 +388,11 @@ function normalizeSnapshotReportDocument(row: unknown): ReportWorkflowDocument |
 
   const id = text(row.id);
   const reportType = reportTypeValue(row.report_type);
+  const mode = reportMode(row.mode);
+  const status = publicSnapshotReportStatus(mode, row.status);
   const title = text(row.title);
 
-  if (!id || !reportType || !title) {
+  if (!id || !reportType || !status || !title) {
     return null;
   }
 
@@ -547,16 +415,16 @@ function normalizeSnapshotReportDocument(row: unknown): ReportWorkflowDocument |
   const draft: GeneratedReportDraft = {
     caveats: stringArray(row.caveats),
     citations,
-    data_source: "supabase_radar_items",
+    data_source: dataSourceValue(row.data_source) ?? "supabase_radar_items",
     executive_summary: text(row.executive_summary) || summary,
     generated_at: generatedAt,
     id,
     language: languageValue(row.language),
     missing_evidence: stringArray(row.missing_evidence),
-    mode: reportMode(row.mode),
+    mode,
     model_metadata: {
       api_call_count: 0,
-      mode: reportMode(row.mode),
+      mode,
       provider: "supabase"
     },
     one_sentence_summary: summary,
@@ -564,19 +432,19 @@ function normalizeSnapshotReportDocument(row: unknown): ReportWorkflowDocument |
     retrieved_item_count: optionalInteger(row.source_item_count) ?? usableItemCount,
     sections: normalizeSections(row.sections),
     source_item_ids: stringArray(row.source_item_ids),
-    status: candidateStatus(row.status),
+    status,
     time_window: normalizeTimeWindow(row.time_window) ?? timeWindow(row.time_window_start, row.time_window_end),
     title,
     ...reportQualityGateFields(qualityGate),
-    markdown: text(row.markdown)
+    markdown: ""
   };
 
   return {
     ...draft,
-    markdown: draft.markdown || formatMarkdownReport(draft),
+    markdown: formatMarkdownReport(draft),
     read_source: "public_snapshot",
     saved_at: optionalText(row.saved_at) ?? generatedAt,
-    status: draft.quality_gate_passed ? draft.status : "needs_review"
+    status
   };
 }
 
@@ -621,6 +489,7 @@ function normalizeReportDraft(
     reportType,
     usableItemCount
   });
+  const rawMarkdown = text(value.markdown);
   const draft: GeneratedReportDraft = {
     caveats: stringArray(value.caveats),
     citations,
@@ -641,12 +510,12 @@ function normalizeReportDraft(
     time_window: timeWindowValue,
     title: text(value.title) || fallback.title,
     ...reportQualityGateFields(qualityGate),
-    markdown: text(value.markdown)
+    markdown: ""
   };
 
   return {
     ...draft,
-    markdown: draft.markdown || formatMarkdownReport(draft)
+    markdown: publicReportMarkdown(rawMarkdown, formatMarkdownReport(draft))
   };
 }
 
@@ -738,32 +607,30 @@ function compareSavedDocuments(left: ReportWorkflowDocument, right: ReportWorkfl
 }
 
 function savedDocumentPriority(document: ReportWorkflowDocument) {
-  if (document.read_source === "public_snapshot") {
-    return 7;
-  }
+  const sourcePriority = document.read_source === "supabase" ? 5 : document.read_source === "public_snapshot" ? 1 : 0;
 
   if (document.mode === "saved_report" && document.status === "published") {
-    return 6;
+    return 60 + sourcePriority;
   }
 
   if (document.mode === "saved_report" && document.status === "reviewed") {
-    return 5;
+    return 50 + sourcePriority;
   }
 
   if (document.mode === "saved_report") {
-    return 4;
+    return 40 + sourcePriority;
   }
 
   if (document.mode === "saved_candidate" && document.status === "approved") {
-    return 3;
+    return 30 + sourcePriority;
   }
 
   if (document.mode === "saved_candidate" && (document.status === "draft" || document.status === "needs_review")) {
-    return 2;
+    return 20 + sourcePriority;
   }
 
   if (document.mode === "saved_candidate" && document.status === "deferred") {
-    return 1;
+    return 10 + sourcePriority;
   }
 
   return 0;
@@ -824,7 +691,7 @@ function normalizeCitations(value: unknown): RetrievalCitation[] {
       }
       const id = text(citation.id);
       const title = text(citation.title);
-      const url = text(citation.url);
+      const url = publicInternetHttpUrl(citation.url);
 
       if (!id || !title || !url) {
         return null;
@@ -907,12 +774,24 @@ function reportTypeValue(value: unknown): ReportPreviewType | null {
   return value === "weekly" ? "weekly" : value === "daily" ? "daily" : null;
 }
 
-function candidateStatus(value: unknown): GeneratedReportStatus {
-  return isOneOf(value, ["draft", "needs_review", "approved", "deferred", "rejected", "published"]) ?? "draft";
+function publicCandidateStatus(value: unknown): GeneratedReportStatus | null {
+  return isOneOf(value, ["approved", "published"]);
 }
 
-function reportStatus(value: unknown): GeneratedReportStatus {
-  return isOneOf(value, ["draft", "reviewed", "published", "archived"]) ?? "draft";
+function publicReportStatus(value: unknown): GeneratedReportStatus | null {
+  return isOneOf(value, ["reviewed", "published"]);
+}
+
+function publicSnapshotReportStatus(mode: GeneratedReportMode, value: unknown): GeneratedReportStatus | null {
+  if (mode === "saved_candidate") {
+    return publicCandidateStatus(value);
+  }
+
+  if (mode === "saved_report") {
+    return publicReportStatus(value);
+  }
+
+  return null;
 }
 
 function reportTableLabel(tableName: string) {

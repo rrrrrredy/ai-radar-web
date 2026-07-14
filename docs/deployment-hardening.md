@@ -1,12 +1,12 @@
 # Deployment Hardening
 
-Phase 9.1 documents deployment readiness only. Phase 9.2 adds GitHub Actions scheduled dry-runs only. Milestone G approves a Vercel Production launch candidate, but does not approve scheduled persistence, Supabase writes during smoke, source-health writes, X/WeChat automation, or scheduled live DeepSeek.
+Phase 9.1 documents deployment readiness only. Phase 9.2 adds GitHub Actions scheduled dry-runs only. Milestone G approves a Vercel Production launch candidate, but does not approve scheduled persistence, Supabase mutations during smoke, source-health history persistence, X/WeChat automation, or scheduled live DeepSeek.
 
 ## Deployment Target Recommendation
 
 Use Vercel first for the Next.js App Router application. It is the shortest path for framework-aware builds, preview environments, environment variable management, and future cron support.
 
-Use Supabase as the managed Postgres and Auth platform. Supabase remains the source of database schema, auth, service-role write boundaries, and public read views.
+Use Supabase as the managed Postgres and Auth platform. Supabase remains the source of database schema, auth, service-role mutation boundaries, and public read views.
 
 Evaluate Cloudflare Pages later only if a Cloudflare-specific edge, routing, or platform requirement appears. Do not split deployment targets before auth, admin protection, and scheduled persistence are implemented.
 
@@ -18,7 +18,7 @@ Evaluate Cloudflare Pages later only if a Cloudflare-specific edge, routing, or 
 - Vercel Authentication is disabled for the project Preview path.
 - Remote Preview smoke passed for public routes, admin redirects, and mock API requests.
 - Supabase Auth still needs the active Preview callback URL added manually.
-- Keep write and scheduler flags disabled as documented below and in [deployment-preview-milestone-d.md](./deployment-preview-milestone-d.md).
+- Keep mutation and scheduler flags disabled as documented below and in [deployment-preview-milestone-d.md](./deployment-preview-milestone-d.md).
 
 ## Current Milestone G Status
 
@@ -41,12 +41,12 @@ Keep `.env.example` values blank or set to safe defaults. Store real values only
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | Optional for mock/local; required for Supabase smoke | Yes | Yes | Public | Yes | Blank | Browser-safe Supabase project URL. Required before auth or Supabase retrieval can work. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Optional for mock/local; required for Supabase smoke | Yes | Yes | Public | Yes | Blank | Browser-safe anon key. It must be limited by RLS/view grants and should only read public-safe data. |
-| `SUPABASE_SERVICE_ROLE_KEY` | No, except controlled server write scripts/actions | Required only where admin review mutations are enabled | Required only where admin review mutations are enabled | Server-only | No | Blank | Must remain server-only. Never import into client components or expose in browser bundles. |
+| `SUPABASE_SERVICE_ROLE_KEY` | No, except controlled server mutation scripts/actions | Required only where admin review mutations are enabled | Required only where admin review mutations are enabled | Server-only | No | Blank | Must remain server-only. Never import into client components or expose in browser bundles. |
 | `DEEPSEEK_API_KEY` | No; live mode only | No by default | No by default | Server-only | No | Blank | Must remain server-only. Live DeepSeek requires explicit live mode and a key. |
 | `ADMIN_EMAIL` | Optional for public-only local work | Yes before admin bootstrap | Yes | Server-only | No | Blank | Identifies the initial admin account for the dry-run-first bootstrap flow. |
 | `APP_BASE_URL` | Optional | Yes for deployed callbacks/links | Yes | Server-only | No | Blank | Set to the canonical deployment URL when deployed. |
 | `ENABLE_SUPABASE_RETRIEVAL` | Optional | Optional after read-only smoke | Optional after read-only smoke | Server-only flag | No | `false` | May be enabled only after the public retrieval view exists and a read-only smoke test passes. |
-| `ENABLE_SUPABASE_WRITES` | No | No | No by default | Server-only flag | No | `false` | Must stay `false` by default. Supabase writes also require an explicit `--write` command. |
+| `ENABLE_SUPABASE_WRITES` | No | No | No by default | Server-only flag | No | `false` | Must stay `false` by default. Supabase mutations also require an explicit `--write` command. |
 | `ENABLE_X_API` | No | No | No by default | Server-only flag | No | `false` | Future X API integration flag. Do not enable until API policy and credentials are reviewed. |
 | `X_BEARER_TOKEN` | No | No | No by default | Server-only | No | Blank | Future X API token. Never expose to browser or logs. |
 | `ENABLE_WECHAT_AUTH` | No | No | No by default | Server-only flag | No | `false` | Placeholder only until a real supported provider flow exists. |
@@ -64,7 +64,7 @@ Rules:
 - `ENABLE_SUPABASE_WRITES=false` is the default for local, preview, and production.
 - `ENABLE_SUPABASE_RETRIEVAL` may be enabled only after the read-only Supabase retrieval smoke test passes.
 - Scheduled persistence remains disabled until explicitly approved in a later phase.
-- GitHub Actions dry-run jobs must keep all scheduler/write/provider flags false and must not require repository secrets.
+- GitHub Actions dry-run jobs must keep all scheduler/mutation/provider flags false and must not require repository secrets.
 
 ## Pre-Deployment Checklist
 
@@ -84,24 +84,24 @@ Rules:
 - GitHub OAuth is configured in the Supabase dashboard before presenting it as a working provider.
 - The initial admin has signed in once and `npm run auth:bootstrap-admin` dry-run reports that the Auth user can be found.
 - `npm run lint`, `npm run typecheck`, `npm run validate:data`, `npm run sensitive:scan`, and `npm run build` passed.
-- `npm run scheduled:hourly:dry-run`, `npm run scheduled:daily:dry-run`, and `npm run scheduled:weekly:dry-run` passed locally without Supabase writes or live DeepSeek.
-- Mock API smoke passed for `/api/ask` and `/api/writing-assistant`.
-- Admin write boundaries are visible on admin surfaces.
+- `npm run scheduled:hourly:dry-run`, `npm run scheduled:daily:dry-run`, and `npm run scheduled:weekly:dry-run` passed locally without Supabase mutations or live DeepSeek.
+- Public assistant API smoke is no longer applicable because the assistant routes have been removed.
+- Admin mutation boundaries are visible on admin surfaces.
 - `/admin/review` is reachable only for admin users and clearly labels review actions as server-side/admin-only/audited.
 - Public copy makes no production claims beyond current capability.
 
 ## Deployment Smoke Checks
 
-Run these after a preview or production deployment is created. Keep generation in mock mode unless live provider use is explicitly approved.
+Run these after a preview or production deployment is created. Public assistant generation routes are intentionally absent.
 
 - Homepage loads.
-- `/ask` loads.
-- `/write` loads.
+- `/radar` loads.
+- `/entities` loads.
+- `/reports` loads.
 - `/admin` redirects unauthenticated visitors to `/auth/login?next=/admin`.
 - Authenticated non-admin users land on `/unauthorized`.
 - `/admin/review` redirects unauthenticated visitors to `/auth/login?next=/admin/review`.
-- `POST /api/ask` works with `generationMode: "mock"`.
-- `POST /api/writing-assistant` works with `generationMode: "mock"`.
+- Removed public assistant page/API routes return 404 or are otherwise unavailable.
 - Optional Supabase read-only retrieval smoke passes with `ENABLE_SUPABASE_RETRIEVAL=true`.
 - No live DeepSeek call runs by default.
 - The scheduled dry-run workflow can be inspected manually, but no remote dispatch is required for deployment readiness.
@@ -125,10 +125,10 @@ Do not deploy when any of these are true:
 - The Supabase service role key can reach the client bundle or browser.
 - The build fails.
 - The sensitive scan fails.
-- Admin UI implies writes without auth and authorization.
+- Admin UI implies mutations without auth and authorization.
 - Required migrations have not been applied.
 - The auth/admin RLS migration has not been reviewed and applied before admin role checks are expected to work.
 - The admin review workflow migration has not been reviewed and applied before persistent review queues are expected to work.
 - `public.public_radar_items` is missing.
 - `public.public_report_candidates` or `public.public_reports` is missing when saved report display is expected.
-- A scheduled write job is enabled without explicit approval.
+- A scheduled mutation job is enabled without explicit approval.

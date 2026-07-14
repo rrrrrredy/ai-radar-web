@@ -10,7 +10,7 @@
 
 Implement Supabase Email magic links first, with GitHub OAuth available after manual Supabase dashboard/provider setup. Include a WeChat auth placeholder or adapter guarded by a feature flag, but do not fake a working WeChat integration unless credentials and platform configuration are available.
 
-`/admin` and `/admin/*` require an authenticated Supabase user with the `admin` role. Public/product routes, `/ask`, and `/write` remain public. Highest role resolution is `admin > editor > viewer`.
+`/admin` and `/admin/*` require an authenticated Supabase user with the `admin` role. Public/product radar, entity, and report routes remain public. Highest role resolution is `admin > editor > viewer`.
 
 ## Tables and Entities
 

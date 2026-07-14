@@ -4,7 +4,8 @@ import { fetchPublicText } from "@/lib/ingestion/config";
 import { readCleanedSources } from "@/lib/ingestion/select-sources";
 import type { CleanedSource, CrawlMethodFilter } from "@/lib/ingestion/types";
 import { getSupabaseServiceClientForWrite } from "@/lib/supabase/service";
-import { countBy, isSourceHealthEligible, loadSourceIds } from "@/lib/supabase/persistence";
+import { isSourceHealthEligible } from "@/lib/ingestion/source-health";
+import { countBy, loadSourceIds } from "@/lib/supabase/persistence";
 
 type CliOptions = {
   write: boolean;

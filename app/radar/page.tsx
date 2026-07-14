@@ -1,8 +1,11 @@
+import Link from "next/link";
+
 import { CitationList } from "@/components/citation-list";
 import { DataSourceChip } from "@/components/data-source-chip";
 import { EmptyState } from "@/components/empty-state";
 import { EvidenceBadge } from "@/components/evidence-badge";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
+import { RadarSavedFilters } from "@/components/radar-saved-filters";
 import { citationFromItem } from "@/lib/retrieval/citations";
 import {
   buildEventLayer,
@@ -10,14 +13,21 @@ import {
   type PublicEventCluster
 } from "@/lib/events/clustering";
 import {
-  loadPublicDataCompletenessSummary,
   type PublicDataCompletenessSummary
-} from "@/lib/data-completeness/public-summary";
+} from "@/lib/data-completeness/types";
+import { loadPublicSafeDataCompletenessSummary } from "@/lib/data-completeness/public-safe-summary";
 import {
   itemEvidenceTimestamp,
   loadRadarFeed,
   type RadarFeed
 } from "@/lib/radar/feed";
+import { matchesEntityCandidate } from "@/lib/radar/entities";
+import {
+  buildEntitySummaries,
+  entityHref,
+  entityTrackingInsight,
+  type EntitySummary
+} from "@/lib/radar/entity-insights";
 import { labelize, sourceFamily } from "@/lib/product/data-summary";
 import { evidenceFreshnessStatus } from "@/lib/product/freshness";
 import type { RetrievalLanguage, RetrievalRadarItem } from "@/lib/retrieval/types";
@@ -37,10 +47,12 @@ type SearchParams = Record<string, string | string[] | undefined>;
 type RadarFilters = {
   status: "all" | UnderstandingStatus;
   category: "all" | RadarCategory;
+  categories: RadarCategory[];
   sourceFamily: "all" | string;
   sourceTier: "all" | string;
   language: "all" | RetrievalLanguage;
   window: "all" | "24h" | "7d" | "30d";
+  entity: string;
   query: string;
 };
 
@@ -58,10 +70,9 @@ export default async function RadarPage({
   searchParams?: Promise<SearchParams>;
 }) {
   const params = searchParams ? await searchParams : {};
-  const [feed, coverage] = await Promise.all([
-    loadRadarFeed(),
-    loadPublicDataCompletenessSummary()
-  ]);
+  const feed = await loadRadarFeed();
+  const coverage = await loadPublicSafeDataCompletenessSummary(feed);
+  const entitySummaries = buildEntitySummaries(feed.items);
   const filters = readFilters(params, feed);
   const rawFilteredItems = filterItems(feed.items, filters, feed);
   const eventLayer = filterPublicDisplayEventLayer(buildEventLayer(
@@ -189,7 +200,12 @@ export default async function RadarPage({
       </section>
 
       <CountRail coverage={coverage} feed={feed} filteredCount={filteredItems.length} />
+      <ReaderIntentTabs feed={feed} filters={filters} />
       <CategoryTabs feed={feed} filters={filters} />
+      <EvidenceToInsightPanel
+        entities={entitySummaries.slice(0, 4)}
+        filteredCount={filteredItems.length}
+      />
 
       <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -219,6 +235,19 @@ export default async function RadarPage({
               type="search"
             />
           </label>
+          <label className="block" htmlFor="radar-filter-entity">
+            <span className="text-xs font-semibold uppercase tracking-normal text-radar-muted">
+              实体
+            </span>
+            <input
+              className="mt-2 w-full rounded-md border border-radar-line bg-white px-3 py-2 text-sm text-radar-ink outline-none focus:border-radar-evidence"
+              defaultValue={filters.entity}
+              id="radar-filter-entity"
+              name="entity"
+              placeholder="公司 / 模型 / 项目"
+              type="search"
+            />
+          </label>
           <SelectField
             label="状态"
             name="status"
@@ -234,14 +263,8 @@ export default async function RadarPage({
           <SelectField
             label="类别"
             name="category"
-            options={[
-              { label: "全部类别", value: "all" },
-              ...RADAR_CATEGORIES.map((category) => ({
-                label: labelize(category),
-                value: category
-              }))
-            ]}
-            value={filters.category}
+            options={categorySelectOptions(filters)}
+            value={categorySelectValue(filters)}
           />
           <SelectField
             label="来源家族"
@@ -295,6 +318,11 @@ export default async function RadarPage({
         </form>
       </section>
 
+      <RadarSavedFilters
+        currentSearch={currentFilterSearch(filters)}
+        defaultName={savedFilterDefaultName(filters)}
+      />
+
       {feed.caveats.length > 0 ? (
         <section className="rounded-lg border border-radar-caution/30 bg-radar-caution/5 p-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -309,7 +337,7 @@ export default async function RadarPage({
         </section>
       ) : null}
 
-      <section aria-label="雷达证据列表" className="space-y-3">
+      <section aria-label="雷达证据列表" className="space-y-3" id="radar-evidence-list">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-radar-ink">
@@ -401,26 +429,14 @@ function CategoryTabs({ feed, filters }: { feed: RadarFeed; filters: RadarFilter
     .filter((entry): entry is [RadarCategory, number] => Boolean(entry[0]) && Number(entry[1]) > 0)
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
     .slice(0, 8);
-  const baseParams = new URLSearchParams();
-
-  if (filters.status !== "all") {
-    baseParams.set("status", filters.status);
-  }
-  if (filters.sourceFamily !== "all") {
-    baseParams.set("source_family", filters.sourceFamily);
-  }
-  if (filters.sourceTier !== "all") {
-    baseParams.set("source_tier", filters.sourceTier);
-  }
-  if (filters.language !== "all") {
-    baseParams.set("language", filters.language);
-  }
-  if (filters.window !== "all") {
-    baseParams.set("window", filters.window);
-  }
-  if (filters.query) {
-    baseParams.set("q", filters.query);
-  }
+  const baseParams = baseFilterParams(filters);
+  const hasCategoryFilter = filters.categories.length > 0;
+  const categoryLabel =
+    filters.categories.length === 0
+      ? "全部"
+      : filters.categories.length === 1
+        ? labelize(filters.categories[0])
+        : `${filters.categories.length} 类`;
 
   return (
     <section className="rounded-lg border border-radar-line bg-radar-panel p-4">
@@ -433,22 +449,22 @@ function CategoryTabs({ feed, filters }: { feed: RadarFeed; filters: RadarFilter
         </div>
         <StatusChip
           label="已选择"
-          tone={filters.category === "all" ? "neutral" : "evidence"}
-          value={filters.category === "all" ? "全部" : labelize(filters.category)}
+          tone={hasCategoryFilter ? "evidence" : "neutral"}
+          value={categoryLabel}
         />
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         <CategoryTab
           count={feed.counts.total}
           href={`/radar${queryString(baseParams, "category", null)}`}
-          isSelected={filters.category === "all"}
+          isSelected={!hasCategoryFilter}
           label="全部"
         />
         {categories.map(([category, count]) => (
           <CategoryTab
             count={count}
             href={`/radar${queryString(baseParams, "category", category)}`}
-            isSelected={filters.category === category}
+            isSelected={filters.categories.length === 1 && filters.categories[0] === category}
             key={category}
             label={labelize(category)}
           />
@@ -700,6 +716,31 @@ function SelectField({
   );
 }
 
+function categorySelectOptions(filters: RadarFilters) {
+  const currentGroup =
+    filters.categories.length > 1
+      ? [
+          {
+            label: `当前分组：${filters.categories.map(labelize).join(" + ")}`,
+            value: categoryQueryValue(filters.categories)
+          }
+        ]
+      : [];
+
+  return [
+    { label: "全部类别", value: "all" },
+    ...currentGroup,
+    ...RADAR_CATEGORIES.map((category) => ({
+      label: labelize(category),
+      value: category
+    }))
+  ];
+}
+
+function categorySelectValue(filters: RadarFilters) {
+  return filters.categories.length > 1 ? categoryQueryValue(filters.categories) : filters.category;
+}
+
 function RailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-t border-radar-line pt-2 first:border-t-0 first:pt-0">
@@ -712,9 +753,12 @@ function RailRow({ label, value }: { label: string; value: string }) {
 }
 
 function readFilters(params: SearchParams, feed: RadarFeed): RadarFilters {
+  const categories = readCategoryFilters(firstParam(params.category));
+
   return {
     status: readOption(firstParam(params.status), ["all", ...UNDERSTANDING_STATUSES], "all"),
-    category: readOption(firstParam(params.category), ["all", ...RADAR_CATEGORIES], "all"),
+    category: categories.length === 1 ? categories[0] : "all",
+    categories,
     sourceFamily: readOption(
       firstParam(params.source_family),
       ["all", ...sourceFamilyOptions(feed)],
@@ -731,8 +775,242 @@ function readFilters(params: SearchParams, feed: RadarFeed): RadarFilters {
       windowOptions.map((option) => option.value),
       "all"
     ),
+    entity: normalizeSearch(firstParam(params.entity)),
     query: normalizeSearch(firstParam(params.q))
   };
+}
+
+function EvidenceToInsightPanel({
+  entities,
+  filteredCount
+}: {
+  entities: EntitySummary[];
+  filteredCount: number;
+}) {
+  return (
+    <section className="scroll-mt-32 rounded-lg border border-radar-line bg-white p-5 shadow-soft" id="evidence-to-insight">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-semibold text-radar-ink">从证据到洞察</h2>
+          <p className="mt-2 text-sm leading-6 text-radar-muted">
+            AI Radar 的核心路径是先看公开信号，再判断实体是否值得跟踪，最后进入报告草稿和人工审核。
+          </p>
+        </div>
+        <StatusChip label="当前信号" tone={filteredCount > 0 ? "evidence" : "caution"} value={filteredCount} />
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <InsightStep
+          detail={`${filteredCount} 条筛选后信号`}
+          href="#radar-evidence-list"
+          label="1. 证据"
+          text="先确认这批公开信号是否新鲜、可信、可引用。"
+        />
+        <InsightStep
+          detail={`${entities.length} 个跟踪实体`}
+          href="/entities"
+          label="2. 实体"
+          text="把零散信号聚合到公司、模型、产品、论文和项目。"
+        />
+        <InsightStep
+          detail="带证据边界"
+          href="/reports"
+          label="3. 报告草稿"
+          text="用公开证据检查草稿质量门禁，不把草稿当结论。"
+        />
+        <InsightStep
+          detail="正式报告"
+          href="/reports"
+          label="4. 发布结论"
+          text="只有完成复核并进入报告区的记录才作为正式结论阅读。"
+        />
+      </div>
+
+      {entities.length > 0 ? (
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+          {entities.map((entity) => {
+            const insight = entityTrackingInsight(entity);
+
+            return (
+              <article className="rounded-lg border border-radar-line bg-radar-panel p-4" key={`${entity.type}:${entity.name}`}>
+                <div className="flex flex-wrap gap-2">
+                  <StatusChip label={insight.priorityLabel} tone={insight.priorityScore >= 80 ? "success" : "evidence"} />
+                  <StatusChip label={entity.name} tone="neutral" />
+                  <EvidenceBadge detail={String(entity.totalSignals)} kind="evidence" label="信号" />
+                  <EvidenceBadge detail={String(entity.sourceCounts.size)} kind="citation" label="来源" />
+                </div>
+                <p className="mt-3 text-sm leading-6 text-radar-muted">{insight.reasons[0]}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link
+                    className="rounded-md bg-radar-ink px-3 py-2 text-sm font-semibold text-white hover:bg-black"
+                    href={entityHref(entity)}
+                  >
+                    打开详情
+                  </Link>
+                  <Link
+                    className="rounded-md border border-radar-line bg-white px-3 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
+                    href={`/radar?entity=${encodeURIComponent(entity.name)}`}
+                  >
+                    查看相关信号
+                  </Link>
+                  <Link
+                    className="rounded-md border border-radar-line bg-white px-3 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
+                    href="/reports#evidence-to-report-path"
+                  >
+                    报告路径
+                  </Link>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ReaderIntentTabs({ feed, filters }: { feed: RadarFeed; filters: RadarFilters }) {
+  const baseParams = baseFilterParams(filters);
+  const groups: Array<{
+    categories: RadarCategory[];
+    description: string;
+    label: string;
+  }> = [
+    {
+      categories: ["model_release", "product_update", "agent"],
+      description: "先看今日强信号和事件层。",
+      label: "热点"
+    },
+    {
+      categories: ["model_release", "benchmark"],
+      description: "模型发布、基准、能力边界。",
+      label: "模型"
+    },
+    {
+      categories: ["agent", "product_update"],
+      description: "Agent、产品更新、工作流。",
+      label: "产品/Agent"
+    },
+    {
+      categories: ["open_source", "infrastructure"],
+      description: "开源项目、开发者工具、基础设施。",
+      label: "开发者/开源"
+    },
+    {
+      categories: ["research"],
+      description: "论文、研究路线、早期技术信号。",
+      label: "论文/技术"
+    },
+    {
+      categories: ["business", "funding", "regulation", "safety"],
+      description: "商业化、融资、监管和政策。",
+      label: "商业/监管"
+    },
+    {
+      categories: ["safety"],
+      description: "安全、风险、治理信号。",
+      label: "安全"
+    },
+    {
+      categories: ["media_interview", "opinion"],
+      description: "访谈、观点和社区讨论。",
+      label: "社区"
+    }
+  ];
+
+  return (
+    <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-radar-ink">读者视角分类</h2>
+          <p className="mt-1 text-sm leading-6 text-radar-muted">
+            分类面向“我要判断什么”，下方仍保留原始 category 标签供精确筛选。
+          </p>
+        </div>
+        <StatusChip label="分类" tone="evidence" value={groups.length} />
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {groups.map((group) => {
+          const count = readerCategoryCount(feed, group.categories);
+          const href = `/radar${queryString(baseParams, "category", categoryQueryValue(group.categories))}`;
+          const selected = sameCategorySet(filters.categories, group.categories);
+
+          return (
+            <a
+              aria-current={selected ? "page" : undefined}
+              className={`rounded-md border p-3 ${
+                selected
+                  ? "border-radar-evidence bg-radar-evidence/10"
+                  : "border-radar-line bg-radar-panel hover:border-radar-evidence"
+              }`}
+              href={href}
+              key={group.label}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-radar-ink">{group.label}</span>
+                <StatusChip label="信号" tone={count > 0 ? "success" : "neutral"} value={count} />
+              </div>
+              <p className="mt-2 text-xs leading-5 text-radar-muted">{group.description}</p>
+            </a>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function readerCategoryCount(feed: RadarFeed, categories: RadarCategory[]) {
+  return feed.items.filter((item) => categories.some((category) => item.categories.includes(category))).length;
+}
+
+function baseFilterParams(filters: RadarFilters) {
+  const baseParams = new URLSearchParams();
+
+  if (filters.status !== "all") {
+    baseParams.set("status", filters.status);
+  }
+  if (filters.categories.length > 0) {
+    baseParams.set("category", categoryQueryValue(filters.categories));
+  }
+  if (filters.sourceFamily !== "all") {
+    baseParams.set("source_family", filters.sourceFamily);
+  }
+  if (filters.sourceTier !== "all") {
+    baseParams.set("source_tier", filters.sourceTier);
+  }
+  if (filters.language !== "all") {
+    baseParams.set("language", filters.language);
+  }
+  if (filters.window !== "all") {
+    baseParams.set("window", filters.window);
+  }
+  if (filters.query) {
+    baseParams.set("q", filters.query);
+  }
+  if (filters.entity) {
+    baseParams.set("entity", filters.entity);
+  }
+
+  return baseParams;
+}
+
+function InsightStep({
+  detail,
+  href,
+  label,
+  text
+}: {
+  detail: string;
+  href: string;
+  label: string;
+  text: string;
+}) {
+  return (
+    <a className="rounded-lg border border-radar-line bg-radar-panel p-4 hover:border-radar-evidence" href={href}>
+      <StatusChip label={label} tone="evidence" value={detail} />
+      <p className="mt-3 text-sm leading-6 text-radar-muted">{text}</p>
+    </a>
+  );
 }
 
 function filterItems(
@@ -752,7 +1030,7 @@ function filterItems(
       return false;
     }
 
-    if (filters.category !== "all" && !item.categories.includes(filters.category)) {
+    if (filters.categories.length > 0 && !filters.categories.some((category) => item.categories.includes(category))) {
       return false;
     }
 
@@ -782,6 +1060,10 @@ function filterItems(
       return false;
     }
 
+    if (filters.entity && !matchesEntity(item, filters.entity)) {
+      return false;
+    }
+
     return true;
   });
 }
@@ -798,6 +1080,20 @@ function readOption<T extends string>(
   return options.includes(value as T) ? (value as T) : fallback;
 }
 
+function readCategoryFilters(value: string | undefined): RadarCategory[] {
+  if (!value || value === "all") {
+    return [];
+  }
+
+  const categories = value
+    .split(",")
+    .map((category) => category.trim().toLowerCase().replace(/[\s-]+/g, "_"))
+    .filter((category) => category !== "all")
+    .filter((category): category is RadarCategory => RADAR_CATEGORIES.includes(category as RadarCategory));
+
+  return Array.from(new Set(categories));
+}
+
 function normalizeSearch(value: string | undefined) {
   return (value ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
 }
@@ -811,6 +1107,7 @@ function matchesSearch(item: RetrievalRadarItem, query: string) {
     item.source_name,
     item.source_tier,
     item.why_it_matters,
+    ...item.entities.map((entity) => `${entity.name} ${entity.type} ${entity.evidence_text ?? ""}`),
     ...item.categories,
     ...item.tags
   ]
@@ -819,6 +1116,10 @@ function matchesSearch(item: RetrievalRadarItem, query: string) {
     .toLowerCase();
 
   return haystack.includes(needle);
+}
+
+function matchesEntity(item: RetrievalRadarItem, entityQuery: string) {
+  return matchesEntityCandidate(item, entityQuery);
 }
 
 function sourceFamilyOptions(feed: RadarFeed) {
@@ -844,6 +1145,42 @@ function queryString(baseParams: URLSearchParams, key: string, value: string | n
 
   const valueString = params.toString();
   return valueString ? `?${valueString}` : "";
+}
+
+function currentFilterSearch(filters: RadarFilters) {
+  const params = new URLSearchParams();
+
+  if (filters.query) params.set("q", filters.query);
+  if (filters.entity) params.set("entity", filters.entity);
+  if (filters.status !== "all") params.set("status", filters.status);
+  if (filters.categories.length > 0) params.set("category", categoryQueryValue(filters.categories));
+  if (filters.sourceFamily !== "all") params.set("source_family", filters.sourceFamily);
+  if (filters.sourceTier !== "all") params.set("source_tier", filters.sourceTier);
+  if (filters.language !== "all") params.set("language", filters.language);
+  if (filters.window !== "all") params.set("window", filters.window);
+
+  const value = params.toString();
+  return value ? `?${value}` : "";
+}
+
+function savedFilterDefaultName(filters: RadarFilters) {
+  const parts = [
+    filters.query ? `搜索:${filters.query}` : "",
+    filters.entity ? `实体:${filters.entity}` : "",
+    filters.categories.length > 0 ? `类别:${filters.categories.map(labelize).join("+")}` : "",
+    filters.status !== "all" ? `状态:${statusLabel(filters.status)}` : "",
+    filters.window !== "all" ? windowOptions.find((option) => option.value === filters.window)?.label : ""
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" / ").slice(0, 40) : "全部雷达视图";
+}
+
+function categoryQueryValue(categories: RadarCategory[]) {
+  return categories.join(",");
+}
+
+function sameCategorySet(left: RadarCategory[], right: RadarCategory[]) {
+  return left.length === right.length && right.every((category) => left.includes(category));
 }
 
 function statusTone(status: UnderstandingStatus): StatusTone {
@@ -990,15 +1327,15 @@ function publicText(value: string) {
   return value
     .replace(
       "Cloudflare Pages is the primary public read surface. Auth, Admin, server actions, and write workflows remain outside this public Cloudflare surface.",
-      "Cloudflare Pages 是主要公开只读页面；登录、Admin、服务端操作和写入流程不在这个公开页面中运行。"
+      "此页面是公开只读情报快照，不提供账号、后台操作或写入能力。"
     )
     .replace(
       "Only public-safe radar and report fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
-      "只纳入公开安全的雷达和报告字段；私有原文、供应商元数据、内部备注、service-role 访问和密钥均已排除。"
+      "只纳入可公开引用的雷达和报告字段；私有原文、内部备注和凭据均不展示。"
     )
     .replace(
       "Snapshot data came from Supabase public-safe read views using anon read access.",
-      "快照数据来自公开安全只读证据面。"
+      "快照数据来自公开只读证据视图。"
     )
     .replace(
       "Read-only Supabase public radar retrieval was used; no Supabase write path ran.",

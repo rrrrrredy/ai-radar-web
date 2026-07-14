@@ -36,25 +36,25 @@ export default function AdminSettingsPage() {
     }
   ];
 
-  const writeRows: ConfigRow[] = [
+  const mutationRows: ConfigRow[] = [
     {
-      boundary: "Service-role write scripts",
+      boundary: "Service-role mutation scripts",
       detail: "Server-side CLI scripts only. Never exposed to browser code.",
       keyName: "SUPABASE_SERVICE_ROLE_KEY",
       status: supabaseService.serviceRoleConfigured,
       tone: supabaseService.serviceRoleConfigured ? "risk" : "neutral"
     },
     {
-      boundary: "Write feature flag",
-      detail: "False blocks write clients. True still requires an explicit CLI write request.",
+      boundary: "Supabase mutation feature flag",
+      detail: "False blocks mutation clients. True still requires an explicit CLI mutation request.",
       keyName: "ENABLE_SUPABASE_WRITES",
       status: config.featureFlags.enableSupabaseWrites,
       tone: config.featureFlags.enableSupabaseWrites ? "risk" : "success"
     },
     {
-      boundary: "Combined write readiness",
-      detail: "True means environment gates are present; admin pages still do not execute writes.",
-      keyName: "public config + service role + write flag",
+      boundary: "Combined mutation readiness",
+      detail: "True means environment gates are present; admin pages still do not execute mutations.",
+      keyName: "public config + service role + mutation flag",
       status: supabaseService.writeReady,
       tone: supabaseService.writeReady ? "risk" : "success"
     }
@@ -104,7 +104,7 @@ export default function AdminSettingsPage() {
         <div className="flex flex-wrap items-center gap-2">
           <StatusChip label="Booleans only" tone="admin" />
           <StatusChip label="No secret values" tone="risk" />
-          <StatusChip label="Write scripts separated" tone="caution" />
+          <StatusChip label="Supabase mutations separated" tone="caution" />
         </div>
         <h1 className="mt-4 text-3xl font-semibold text-radar-ink">
           Settings
@@ -127,8 +127,8 @@ export default function AdminSettingsPage() {
           value={String(config.featureFlags.enableSupabaseRetrieval)}
         />
         <AdminStatusCard
-          detail="Write scripts require service-role credentials, the write flag, and explicit CLI write mode."
-          label="Supabase writes"
+          detail="Supabase mutation scripts require service-role credentials, the mutation flag, and explicit CLI mutation mode."
+          label="Supabase mutations"
           tone={config.featureFlags.enableSupabaseWrites ? "risk" : "success"}
           value={String(config.featureFlags.enableSupabaseWrites)}
         />
@@ -174,22 +174,22 @@ export default function AdminSettingsPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-radar-ink">
-              Service-role write scripts
+              Service-role mutation scripts
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
               Service-role access belongs to local/server CLI scripts only.
-              Admin UI pages do not expose, execute, or schedule write paths.
+              Admin UI pages do not expose, execute, or schedule mutation paths.
             </p>
           </div>
-          <StatusChip label="Write-gated" tone="risk" />
+          <StatusChip label="Mutation gated" tone="risk" />
         </div>
         <div className="mt-4">
           <AdminDataTable
-            ariaLabel="Service-role write configuration status"
+            ariaLabel="Service-role mutation configuration status"
             columns={configColumns}
             minWidth="820px"
             rowKey={(row) => row.keyName}
-            rows={writeRows}
+            rows={mutationRows}
           />
         </div>
       </section>

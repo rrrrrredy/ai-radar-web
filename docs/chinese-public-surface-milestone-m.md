@@ -1,28 +1,47 @@
-# Milestone M Chinese Public Surface
+# Bilingual Public Surface - Release Candidate
 
-Date: 2026-05-26
+Updated: 2026-07-14
 
-Cloudflare is the primary Chinese-first public site:
+## Language Contract
 
-```text
-https://ai-industry-radar.pages.dev
-```
+Cloudflare Pages is Chinese by default and provides a real English route tree. Every public header exposes a top-right `中文 / EN` switch with reciprocal `hreflang` links.
 
-Current public data:
+| Chinese | English |
+| --- | --- |
+| `/` | `/en/` |
+| `/radar/` | `/en/radar/` |
+| `/entities/` | `/en/entities/` |
+| `/reports/` | `/en/reports/` |
+| `/ask/` | `/en/ask/` |
+| `/write/` | `/en/write/` |
 
-- `public_radar_items`: 183
-- `event_clusters`: 159
-- `report_candidates`: 22
-- latest refresh: 2026-05-26T03:40:53.261+00:00
-- latest daily candidate: quality passed, 61 usable items, 12 citations, 17 sources, 9 categories
-- latest weekly candidate: quality passed, 125 usable items, 12 citations, 13 sources, 8 categories
+English pages are not label-only shells. They render the same public snapshot, event cards, source health, report gates, citations, filters, timelines, and browser-local Ask/Write evidence tools. Original source/company/model/article names remain unchanged where translation would damage traceability.
 
-Route checks:
+## Information Architecture
 
-- `/` first screen shows `今日行业精选`, counts, multi-source events, source health, coverage limits, and real radar pulse.
-- `/radar/` defaults to `行业精选` and provides `全部事件`, `全部信号`, `最新时间线`, `待复核`, and `来源健康`.
-- `/reports/` shows latest daily/weekly candidates, quality gates, event counts, curated events, caveats, missing evidence, and Markdown export.
-- `/ask/` and `/write/` are static Chinese-first event query/writing hubs with prompts based on current clusters.
-- `/data/radar-snapshot.json` includes public-safe events, report quality, source health, failure families, and no raw/private fields.
+- the home first viewport shows real counts, the product name, today's selection, and the first curated event on 390px mobile;
+- `/radar/` defaults to curated events and keeps raw items under All signals / `全部信号`;
+- radar tabs cover selected, all events, all signals, latest timeline, review, and source health;
+- `/reports/` separates evidence drafts from reviewed/published reports and exposes quality gates;
+- `/ask/` and `/write/` operate locally on public event evidence without claiming live private chat;
+- source health and failure-family summaries are visible in both languages.
 
-The daily report now passes the gate, so the insufficient-data warning is not shown.
+## Current Public Data
+
+| metric | value |
+| --- | ---: |
+| public radar items | 242 |
+| public-safe snapshot items | 192 |
+| public display events | 188 |
+| curated events | 8 |
+| genuine multi-source display events | 1 |
+
+Latest daily and weekly candidates remain `needs_review` but both pass source-stage and event-projection quality gates.
+
+## Browser Verification
+
+Local production-static smoke returned 200 for Chinese and English home, radar, reports, ask, and write routes. Tests verified document language, H1, visible language switch, reciprocal navigation, radar tab interaction, source-health failure distribution, and zero horizontal overflow at 1440px and 390px. The first mobile curated event starts at approximately 734px in an 844px viewport.
+
+## Public Boundary
+
+Static pages read only the allowlisted `data/radar-snapshot.json`. They do not expose raw text, raw/model metadata, provider payloads, private notes, admin logs, service credentials, or wrong-domain model-radar tables.

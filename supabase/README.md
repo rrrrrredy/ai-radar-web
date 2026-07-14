@@ -23,6 +23,7 @@ supabase/migrations/202605140002_phase7_upsert_constraints.sql
 supabase/migrations/202605140003_public_retrieval_view.sql
 supabase/migrations/202605140004_auth_admin_rls.sql
 supabase/migrations/202605140005_admin_review_workflows.sql
+supabase/migrations/202607010001_public_radar_items_entities.sql
 ```
 
 The first migration adds nullable source URLs, cleaned-registry fields, source
@@ -48,6 +49,15 @@ RLS migration has been reviewed and applied. Phase 9.4b server actions use these
 tables for controlled admin review mutations; the migration still does not
 enable scheduled job, source-health, live DeepSeek, or report publish workflows.
 
+The 2026-07-01 public radar refresh replaces `public.public_radar_items` with a
+public-safe view that removes raw item identifiers and free-form evidence notes,
+adds entity `name/type/confidence`, rejects internal/private hosts and sensitive
+query-parameter URLs, and grants read access only to `anon` and
+`authenticated`. When applied through Supabase MCP or the dashboard, the remote
+migration-history name may differ from the local filename; production currently
+records it as `20260701062850 public_radar_items_public_safe_entities` followed
+by `20260701063844 public_radar_items_remove_evidence_notes_sensitive_urls_v2`.
+
 ## Admin Review Workflow Tables
 
 `review_tasks` is the generic queue for radar items, sources, report candidates,
@@ -65,14 +75,31 @@ grant anon access or authenticated browser write access to these tables.
 `public.public_radar_items` exposes public-safe radar retrieval fields only:
 ids, source slug/name, title, public URL, public timestamps, language, summaries,
 topics/categories/tags, public scoring fields, source tier/weight, confidence,
-understanding status, exclusion reason, why-it-matters, evidence notes, and
-created/updated timestamps.
+understanding status, exclusion reason, why-it-matters, public-safe entities,
+and created/updated timestamps.
 
 It intentionally does not expose `raw_items.raw_text`, `raw_items.raw_metadata`,
-`radar_items.model_metadata`, service-role keys, source-health internals,
-operational logs, private notes, write access, or internal/private URLs. The
-view is granted to `anon` and `authenticated`; base write tables are not granted
-to anon.
+`radar_items.raw_item_id`, `radar_items.model_metadata`,
+`radar_items.evidence_notes`, `item_entities.evidence_text`, service-role keys,
+source-health internals, operational logs, private notes, write access,
+internal/private URLs, or URLs with sensitive query parameters. The view is
+granted to `anon` and `authenticated`; base write tables are not granted to anon.
+
+Before treating Supabase-backed public retrieval as release-ready, run:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=<project-url>
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+npm run supabase:public-contract
+```
+
+A pass returns `ok: true`, a readable `id/local_id/entities` projection, and
+rejected `raw_item_id`, `evidence_notes`, and `model_metadata` projections.
+`missing_public_supabase_env` means the two public env vars are absent.
+`supabase_project_host_dns_not_found` means the project host or project state
+must be fixed before app regressions can be assessed. `PGRST205` usually means
+PostgREST cannot see the view, so confirm the migration is applied and the Data
+API schema cache has refreshed.
 
 ## Environment Variables
 

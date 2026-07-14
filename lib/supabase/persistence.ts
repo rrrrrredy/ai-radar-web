@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { hasUnsafeFragment, isAllowedCrawlMethod, isPublicHttpUrl } from "@/lib/ingestion/config";
 import type {
   CleanedSource,
   IngestionRawItem,
@@ -85,28 +84,6 @@ export function chunkRows<T>(rows: T[], size = 200) {
     chunks.push(rows.slice(index, index + size));
   }
   return chunks;
-}
-
-export function isSourceHealthEligible(source: CleanedSource) {
-  if (source.status !== "active" && source.status !== "trial") {
-    return false;
-  }
-
-  if (!isAllowedCrawlMethod(source.crawl_method)) {
-    return false;
-  }
-
-  if (!source.url || !isPublicHttpUrl(source.url)) {
-    return false;
-  }
-
-  if (source.risk_flags.includes("needs_public_url")) {
-    return false;
-  }
-
-  return [source.url, source.rss_url, source.github_url, source.youtube_url, source.podcast_url, source.notes].every(
-    (value) => !hasUnsafeFragment(value)
-  );
 }
 
 export function sourceUpsertRows(sources: CleanedSource[]) {

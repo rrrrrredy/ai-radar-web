@@ -1,159 +1,49 @@
-# Milestone M Reviewed Refresh and Cloudflare Workflow
+# Manual Refresh and Cloudflare Workflow
 
-Date: 2026-05-26
+Updated: 2026-07-14
 
-## Purpose
+## Trigger and Inputs
 
-Milestone M adds a manual, reviewed GitHub Actions workflow that can refresh radar data in bounded resumable chunks, optionally persist reviewed results to Supabase, regenerate report candidates with quality gates, build the public-safe Cloudflare snapshot, and optionally deploy Cloudflare Pages.
+`.github/workflows/radar-refresh-cloudflare.yml` uses `workflow_dispatch` only. It has no `schedule` or cron trigger.
 
-The workflow is manual only. It does not add a schedule and does not enable scheduled writes.
+| input | default |
+| --- | --- |
+| `mode` | `mock` |
+| `persist` | `false` |
+| `limit` | `30` |
+| `chunk_size` | `5` |
+| `max_items_per_source` | `3` |
+| `deploy_cloudflare` | `false` |
+| `generate_reports` | `true` |
+| `run_events_cluster` | `true` |
 
-## Workflow
-
-File:
-
-```text
-.github/workflows/radar-refresh-cloudflare.yml
-```
-
-Trigger:
-
-```text
-workflow_dispatch only
-```
-
-Inputs:
-
-| input | default | purpose |
-| --- | --- | --- |
-| `mode` | `mock` | `mock` or `live` resumable activation mode |
-| `persist` | `false` | when `true`, persist successful chunks and report candidates through the write gate |
-| `limit` | `30` | maximum selected sources |
-| `chunk_size` | `5` | sources per resumable chunk |
-| `max_items_per_source` | `3` | maximum items collected from each source |
-| `deploy_cloudflare` | `false` | deploy `dist/cloudflare-pages` to Cloudflare Pages |
-| `generate_reports` | `true` | generate daily and weekly candidates or dry-run drafts |
-| `run_events_cluster` | `true` | generate the public-safe event layer used by Cloudflare and reports |
-
-Required secrets or variables:
-
-| name | kind | used for |
-| --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | variable or secret | public-safe Supabase reads |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | variable or secret | public-safe Supabase reads |
-| `SUPABASE_SERVICE_ROLE_KEY` | secret | controlled service reads and explicit write-gated persistence |
-| `DEEPSEEK_API_KEY` | secret | live activation/report generation only |
-| `CLOUDFLARE_API_TOKEN` | secret | Cloudflare Pages deploy |
-| `CLOUDFLARE_ACCOUNT_ID` | secret | Cloudflare Pages deploy |
-| `RADAR_REFRESH_WRITE_GATE` | variable | must be `true` in addition to `persist=true` before writes run |
-| `GITHUB_TOKEN` | built-in token | optional authenticated GitHub source retrieval |
-
-## Safety Gates
-
-Global workflow env keeps:
-
-```text
-ENABLE_SUPABASE_WRITES=false
-ENABLE_SCHEDULED_PERSISTENCE=false
-ENABLE_LIVE_DEEPSEEK_IN_JOBS=false
-ENABLE_X_API=false
-ENABLE_WECHAT_AUTH=false
-```
-
-Supabase writes run only when both are true:
-
-```text
-workflow input persist=true
-vars.RADAR_REFRESH_WRITE_GATE=true
-```
-
-The write gate is applied only to the activation/report candidate steps. Cloudflare build and deploy keep `ENABLE_SUPABASE_WRITES=false`.
+Inputs are range-checked and shell-injection resistant. Live provider access and production deployment are restricted to `main`. Persistence requires `mode=live`, manual `persist=true`, and the independent repository variable `RADAR_REFRESH_WRITE_GATE=true`.
 
 ## Run Order
 
-1. Checkout.
-2. Setup Node 20.
-3. Install dependencies.
-4. Run validation preflight: lint, typecheck, data validation, sensitive scan.
-5. Capture before counts with `npm run ops:summary`.
-6. Enforce the explicit write gate if `persist=true`.
-7. Run `npm run data:activate:resumable:<mode>` with bounded inputs.
-8. Generate the event layer when `run_events_cluster=true`.
-9. Generate report drafts or write report candidates, applying quality gates.
-10. Build the Cloudflare public snapshot with `npm run cloudflare:build`.
-11. Deploy Cloudflare only when `deploy_cloudflare=true`.
-12. Write and upload the ops summary artifact.
+1. checkout, Node setup, and `npm ci`;
+2. lint, typecheck, tests, data validation, sensitive scan, and Supabase public-contract validation;
+3. capture public-safe before counts;
+4. restore resumable activation state and run bounded activation;
+5. persist successful chunks only when both write gates pass;
+6. cluster events, with persistence only under the same gate;
+7. generate dry-run reports or controlled live candidates;
+8. build the Cloudflare snapshot from Supabase public evidence with writes disabled;
+9. optionally deploy with pinned Wrangler `4.86.0`;
+10. write, scan, and upload the safe JSON/Markdown run summary.
 
-Artifact paths:
+## Secrets and Safety
 
-```text
-data/ops/latest/radar-refresh-summary.json
-data/ops/latest/radar-refresh-summary.md
-```
+Required configuration is read from GitHub secrets/variables without printing values: Supabase URL/anon key, service role key for controlled writes, DeepSeek key for live mode, and Cloudflare token/account ID for deployment. `GITHUB_TOKEN` is optional for authenticated public GitHub requests.
 
-These files are git ignored and uploaded as workflow artifacts.
+- no scheduled persistence;
+- no X or WeChat automation;
+- no source-health writes;
+- no destructive SQL or reset of persisted tables;
+- no service-role credential in the public build;
+- no private/raw fields in the summary artifact;
+- deployed environments keep `ENABLE_SUPABASE_WRITES=false`.
 
-## Local Equivalent
+## Operator Command
 
-Mock validation:
-
-```bash
-npm run data:activate:resumable:mock -- --limit 10 --chunk-size 5 --max-items-per-source 2
-npm run events:cluster
-npm run cloudflare:build
-```
-
-Controlled live refresh without writes:
-
-```bash
-npm run data:activate:resumable:live -- --limit 30 --chunk-size 5 --max-items-per-source 3
-```
-
-Controlled persistence for an already reviewed run:
-
-```powershell
-$env:ENABLE_SUPABASE_WRITES="true"
-npm run data:activate:resumable:live:persist -- --persist --resume
-npm run report:candidate:daily:write
-npm run report:candidate:weekly:write
-Remove-Item Env:ENABLE_SUPABASE_WRITES
-```
-
-Cloudflare deploy:
-
-```bash
-npm run cloudflare:build
-npx wrangler pages deploy dist/cloudflare-pages --project-name=ai-industry-radar --branch=main
-```
-
-Cloudflare Git integration:
-
-- `wrangler.toml` is committed as the Pages project source of truth.
-- `pages_build_output_dir` is `dist/cloudflare-pages`.
-- `npm run build` runs both `next build` and `npm run cloudflare:build`, so a Cloudflare Git build from `main` produces the same public static output as the manual Wrangler deploy path.
-- Manual Wrangler deploy remains the preferred recovery path when the dashboard build cache or Git integration lags behind the reviewed local build.
-
-## What Is Not Automated
-
-- No scheduled write workflow.
-- No source-health writes.
-- No X automatic crawl.
-- No WeChat automatic crawl.
-- No admin login or Preview auth dependency.
-- No GitHub Pages deployment path.
-- No automatic migration application.
-- No automatic report publication.
-
-## Final RC Run
-
-The 2026-06-17 recovery run used controlled live DeepSeek activation chunks and a public-safe Cloudflare snapshot merge. Supabase was not written because the configured project host was unavailable from the runner.
-
-Current Cloudflare snapshot:
-
-- 203 public radar rows
-- 200 public event clusters
-- 22 report snapshots
-- daily and weekly quality gates passed
-- preferred 200-row public target met
-
-The remaining operating risks are source quality and availability, not UI wiring: many configured sources are manual/blocked, GitHub API sources require authenticated rate limits for reliable release coverage, and several HTML sources only expose landing/category/archive pages unless source-specific parsers are added.
+Use the GitHub Actions `Radar Refresh Cloudflare` manual run form. For a real refresh, select `live`, choose bounded limits, leave persistence off for inspection, then rerun with persistence only after reviewing the activation artifact and enabling the independent write gate. Cloudflare remains the primary public destination; GitHub Pages is not part of this workflow.

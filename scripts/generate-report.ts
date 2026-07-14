@@ -5,6 +5,7 @@ process.env.PREFER_LOCAL_PUBLIC_RADAR_SNAPSHOT ??= "true";
 
 import { loadRadarFeed } from "@/lib/radar/feed";
 import { generateReportDraft } from "@/lib/reports/generate-live-report";
+import { evaluateReportEvidenceFreshness } from "@/lib/reports/quality-gates";
 import type { ReportLanguage, ReportPreviewType } from "@/lib/reports/types";
 
 type CliOptions = {
@@ -22,6 +23,12 @@ async function main() {
     language: options.language,
     live: options.live
   });
+  const evidenceFreshness = evaluateReportEvidenceFreshness(
+    report.report_type,
+    report.time_window.end,
+    report.citations.map((citation) => citation.published_at ?? citation.collected_at),
+    report.generated_at
+  );
 
   console.log("Report generation dry-run");
   console.log(`Type: ${report.report_type}`);
@@ -29,6 +36,9 @@ async function main() {
   console.log(`Status: ${report.status}`);
   console.log(`Data source: ${report.data_source}`);
   console.log(`Time window: ${report.time_window.start} to ${report.time_window.end}`);
+  console.log(`证据窗口新鲜度: ${evidenceFreshness.passed ? "通过" : "未通过"}`);
+  console.log(`最新可引用证据: ${evidenceFreshness.latestEvidenceAt ?? "无法验证"}`);
+  console.log(`新鲜度上限: ${evidenceFreshness.maxAgeHours} 小时`);
   console.log(`Retrieved items: ${report.retrieved_item_count}`);
   console.log(`Usable items: ${report.usable_item_count}`);
   console.log(`Citations: ${report.citations.length}`);

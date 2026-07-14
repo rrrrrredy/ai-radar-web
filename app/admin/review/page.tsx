@@ -32,6 +32,7 @@ import { formatDate, formatScore } from "@/lib/utils";
 export default async function AdminReviewPage() {
   const data = await getReviewDashboardData();
   const openTaskCount = data.reviewTasks.rows.filter((row) => row.status === "open" || row.status === "in_review").length;
+  const publishingFunnel = buildPublishingFunnel(data.reportCandidates.rows);
 
   return (
     <div className="space-y-8">
@@ -40,7 +41,7 @@ export default async function AdminReviewPage() {
           <StatusChip label="Controlled review workflow" tone="admin" />
           <StatusChip label="Admin role required" tone="risk" />
           <StatusChip label="Audited mutations" tone="success" />
-          <StatusChip label="No scheduled writes" tone="caution" />
+          <StatusChip label="No scheduled mutations" tone="caution" />
           <StatusChip label="No live DeepSeek" tone="caution" />
         </div>
         <h1 className="mt-4 text-3xl font-semibold text-radar-ink">
@@ -50,7 +51,7 @@ export default async function AdminReviewPage() {
           Operational review surface for radar items, missing public source
           URLs, source change requests, report candidates, and audit events.
           Mutations are server actions that re-check the signed-in admin role,
-          sanitize inputs, and write admin audit events. Public Ask and Write
+          sanitize inputs, and create admin audit events. Public radar, entity, and report
           routes remain open.
         </p>
       </section>
@@ -97,6 +98,8 @@ export default async function AdminReviewPage() {
         />
       </section>
 
+      <ReportPublishingFunnel funnel={publishingFunnel} />
+
       <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -139,9 +142,9 @@ export default async function AdminReviewPage() {
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
               The page reads local review candidates and authenticated Supabase
-              workflow rows. Writes are limited to explicit admin server actions;
-              this route does not apply migrations, run scheduled writes, call DeepSeek, or
-              write source-health history.
+              workflow rows. Mutations are limited to explicit admin server
+              actions; this route does not apply migrations, run scheduled
+              mutations, call DeepSeek, or persist source-health history.
             </p>
           </div>
           <DataSourceChip detail="or local preview" source="supabase_radar_items" />
@@ -149,20 +152,20 @@ export default async function AdminReviewPage() {
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           <AdminCommandBlock
             command="supabase/migrations/202605140005_admin_review_workflows.sql"
-            detail="Must be applied manually before persisted review actions can read and write workflow tables."
+            detail="Must be applied manually before persisted review actions can read and mutate workflow tables."
             label="manual review"
             title="Review schema"
             tone="admin"
           />
           <AdminCommandBlock
             command="lib/admin/actions.ts"
-            detail="Server actions require admin role, sanitize inputs, use service role only after authorization, write audit events, and can publish approved report candidates."
+            detail="Server actions require admin role, sanitize inputs, use service role only after authorization, create audit events, and can publish approved report candidates."
             label="server-only"
             title="Workflow actions"
             tone="success"
           />
           <AdminCommandBlock
-            command="scheduled writes and live DeepSeek: not run by this route"
+            command="scheduled mutations and live DeepSeek: not run by this route"
             detail="Review mutations do not start ingestion, source-health checks, scheduled jobs, or live model calls."
             label="read-only"
             title="Runtime side effects"
@@ -217,7 +220,7 @@ export default async function AdminReviewPage() {
       <ReviewTable
         ariaLabel="Radar items needing review"
         columns={radarReviewColumns}
-        description="Radar rows with needs_review status, low confidence, or weak credibility. Public Ask and Write access is unchanged."
+        description="Radar rows with needs_review status, low confidence, or weak credibility. Public radar, entity, and report access is unchanged."
         emptyLabel="No radar rows need review from the current fallback source"
         minWidth="1040px"
         result={data.radarItemsNeedingReview}
@@ -387,7 +390,7 @@ function CreateReviewTaskPanel() {
         </label>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs leading-5 text-radar-muted">
-            Submit only reviewed admin notes; the mutation writes an audit event.
+            Submit only reviewed admin notes; the mutation creates an audit event.
           </p>
           <button className={buttonClassName("admin")} type="submit">
             Create task
@@ -473,7 +476,7 @@ function ReviewTaskActions({ row }: { row: ReviewTaskRow }) {
   return (
     <div className="grid gap-2">
       <p className="text-xs leading-5 text-radar-muted">
-        Each status write is audited.
+        Each status mutation is audited.
       </p>
       <div className="flex flex-wrap gap-2">
         {row.status === "open" ? (
@@ -563,7 +566,7 @@ function SourceChangeRequestActions({ row }: { row: SourceChangeRequestRow }) {
   return (
     <div className="grid gap-2">
       <p className="text-xs leading-5 text-radar-muted">
-        Approve, reject, or defer writes an audit event.
+        Approve, reject, or defer creates an audit event.
       </p>
       <div className="flex flex-wrap gap-2">
         <StatusActionForm
@@ -607,6 +610,17 @@ function ReportCandidateActions({ row }: { row: ReportCandidateRow }) {
   if (row.status === "approved") {
     if (!canBecomeReportRecord(row.reportType)) {
       return <StatusChip label="Report record unsupported" tone="neutral" />;
+    }
+
+    if (hasPublicationEvidenceGap(row)) {
+      return (
+        <div className="grid gap-2">
+          <StatusChip label="Evidence blocked" tone="risk" />
+          <p className="text-xs leading-5 text-radar-muted">
+            Resolve missing evidence, citations, source item coverage, usable items, distinct sources, and quality gate failures before saving or publishing a report record.
+          </p>
+        </div>
+      );
     }
 
     return (
@@ -996,7 +1010,14 @@ const reportCandidateColumns: AdminDataTableColumn<ReportCandidateRow>[] = [
         ) : (
           <EvidenceBadge detail="unset" kind="uncertainty" label="confidence" />
         )}
+        <EvidenceBadge detail={String(row.usableItemCount)} kind="citation" label="usable" />
+        <EvidenceBadge detail={String(row.distinctSourceCount)} kind="citation" label="distinct" />
         <EvidenceBadge detail={String(row.citationsCount)} kind="citation" label="citations" />
+        <EvidenceBadge
+          detail={qualityGateLabel(row.qualityGatePassed)}
+          kind={row.qualityGatePassed === false ? "needs_review" : "citation"}
+          label="gate"
+        />
         <EvidenceBadge detail={String(row.caveats.length)} kind="uncertainty" label="caveats" />
         <EvidenceBadge detail={String(row.missingEvidence.length)} kind="needs_review" label="gaps" />
       </div>
@@ -1068,6 +1089,112 @@ function readSourceLabel(source: AdminReviewReadSource) {
   }
 
   return "Unavailable";
+}
+
+type PublishingFunnel = {
+  approved: number;
+  blocked: number;
+  draft: number;
+  needsReview: number;
+  publishable: number;
+  published: number;
+  rejectedOrDeferred: number;
+  total: number;
+  writeGateEnabled: boolean;
+};
+
+function ReportPublishingFunnel({ funnel }: { funnel: PublishingFunnel }) {
+  return (
+    <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-radar-ink">Report publishing funnel</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
+            Formal public reports require two explicit steps: approve a candidate, then save it as reviewed or publish it. Quality gates and missing evidence should be checked before either action.
+          </p>
+        </div>
+        <StatusChip
+          label="Admin mutation gate"
+          tone={funnel.writeGateEnabled ? "success" : "caution"}
+          value={funnel.writeGateEnabled ? "enabled" : "disabled"}
+        />
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-4 xl:grid-cols-8">
+        <FunnelMetric label="Total" tone="neutral" value={funnel.total} />
+        <FunnelMetric label="Draft" tone="caution" value={funnel.draft} />
+        <FunnelMetric label="Needs review" tone="caution" value={funnel.needsReview} />
+        <FunnelMetric label="Approved" tone="evidence" value={funnel.approved} />
+        <FunnelMetric label="Publishable" tone={funnel.publishable > 0 ? "success" : "caution"} value={funnel.publishable} />
+        <FunnelMetric label="Published" tone="success" value={funnel.published} />
+        <FunnelMetric label="Evidence blocked" tone="risk" value={funnel.blocked} />
+        <FunnelMetric label="Rejected/deferred" tone="neutral" value={funnel.rejectedOrDeferred} />
+      </div>
+      <div className="mt-4 rounded-md border border-radar-line bg-radar-panel p-3 text-sm leading-6 text-radar-muted">
+        {funnel.publishable > 0
+          ? "Next action: use Save report for reviewed content or Publish report for public release on approved candidates."
+          : "Next action: review candidates, resolve missing evidence, and approve only reports that are ready for a public record."}
+      </div>
+    </section>
+  );
+}
+
+function FunnelMetric({
+  label,
+  tone,
+  value
+}: {
+  label: string;
+  tone: StatusTone;
+  value: number;
+}) {
+  return (
+    <div className="rounded-md border border-radar-line bg-radar-panel p-3">
+      <StatusChip label={label} tone={tone} value={value} />
+    </div>
+  );
+}
+
+function buildPublishingFunnel(rows: ReportCandidateRow[]): PublishingFunnel {
+  return {
+    approved: rows.filter((row) => row.status === "approved").length,
+    blocked: rows.filter((row) => !isRejectedOrDeferred(row) && hasPublicationEvidenceGap(row)).length,
+    draft: rows.filter((row) => row.status === "draft").length,
+    needsReview: rows.filter((row) => row.status === "needs_review").length,
+    publishable: rows.filter(
+      (row) => row.status === "approved" && canBecomeReportRecord(row.reportType) && !hasPublicationEvidenceGap(row)
+    ).length,
+    published: rows.filter((row) => row.status === "published").length,
+    rejectedOrDeferred: rows.filter(isRejectedOrDeferred).length,
+    total: rows.length,
+    writeGateEnabled: process.env.ENABLE_ADMIN_REVIEW_WRITES === "true"
+  };
+}
+
+function hasPublicationEvidenceGap(row: ReportCandidateRow) {
+  return (
+    row.missingEvidence.length > 0 ||
+    row.citationsCount === 0 ||
+    row.sourceItemCount === 0 ||
+    row.usableItemCount === 0 ||
+    row.distinctSourceCount === 0 ||
+    row.qualityGatePassed === false
+  );
+}
+
+function qualityGateLabel(passed: boolean | null) {
+  if (passed === true) {
+    return "pass";
+  }
+
+  if (passed === false) {
+    return "fail";
+  }
+
+  return "unset";
+}
+
+function isRejectedOrDeferred(row: ReportCandidateRow) {
+  return row.status === "rejected" || row.status === "deferred";
 }
 
 function readSourceTone(source: AdminReviewReadSource): StatusTone {

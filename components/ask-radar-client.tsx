@@ -5,6 +5,7 @@ import { useState } from "react";
 import { AnswerSection } from "@/components/answer-section";
 import { CitationList } from "@/components/citation-list";
 import { DataSourceChip } from "@/components/data-source-chip";
+import { EvidenceCoverageStrip } from "@/components/evidence-coverage-strip";
 import { EvidenceBadge } from "@/components/evidence-badge";
 import { EvidenceRail } from "@/components/evidence-rail";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
@@ -48,8 +49,7 @@ export function AskRadarClient({
         },
         body: JSON.stringify({
           question,
-          language: "zh",
-          generationMode: "live"
+          language: "zh"
         })
       });
       const body = (await response.json()) as AskAnswer | { error?: string };
@@ -78,7 +78,7 @@ export function AskRadarClient({
             <EvidenceBadge detail={dataSummary.latestRadarTime} kind="freshness" label="更新时间" />
             <StatusChip label="已尝试来源" tone="evidence" value={dataSummary.attemptedSources} />
             <StatusChip label="公开来源" tone="success" value={dataSummary.sourcesWithPublicItems} />
-            <StatusChip label="生成" tone="evidence" value="DeepSeek" />
+            <StatusChip label="生成" tone="caution" value="证据草稿" />
           </div>
           <h1 className="mt-4 text-3xl font-semibold text-radar-ink">事件提问</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
@@ -98,7 +98,7 @@ export function AskRadarClient({
           <ol className="mt-4 space-y-2 text-sm leading-6 text-radar-muted">
             {[
               "选择一个基于当前数据的问题",
-              "用 DeepSeek 基于检索证据生成回答",
+              "基于检索证据生成可复核回答",
               "检查事实、推断、不确定性和引用"
             ].map((item, index) => (
               <li className="flex gap-3" key={item}>
@@ -116,7 +116,7 @@ export function AskRadarClient({
         <section className="rounded-lg border border-radar-caution/40 bg-radar-caution/10 p-4 text-sm leading-6 text-radar-caution">
           <strong className="text-radar-ink">数据新鲜度提示：</strong>
           <span className="ml-1">{dataSummary.freshnessWarning}</span>
-          <span className="ml-1">DeepSeek 只会基于当前公开证据生成回答。</span>
+          <span className="ml-1">回答只会基于当前公开证据生成。</span>
         </section>
       ) : null}
 
@@ -134,7 +134,7 @@ export function AskRadarClient({
 
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm leading-6 text-radar-muted">
-              公开安全检索是证据来源；回答由 DeepSeek 在当前引用边界内生成。
+              公开安全检索是证据来源；默认生成不调用外部模型。
             </p>
             <button
               className="rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
@@ -198,6 +198,15 @@ function AnswerView({ answer }: { answer: AskAnswer }) {
         />
 
         <div className="space-y-5">
+          <EvidenceCoverageStrip
+            citations={answer.citations}
+            dataSource={answer.data_source}
+            gapCount={answer.uncertainty.length}
+            gapLabel="不确定性"
+            generationMode={answer.mode}
+            itemCount={answer.retrieved_item_count}
+          />
+
           <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
             <div className="flex flex-wrap gap-2">
               <EvidenceBadge

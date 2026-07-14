@@ -6,6 +6,13 @@ import { EmptyState } from "@/components/empty-state";
 import { EvidenceBadge } from "@/components/evidence-badge";
 import { ReportMarkdownExport } from "@/components/report-markdown-export";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
+import { loadRadarFeed } from "@/lib/radar/feed";
+import {
+  reportEntityTraceability,
+  reportSectionTraceability,
+  type ReportSectionTraceability,
+  type ReportEntityTraceability
+} from "@/lib/reports/entity-traceability";
 import { loadReportWorkflowDocumentById } from "@/lib/reports/load-report-data";
 import type { GeneratedReportSection, ReportWorkflowDocument } from "@/lib/reports/types";
 
@@ -15,11 +22,20 @@ export default async function ReportDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const report = await loadReportWorkflowDocumentById(decodeURIComponent(id));
+  const [report, feed] = await Promise.all([
+    loadReportWorkflowDocumentById(decodeURIComponent(id)),
+    loadRadarFeed()
+  ]);
 
   if (!report) {
     notFound();
   }
+
+  const traceability = reportEntityTraceability(report, feed.items);
+  const sectionTraceability = reportSectionTraceability(report, feed.items);
+  const sectionTraceabilityById = new Map(
+    sectionTraceability.map((section) => [section.section.id, section])
+  );
 
   return (
     <div className="space-y-8">
@@ -44,9 +60,9 @@ export default async function ReportDetailPage({
           </a>
           <a
             className="inline-flex rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black"
-            href="/write"
+            href="/radar"
           >
-            转到写作
+            查看雷达证据
           </a>
         </div>
       </section>
@@ -75,10 +91,21 @@ export default async function ReportDetailPage({
         <DetailList items={report.quality_gate_reasons} title="为什么报告偏薄" tone="caution" />
       ) : null}
 
+      <ReportDetailEntityTraceability
+        sectionTraceability={sectionTraceability}
+        traceability={traceability}
+      />
+
       <section className="space-y-4">
         <h2 className="text-lg font-semibold text-radar-ink">报告章节</h2>
         {report.sections.length > 0 ? (
-          report.sections.map((section) => <ReportSection key={section.id} section={section} />)
+          report.sections.map((section) => (
+            <ReportSection
+              key={section.id}
+              section={section}
+              traceability={sectionTraceabilityById.get(section.id)}
+            />
+          ))
         ) : (
           <EmptyState
             description="这条保存记录没有结构化报告章节。"
@@ -107,6 +134,78 @@ function DetailMetric({ label, value }: { label: string; value: string }) {
       <p className="text-xs font-semibold uppercase tracking-normal text-radar-muted">{label}</p>
       <p className="mt-2 break-words text-sm leading-6 text-radar-ink">{value}</p>
     </div>
+  );
+}
+
+function ReportDetailEntityTraceability({
+  sectionTraceability,
+  traceability
+}: {
+  sectionTraceability: ReportSectionTraceability[];
+  traceability: ReportEntityTraceability;
+}) {
+  const coveredSections = sectionTraceability.filter((section) => section.entityTraces.length > 0).length;
+
+  return (
+    <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft" id="report-entity-traceability">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-radar-ink">关联实体</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
+            这些实体来自当前报告引用可回溯到的公开雷达证据；它们不是报告外新增结论。
+          </p>
+        </div>
+        <StatusChip
+          label="实体"
+          tone={traceability.entityTraces.length > 0 ? "success" : "caution"}
+          value={traceability.entityTraces.length}
+        />
+        <StatusChip
+          label="章节覆盖"
+          tone={coveredSections > 0 ? "success" : "caution"}
+          value={`${coveredSections}/${sectionTraceability.length}`}
+        />
+      </div>
+
+      {traceability.entityTraces.length > 0 ? (
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {traceability.entityTraces.map((trace) => (
+            <article className="rounded-md border border-radar-line bg-radar-panel p-3" key={trace.href}>
+              <div className="flex flex-wrap gap-2">
+                <StatusChip label={trace.entity.name} tone="evidence" />
+                <EvidenceBadge detail={String(trace.evidenceItemCount)} kind="evidence" label="证据" />
+                <EvidenceBadge detail={String(trace.sourceCount)} kind="citation" label="来源" />
+                <EvidenceBadge detail={String(trace.needsReviewCount)} kind="uncertainty" label="待复核" />
+              </div>
+              <p className="mt-3 text-sm leading-6 text-radar-muted">
+                {publicText(trace.insight.reasons[0] ?? "该实体与当前报告引用存在公开证据关联。")}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <a
+                  className="rounded-md bg-radar-ink px-3 py-2 text-sm font-semibold text-white hover:bg-black"
+                  href={trace.href}
+                >
+                  打开实体详情
+                </a>
+                <a
+                  className="rounded-md border border-radar-line bg-white px-3 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
+                  href={`/radar?entity=${encodeURIComponent(trace.entity.name)}`}
+                >
+                  查看雷达证据
+                </a>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4">
+          <EmptyState
+            description="当前保存记录没有可回溯到实体详情页的公开引用。请补齐 source_item_ids、citations 或更多可用雷达证据。"
+            title="暂无关联实体"
+          />
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -151,7 +250,13 @@ function formatTimestamp(value: string | null | undefined) {
   }).format(date)} UTC`;
 }
 
-function ReportSection({ section }: { section: GeneratedReportSection }) {
+function ReportSection({
+  section,
+  traceability
+}: {
+  section: GeneratedReportSection;
+  traceability: ReportSectionTraceability | undefined;
+}) {
   return (
     <section className="rounded-lg border border-radar-line bg-white p-5 shadow-soft">
       <h3 className="text-base font-semibold text-radar-ink">{publicText(section.title)}</h3>
@@ -167,7 +272,54 @@ function ReportSection({ section }: { section: GeneratedReportSection }) {
       ) : (
         <p className="mt-3 text-sm leading-6 text-radar-muted">暂无章节要点。</p>
       )}
+      <SectionEntityCoverage traceability={traceability} />
     </section>
+  );
+}
+
+function SectionEntityCoverage({
+  traceability
+}: {
+  traceability: ReportSectionTraceability | undefined;
+}) {
+  if (!traceability) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 border-t border-radar-line pt-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h4 className="text-sm font-semibold text-radar-ink">章节实体覆盖</h4>
+        <EvidenceBadge detail={String(traceability.evidenceItems.length)} kind="evidence" label="证据" />
+        <EvidenceBadge detail={String(traceability.entityTraces.length)} kind="freshness" label="实体" />
+        <EvidenceBadge detail={String(traceability.sourceCount)} kind="citation" label="来源" />
+        <EvidenceBadge detail={String(traceability.needsReviewCount)} kind="uncertainty" label="待复核" />
+      </div>
+
+      {traceability.entityTraces.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {traceability.entityTraces.map((trace) => (
+            <a
+              className="rounded-md border border-radar-line bg-radar-panel px-3 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
+              href={trace.href}
+              key={trace.href}
+            >
+              {trace.entity.name} · {trace.evidenceItemCount} 证据
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-md border border-radar-line bg-radar-panel px-3 py-3 text-sm leading-6 text-radar-muted">
+          本章节引用暂未回溯到可展示实体；如果该章节要进入正式报告，需要补齐 citation id 或可复核公开证据。
+        </p>
+      )}
+
+      {traceability.missingEvidenceCount > 0 ? (
+        <p className="mt-3 text-sm leading-6 text-radar-caution">
+          本章节仍有 {traceability.missingEvidenceCount} 条缺失证据说明，实体覆盖不能替代补证据。
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -282,8 +434,8 @@ function modeLabel(report: ReportWorkflowDocument) {
     return "已保存报告记录";
   }
 
-  if (report.model_metadata.mode === "live_deepseek") {
-    return "DeepSeek 草稿";
+  if (report.mode === "live_deepseek") {
+    return "证据草稿";
   }
 
   return "证据草稿";

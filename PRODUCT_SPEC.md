@@ -2,7 +2,7 @@
 
 ## Public Homepage
 
-The homepage shows the current AI radar: top hotspots, latest event clusters, notable entities, and links to daily or weekly reports. It should support Chinese, English, and bilingual viewing.
+The homepage shows the current AI radar: today/top hotspot events, reader-facing category entry points, source-health summary, latest event clusters, notable entities, and links to daily or weekly reports. It should support Chinese, English, and bilingual viewing.
 
 ## Product Shell and Branding
 
@@ -24,6 +24,8 @@ Each item page should show the original URL, source, publication time, retrieved
 
 Support entity pages for companies, people, models, products, papers, and projects. Entity pages should show aliases, canonical links, related items, related clusters, recent score movement, and notes.
 
+Static Cloudflare and GitHub Pages mirrors must include an entity index and static entity detail pages, not just homepage/radar/report pages. Static entity pages should answer which entities are worth tracking, how many public signals support them, which sources/categories appear, whether the entity is linked to reports, what evidence still needs review, and which public citations form the entity timeline.
+
 ## Search and Filters
 
 Users should filter by keyword, topic, source type, language, entity type, time range, confidence, score, and report inclusion status.
@@ -32,11 +34,9 @@ Users should filter by keyword, topic, source type, language, entity type, time 
 
 Users can choose Chinese, English, or bilingual mode. Bilingual summaries should be generated from evidence and reviewed for meaning, not produced as unverified literal translation.
 
-## Q&A Box
+## Public Product Boundary
 
-The Q&A box answers questions against public radar data and public sources. It must cite sources, state time windows, and separate facts from inference and speculation.
-
-Phase 6 implements the first usable Q&A foundation over local generated radar-item JSON with synthetic mock fallback. It does not claim comprehensive current coverage unless a future persisted retrieval source supports that claim.
+The public product does not expose free-form generation assistants, Q&A, or writing/research assistant flows. Users should move through radar evidence, entity tracking, and reviewed reports. Public coverage summaries must come from public snapshot/public view fields and visible feed counts, not service-role operational tables. Public snapshots may include entity `name/type/confidence` for reader tracking, but not raw text, entity evidence text, internal pipeline conversion rates, or service-role operational table counts.
 
 ## Daily Report
 
@@ -45,12 +45,6 @@ Daily reports summarize the most important AI events for a selected date or last
 ## Weekly Report
 
 Weekly reports synthesize trends across seven days, including model releases, agent products, infrastructure, papers, investments, regulation, and open-source movement.
-
-## Writing Assistant Mode
-
-Writing assistant mode helps select article angles, outline arguments, collect evidence, and identify counterpoints. It must not invent facts or hide weak evidence.
-
-Phase 6 writing assistance returns evidence-bound topic candidates, caveats, counterpoints, missing evidence, and citations. It may use sections such as overseas, domestic, industry focus, and supplemental only when retrieved evidence supports them.
 
 ## Admin Dashboard
 

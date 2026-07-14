@@ -3,6 +3,7 @@ import "@/lib/config/load-cli-env";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -53,8 +54,9 @@ import type {
   UnderstandingStatus
 } from "@/lib/understanding/types";
 
-type CliOptions = {
+export type CliOptions = {
   mode: UnderstandingMode;
+  modeExplicit: boolean;
   limit: number | null;
   chunkSize: number;
   maxItemsPerSource: number;
@@ -69,7 +71,14 @@ type CliOptions = {
 
 type ChunkStatus = "completed" | "failed" | "persist_failed";
 
-type ChunkCheckpoint = {
+export type SourceFamilyItemCounts = Record<string, {
+  deduped: number;
+  included: number;
+  needs_review: number;
+  excluded: number;
+}>;
+
+export type ChunkCheckpoint = {
   index: number;
   source_ids: string[];
   status: ChunkStatus;
@@ -85,6 +94,7 @@ type ChunkCheckpoint = {
   duplicate_count: number;
   deepseek_api_call_count?: number;
   failure_families?: FailureFamilyCounts;
+  source_family_counts?: SourceFamilyItemCounts;
   persisted: boolean;
   persist_counts?: PersistCounts;
   source_results: IngestionSourceSummary[];
@@ -92,7 +102,7 @@ type ChunkCheckpoint = {
   error?: string;
 };
 
-type ActivationCheckpoint = {
+export type ActivationCheckpoint = {
   schema_version: 1;
   run_id: string;
   mode: UnderstandingMode;
@@ -115,6 +125,7 @@ type ChunkOutput = {
   understanding_run: UnderstandingRunSummary;
   raw_items: IngestionRawItem[];
   radar_items: UnderstandingRadarItem[];
+  source_family_counts?: SourceFamilyItemCounts;
   warnings: string[];
 };
 
@@ -173,24 +184,37 @@ async function main() {
   await fs.mkdir(latestDir, { recursive: true });
   await fs.mkdir(runsDir, { recursive: true });
 
-  const selectedSources = selectedSourcesForOptions(options);
-  const checkpoint = await initializeCheckpoint(options, selectedSources);
+  const storedCheckpoint = options.resume && fsSync.existsSync(checkpointPath)
+    ? await readJson<ActivationCheckpoint>(checkpointPath)
+    : null;
+  const initialSources = storedCheckpoint ? null : selectedSourcesForOptions(options);
+  const resumeSourceIds = storedCheckpoint
+    ? expandedResumeSourceIds(storedCheckpoint, options)
+    : undefined;
+  const checkpoint = storedCheckpoint
+    ? resolveResumeCheckpoint(storedCheckpoint, options, new Date().toISOString(), resumeSourceIds)
+    : initializeCheckpoint(options, initialSources ?? []);
+  const selectedSources = storedCheckpoint
+    ? selectedSourcesForCheckpoint(checkpoint)
+    : initialSources ?? [];
   const sourceById = new Map(selectedSources.map((source) => [source.id, source]));
   const registryById = new Map(readCleanedSources().map((source) => [source.id, source]));
   const chunks = chunkArray(checkpoint.selected_source_ids.slice(0, checkpoint.limit), checkpoint.chunk_size);
   let actions = 0;
+  let persistFailed = false;
 
   for (let index = 0; index < chunks.length; index += 1) {
     const existing = checkpoint.chunks.find((chunk) => chunk.index === index);
+    const matchesPlan = existing && arraysEqual(existing.source_ids, chunks[index]);
 
-    if (existing?.status === "completed") {
-      if (options.persist && !existing.persisted && existing.output_file) {
+    if (matchesPlan && (existing.status === "completed" || existing.status === "persist_failed")) {
+      if (options.persist && !existing.persisted) {
         if (shouldStop(options, actions)) {
           break;
         }
 
         actions += 1;
-        await persistExistingChunk(checkpoint, existing);
+        persistFailed = !(await persistExistingChunk(checkpoint, existing, selectedSources)) || persistFailed;
       }
       continue;
     }
@@ -211,6 +235,7 @@ async function main() {
       sources: chunkSources
     });
     upsertChunkCheckpoint(checkpoint, chunkCheckpoint);
+    persistFailed = chunkCheckpoint.status === "persist_failed" || persistFailed;
     await writeCheckpointAndSummary(checkpoint, selectedSources);
   }
 
@@ -220,15 +245,19 @@ async function main() {
 
   if (options.json) {
     console.log(JSON.stringify(summary, null, 2));
-    return;
+  } else {
+    printSummary(summary);
   }
 
-  printSummary(summary);
+  if (persistFailed) {
+    process.exitCode = 1;
+  }
 }
 
-function parseArgs(args: string[]): CliOptions {
+export function parseArgs(args: string[]): CliOptions {
   const options: CliOptions = {
     mode: "mock",
+    modeExplicit: false,
     limit: null,
     chunkSize: 5,
     maxItemsPerSource: 3,
@@ -249,6 +278,7 @@ function parseArgs(args: string[]): CliOptions {
         break;
       case "--mode":
         options.mode = readModeArg(args, index);
+        options.modeExplicit = true;
         index += 1;
         break;
       case "--limit":
@@ -358,17 +388,59 @@ function selectedSourcesForOptions(options: CliOptions) {
   return selection.sources;
 }
 
-async function initializeCheckpoint(options: CliOptions, selectedSources: SelectedSource[]): Promise<ActivationCheckpoint> {
-  if (options.resume && fsSync.existsSync(checkpointPath)) {
-    const checkpoint = await readJson<ActivationCheckpoint>(checkpointPath);
-    return {
-      ...checkpoint,
-      limit: Math.min(options.limit ?? checkpoint.limit, checkpoint.selected_source_ids.length),
-      mode: options.mode,
-      updated_at: new Date().toISOString()
-    };
+function selectedSourcesForCheckpoint(checkpoint: ActivationCheckpoint) {
+  const registryById = new Map(readCleanedSources().map((source) => [source.id, source]));
+  const plannedSourceIds = checkpoint.selected_source_ids.slice(0, checkpoint.limit);
+  const sources = plannedSourceIds
+    .map((sourceId) => registryById.get(sourceId))
+    .filter((source): source is SelectedSource => isSelectedSource(source));
+  const selectedIds = new Set(sources.map((source) => source.id));
+  const missing = plannedSourceIds.filter((sourceId) => !selectedIds.has(sourceId));
+
+  if (missing.length > 0) {
+    throw new Error(`Checkpoint sources are missing or no longer eligible: ${missing.join(", ")}`);
   }
 
+  return sources;
+}
+
+export function resolveResumeCheckpoint(
+  checkpoint: ActivationCheckpoint,
+  options: CliOptions,
+  updatedAt = new Date().toISOString(),
+  candidateSourceIds: string[] = checkpoint.selected_source_ids
+): ActivationCheckpoint {
+  const selectedSourceIds = options.limit && options.limit > checkpoint.selected_source_ids.length
+    ? uniqueMessages([...checkpoint.selected_source_ids, ...candidateSourceIds])
+    : checkpoint.selected_source_ids;
+
+  return {
+    ...checkpoint,
+    limit: Math.min(options.limit ?? checkpoint.limit, selectedSourceIds.length),
+    mode: options.modeExplicit ? options.mode : checkpoint.mode,
+    selected_source_ids: selectedSourceIds,
+    updated_at: updatedAt
+  };
+}
+
+function expandedResumeSourceIds(checkpoint: ActivationCheckpoint, options: CliOptions) {
+  if (!options.limit || options.limit <= checkpoint.selected_source_ids.length) {
+    return checkpoint.selected_source_ids;
+  }
+
+  const selection = selectSources({
+    limit: options.limit,
+    method: DEFAULT_SELECTION_OPTIONS.method,
+    maxItemsPerSource: checkpoint.max_items_per_source
+  });
+
+  return uniqueMessages([
+    ...checkpoint.selected_source_ids,
+    ...selection.sources.map((source) => source.id)
+  ]);
+}
+
+function initializeCheckpoint(options: CliOptions, selectedSources: SelectedSource[]): ActivationCheckpoint {
   const now = new Date().toISOString();
   const requestedLimit = options.limit ?? (options.sourceIds?.length ? selectedSources.length : 10);
   const limit = Math.min(requestedLimit, selectedSources.length);
@@ -405,7 +477,7 @@ async function runChunk(input: {
         runIngestion({
           limit: 1,
           method: DEFAULT_SELECTION_OPTIONS.method,
-          maxItemsPerSource: input.options.maxItemsPerSource,
+          maxItemsPerSource: input.checkpoint.max_items_per_source,
           sourceId: source.id
         })
       )
@@ -428,13 +500,20 @@ async function runChunk(input: {
       inputPath: rawInputPath,
       limit: Math.max(1, deduped.items.length),
       maxTextChars: 6000,
-      mode: input.options.mode
+      mode: input.checkpoint.mode
     });
     const warnings = uniqueMessages([
       ...sourceRuns.flatMap((run) => run.run.warnings),
       ...understanding.run.warnings,
       ...understanding.run.errors
     ]);
+    const sourceFamilyCounts = buildChunkSourceFamilyCounts({
+      dedupedItems: deduped.items,
+      radarItems: understanding.radarItems,
+      sourceRuns,
+      sources: input.sources,
+      totalDuplicateCount: ingestionRun.duplicate_count
+    });
 
     const output: ChunkOutput = {
       schema_version: 1,
@@ -445,19 +524,12 @@ async function runChunk(input: {
       understanding_run: understanding.run,
       raw_items: deduped.items,
       radar_items: understanding.radarItems,
+      source_family_counts: sourceFamilyCounts,
       warnings
     };
-
-    let persistCounts: PersistCounts | undefined;
-    let persisted = false;
-    if (input.options.persist) {
-      persistCounts = await persistActivationData(output.raw_items, output.ingestion_run, output.radar_items, output.understanding_run);
-      persisted = true;
-    }
-
     await writeJson(chunkOutputPath, output);
 
-    return {
+    const chunkCheckpoint: ChunkCheckpoint = {
       index: input.chunkIndex,
       source_ids: sourceIds,
       status: "completed",
@@ -470,11 +542,33 @@ async function runChunk(input: {
       duplicate_count: ingestionRun.duplicate_count,
       deepseek_api_call_count: understanding.run.api_call_count,
       failure_families: chunkFailureFamilies(ingestionRun.source_results, output.radar_items, ingestionRun.duplicate_count),
-      persisted,
-      persist_counts: persistCounts,
+      source_family_counts: sourceFamilyCounts,
+      persisted: false,
       source_results: ingestionRun.source_results,
       warnings
     };
+
+    if (!input.options.persist) {
+      return chunkCheckpoint;
+    }
+
+    try {
+      chunkCheckpoint.persist_counts = await persistActivationData(
+        output.raw_items,
+        output.ingestion_run,
+        output.radar_items,
+        output.understanding_run
+      );
+      chunkCheckpoint.persisted = true;
+      return chunkCheckpoint;
+    } catch (error) {
+      return {
+        ...chunkCheckpoint,
+        status: "persist_failed",
+        ended_at: new Date().toISOString(),
+        error: sanitizeLogValue(error instanceof Error ? error.message : String(error))
+      };
+    }
   } catch (error) {
     return {
       index: input.chunkIndex,
@@ -499,26 +593,35 @@ async function runChunk(input: {
   }
 }
 
-async function persistExistingChunk(checkpoint: ActivationCheckpoint, chunk: ChunkCheckpoint) {
-  if (!chunk.output_file) {
-    throw new Error(`Chunk ${chunk.index + 1} has no output file to persist.`);
-  }
-
-  const output = await readJson<ChunkOutput>(path.join(process.cwd(), chunk.output_file));
+async function persistExistingChunk(
+  checkpoint: ActivationCheckpoint,
+  chunk: ChunkCheckpoint,
+  selectedSources: SelectedSource[]
+) {
   try {
+    if (!chunk.output_file) {
+      throw new Error(`Chunk ${chunk.index + 1} has no output file to persist.`);
+    }
+
+    const output = await readJson<ChunkOutput>(path.join(process.cwd(), chunk.output_file));
     const persistCounts = await persistActivationData(output.raw_items, output.ingestion_run, output.radar_items, output.understanding_run);
     chunk.persisted = true;
     chunk.persist_counts = persistCounts;
     chunk.status = "completed";
     chunk.ended_at = new Date().toISOString();
+    delete chunk.error;
     checkpoint.updated_at = chunk.ended_at;
   } catch (error) {
+    chunk.persisted = false;
+    delete chunk.persist_counts;
     chunk.status = "persist_failed";
+    chunk.ended_at = new Date().toISOString();
     chunk.error = sanitizeLogValue(error instanceof Error ? error.message : String(error));
-    checkpoint.updated_at = new Date().toISOString();
+    checkpoint.updated_at = chunk.ended_at;
   }
 
-  await writeCheckpointAndSummary(checkpoint, []);
+  await writeCheckpointAndSummary(checkpoint, selectedSources);
+  return chunk.persisted;
 }
 
 function buildChunkIngestionRun(input: {
@@ -598,6 +701,102 @@ function statusCountFields(items: UnderstandingRadarItem[]) {
     needs_review_count: counts.needs_review,
     excluded_count: counts.excluded,
     failed_count: counts.failed
+  };
+}
+
+export function itemCountsBySourceFamily(
+  items: Array<Pick<UnderstandingRadarItem, "source_id" | "status">>,
+  familyBySourceId: ReadonlyMap<string, string>
+) {
+  const counts: SourceFamilyItemCounts = {};
+
+  for (const item of items) {
+    const family = familyBySourceId.get(item.source_id) ?? "unknown";
+    if (item.status === "included") {
+      incrementSourceFamilyMetric(counts, family, "included");
+    } else if (item.status === "needs_review") {
+      incrementSourceFamilyMetric(counts, family, "needs_review");
+    } else {
+      incrementSourceFamilyMetric(counts, family, "excluded");
+    }
+  }
+
+  return compactSourceFamilyItemCounts(counts);
+}
+
+function buildChunkSourceFamilyCounts(input: {
+  dedupedItems: IngestionRawItem[];
+  radarItems: UnderstandingRadarItem[];
+  sourceRuns: Array<Awaited<ReturnType<typeof runIngestion>>>;
+  sources: SelectedSource[];
+  totalDuplicateCount: number;
+}) {
+  const familyBySourceId = new Map(input.sources.map((source) => [source.id, sourceFamily(source)]));
+  const counts = itemCountsBySourceFamily(input.radarItems, familyBySourceId);
+  const duplicateContributions: Array<{ family: string; count: number }> = [];
+
+  input.sourceRuns.forEach((run, index) => {
+    const sourceId = input.sources[index]?.id ?? run.run.source_results[0]?.source_id;
+    duplicateContributions.push({
+      family: sourceId ? familyBySourceId.get(sourceId) ?? "unknown" : "unknown",
+      count: run.run.duplicate_count
+    });
+  });
+
+  const beforeCounts = countsBySourceId(input.sourceRuns.flatMap((run) => run.rawItems));
+  const afterCounts = countsBySourceId(input.dedupedItems);
+  for (const [sourceId, beforeCount] of beforeCounts) {
+    duplicateContributions.push({
+      family: familyBySourceId.get(sourceId) ?? "unknown",
+      count: Math.max(0, beforeCount - (afterCounts.get(sourceId) ?? 0))
+    });
+  }
+
+  let remaining = input.totalDuplicateCount;
+  for (const contribution of duplicateContributions) {
+    const attributed = Math.min(remaining, Math.max(0, contribution.count));
+    incrementSourceFamilyMetric(counts, contribution.family, "deduped", attributed);
+    remaining -= attributed;
+  }
+  incrementSourceFamilyMetric(counts, "unknown", "deduped", remaining);
+
+  return compactSourceFamilyItemCounts(counts);
+}
+
+function countsBySourceId(items: Array<Pick<IngestionRawItem, "source_id">>) {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    counts.set(item.source_id, (counts.get(item.source_id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function incrementSourceFamilyMetric(
+  counts: SourceFamilyItemCounts,
+  family: string,
+  metric: keyof SourceFamilyItemCounts[string],
+  amount = 1
+) {
+  if (amount <= 0) {
+    return;
+  }
+  const current = counts[family] ?? emptySourceFamilyItemCounts();
+  current[metric] += amount;
+  counts[family] = current;
+}
+
+function compactSourceFamilyItemCounts(counts: SourceFamilyItemCounts) {
+  return Object.fromEntries(
+    Object.entries(counts).filter(([, value]) => Object.values(value).some((count) => count > 0))
+  ) as SourceFamilyItemCounts;
+}
+
+function emptySourceFamilyItemCounts() {
+  return {
+    deduped: 0,
+    included: 0,
+    needs_review: 0,
+    excluded: 0
   };
 }
 
@@ -709,7 +908,12 @@ async function persistIngestion(
     throw new Error("Supabase did not return the persisted ingestion run id.");
   }
 
-  const rawItemRowsUpserted = await upsertRows(supabase, "raw_items", rawItemRows(rawItems, sourceIds, persistedRun.id), "local_id");
+  const rawItemRowsUpserted = await upsertRows(
+    supabase,
+    "raw_items",
+    rawItemRows(rawItems, sourceIds, persistedRun.id),
+    "source_id,canonical_url"
+  );
   return {
     ingestionRunsUpserted: 1,
     rawItemRowsUpserted
@@ -748,7 +952,7 @@ async function persistUnderstanding(
   }
 
   const rows = radarItemRows(radarItems, sourceIds, rawItemIds, persistedRun.id);
-  const radarItemRowsUpserted = await upsertRows(supabase, "radar_items", rows, "local_id");
+  const radarItemRowsUpserted = await upsertRows(supabase, "radar_items", rows, "raw_item_id");
   const radarIds = await loadLocalIds(supabase, "radar_items", radarItems.map((item) => item.id));
   const { entityIds, entityRowsUpserted } = await upsertEntities(supabase, radarItems);
   const itemEntityRowsUpserted = await upsertItemEntities(supabase, radarItems, radarIds, entityIds);
@@ -956,17 +1160,35 @@ async function writeCheckpointAndSummary(checkpoint: ActivationCheckpoint, selec
 }
 
 async function buildSummary(checkpoint: ActivationCheckpoint, selectedSources: SelectedSource[]) {
-  const sourceById = new Map(selectedSources.map((source) => [source.id, source]));
-  const chunks = checkpoint.chunks.sort((left, right) => left.index - right.index);
+  const familyBySourceId = new Map(selectedSources.map((source) => [source.id, sourceFamily(source)]));
+  const plannedChunks = chunkArray(
+    checkpoint.selected_source_ids.slice(0, checkpoint.limit),
+    checkpoint.chunk_size
+  );
+  const chunks = checkpoint.chunks
+    .filter((chunk) => plannedChunks[chunk.index] && arraysEqual(chunk.source_ids, plannedChunks[chunk.index]))
+    .sort((left, right) => left.index - right.index);
+  const auditableChunks = await Promise.all(
+    chunks.map(async (chunk) => ({
+      ...chunk,
+      source_family_counts: await sourceFamilyCountsForSummary(chunk, familyBySourceId)
+    }))
+  );
   const completed = chunks.filter((chunk) => chunk.status === "completed");
-  const failed = chunks.filter((chunk) => chunk.status === "failed" || chunk.status === "persist_failed");
+  const processingFailed = chunks.filter((chunk) => chunk.status === "failed");
+  const persistFailed = chunks.filter((chunk) => chunk.status === "persist_failed");
+  const persisted = chunks.filter((chunk) => chunk.persisted);
+  const pendingPersistence = completed.filter((chunk) => !chunk.persisted);
   const totals = {
     selected_sources: checkpoint.selected_source_ids.slice(0, checkpoint.limit).length,
-    chunks_total: Math.ceil(checkpoint.limit / checkpoint.chunk_size),
+    chunks_total: plannedChunks.length,
     chunks_attempted: chunks.length,
     chunks_succeeded: completed.length,
-    chunks_failed: failed.length,
-    chunks_persisted: completed.filter((chunk) => chunk.persisted).length,
+    chunks_failed: processingFailed.length + persistFailed.length,
+    chunks_processing_failed: processingFailed.length,
+    chunks_persisted: persisted.length,
+    chunks_persist_failed: persistFailed.length,
+    chunks_pending_persistence: pendingPersistence.length,
     raw_items: sum(chunks.map((chunk) => chunk.raw_item_count)),
     radar_items: sum(chunks.map((chunk) => chunk.radar_item_count)),
     included: sum(chunks.map((chunk) => chunk.included_count)),
@@ -989,15 +1211,69 @@ async function buildSummary(checkpoint: ActivationCheckpoint, selectedSources: S
       max_items_per_source: checkpoint.max_items_per_source
     },
     totals,
-    source_families: familyStatuses(checkpoint, sourceById),
-    failure_families: mergeFailureFamilyCounts(chunks.map((chunk) => chunk.failure_families ?? {})),
-    chunks,
+    persistence: {
+      chunks_persisted: persisted.length,
+      chunks_failed: persistFailed.length,
+      chunks_pending: pendingPersistence.length
+    },
+    source_families: aggregateSourceFamilyStatuses(
+      checkpoint.selected_source_ids.slice(0, checkpoint.limit),
+      familyBySourceId,
+      auditableChunks
+    ),
+    failure_families: aggregateFailureFamilies(chunks),
+    chunks: auditableChunks,
     supabase_counts: await loadSupabaseCounts(),
-    warnings: uniqueMessages([...checkpoint.warnings, ...chunks.flatMap((chunk) => chunk.warnings)])
+    warnings: uniqueMessages([...checkpoint.warnings, ...auditableChunks.flatMap((chunk) => chunk.warnings)])
   };
 }
 
-function familyStatuses(checkpoint: ActivationCheckpoint, sourceById: Map<string, SelectedSource>) {
+async function sourceFamilyCountsForSummary(
+  chunk: ChunkCheckpoint,
+  familyBySourceId: ReadonlyMap<string, string>
+) {
+  if (chunk.source_family_counts) {
+    return chunk.source_family_counts;
+  }
+
+  if (chunk.output_file) {
+    try {
+      const output = await readJson<ChunkOutput>(path.join(process.cwd(), chunk.output_file));
+      if (output.source_family_counts) {
+        return output.source_family_counts;
+      }
+
+      const counts = itemCountsBySourceFamily(output.radar_items, familyBySourceId);
+      attributeLegacyDuplicates(counts, chunk, familyBySourceId);
+      return compactSourceFamilyItemCounts(counts);
+    } catch {
+      // Fall through to a single unknown bucket so legacy totals remain auditable.
+    }
+  }
+
+  const counts: SourceFamilyItemCounts = {};
+  incrementSourceFamilyMetric(counts, "unknown", "included", chunk.included_count);
+  incrementSourceFamilyMetric(counts, "unknown", "needs_review", chunk.needs_review_count);
+  incrementSourceFamilyMetric(counts, "unknown", "excluded", chunk.excluded_count + chunk.failed_count);
+  attributeLegacyDuplicates(counts, chunk, familyBySourceId);
+  return compactSourceFamilyItemCounts(counts);
+}
+
+function attributeLegacyDuplicates(
+  counts: SourceFamilyItemCounts,
+  chunk: ChunkCheckpoint,
+  familyBySourceId: ReadonlyMap<string, string>
+) {
+  const families = uniqueMessages(chunk.source_ids.map((sourceId) => familyBySourceId.get(sourceId) ?? "unknown"));
+  const family = families.length === 1 ? families[0] : "unknown";
+  incrementSourceFamilyMetric(counts, family, "deduped", chunk.duplicate_count);
+}
+
+export function aggregateSourceFamilyStatuses(
+  selectedSourceIds: string[],
+  familyBySourceId: ReadonlyMap<string, string>,
+  chunks: Array<Pick<ChunkCheckpoint, "source_results" | "source_family_counts">>
+) {
   const statuses = new Map<string, {
     selected: number;
     fetched: number;
@@ -1009,18 +1285,16 @@ function familyStatuses(checkpoint: ActivationCheckpoint, sourceById: Map<string
     excluded: number;
   }>();
 
-  for (const sourceId of checkpoint.selected_source_ids.slice(0, checkpoint.limit)) {
-    const source = sourceById.get(sourceId);
-    const family = source ? sourceFamily(source) : "unknown";
+  for (const sourceId of selectedSourceIds) {
+    const family = familyBySourceId.get(sourceId) ?? "unknown";
     const current = statuses.get(family) ?? emptyFamilyStatus();
     current.selected += 1;
     statuses.set(family, current);
   }
 
-  for (const chunk of checkpoint.chunks) {
+  for (const chunk of chunks) {
     for (const result of chunk.source_results) {
-      const source = sourceById.get(result.source_id);
-      const family = source ? sourceFamily(source) : "unknown";
+      const family = familyBySourceId.get(result.source_id) ?? "unknown";
       const current = statuses.get(family) ?? emptyFamilyStatus();
 
       if (result.status === "success") {
@@ -1033,16 +1307,12 @@ function familyStatuses(checkpoint: ActivationCheckpoint, sourceById: Map<string
       statuses.set(family, current);
     }
 
-    const families = uniqueMessages(chunk.source_ids.map((sourceId) => {
-      const source = sourceById.get(sourceId);
-      return source ? sourceFamily(source) : "unknown";
-    }));
-    for (const family of families) {
+    for (const [family, counts] of Object.entries(chunk.source_family_counts ?? {})) {
       const current = statuses.get(family) ?? emptyFamilyStatus();
-      current.deduped += chunk.duplicate_count;
-      current.included += chunk.included_count;
-      current.needs_review += chunk.needs_review_count;
-      current.excluded += chunk.excluded_count + chunk.failed_count;
+      current.deduped += counts.deduped;
+      current.included += counts.included;
+      current.needs_review += counts.needs_review;
+      current.excluded += counts.excluded;
       statuses.set(family, current);
     }
   }
@@ -1050,6 +1320,12 @@ function familyStatuses(checkpoint: ActivationCheckpoint, sourceById: Map<string
   return Object.fromEntries(
     Array.from(statuses.entries()).sort(([left], [right]) => left.localeCompare(right))
   );
+}
+
+export function aggregateFailureFamilies(
+  chunks: Array<Pick<ChunkCheckpoint, "failure_families">>
+) {
+  return mergeFailureFamilyCounts(chunks.map((chunk) => chunk.failure_families ?? {}));
 }
 
 function emptyFamilyStatus() {
@@ -1182,7 +1458,7 @@ function printSummary(summary: Awaited<ReturnType<typeof buildSummary>>) {
   console.log(`Run: ${summary.run_id}`);
   console.log(`Mode: ${summary.mode}`);
   console.log(`Chunks attempted/succeeded/failed: ${summary.totals.chunks_attempted}/${summary.totals.chunks_succeeded}/${summary.totals.chunks_failed}`);
-  console.log(`Chunks persisted: ${summary.totals.chunks_persisted}`);
+  console.log(`Chunks persisted/persist failed/pending: ${summary.totals.chunks_persisted}/${summary.totals.chunks_persist_failed}/${summary.totals.chunks_pending_persistence}`);
   console.log(`Raw/radar items: ${summary.totals.raw_items}/${summary.totals.radar_items}`);
   console.log(`Included / needs_review / excluded / failed: ${summary.totals.included} / ${summary.totals.needs_review} / ${summary.totals.excluded} / ${summary.totals.failed}`);
   console.log(`Duplicates: ${summary.totals.duplicates}`);
@@ -1224,6 +1500,10 @@ function chunkArray<T>(items: T[], size: number) {
     chunks.push(items.slice(index, index + size));
   }
   return chunks;
+}
+
+function arraysEqual(left: string[], right: string[]) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function statusCounts(statuses: UnderstandingStatus[]): Record<UnderstandingStatus, number> {
@@ -1290,7 +1570,21 @@ function sanitizeLogValue(value: string) {
     .slice(0, 500);
 }
 
-main().catch((error) => {
-  console.error(sanitizeLogValue(error instanceof Error ? error.message : String(error)));
-  process.exit(1);
-});
+function isDirectExecution() {
+  if (!process.argv[1]) {
+    return false;
+  }
+
+  const entryPath = path.resolve(process.argv[1]);
+  const modulePath = fileURLToPath(import.meta.url);
+  return process.platform === "win32"
+    ? entryPath.toLowerCase() === modulePath.toLowerCase()
+    : entryPath === modulePath;
+}
+
+if (isDirectExecution()) {
+  main().catch((error) => {
+    console.error(sanitizeLogValue(error instanceof Error ? error.message : String(error)));
+    process.exit(1);
+  });
+}

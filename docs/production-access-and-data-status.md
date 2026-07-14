@@ -4,6 +4,79 @@ Date: May 22, 2026
 
 Production URL: https://ai-radar-web-luosongred-5507s-projects.vercel.app
 
+Status note: this is a historical production access record. Current product boundaries remove public generation assistants and keep public surfaces centered on radar, entities, and reports.
+
+## Current Supabase Availability Note
+
+Date: July 1, 2026
+
+Supabase MCP project lookup confirms the configured AI Industry Radar project ref `phurrofgzqvawhookqbv` is `ACTIVE_HEALTHY` in `ap-northeast-1` on Postgres 17.6.1. The project had previously been `INACTIVE`, and the project subdomain failed DNS resolution from the local resolver and public resolvers (`1.1.1.1`, `8.8.8.8`) while `supabase.co` itself resolved and served HTTPS normally. That historical failure was a project-availability blocker, not an application-code failure.
+
+Current public-contract release gate:
+
+```json
+{
+  "ok": true,
+  "allowedStatus": 200,
+  "forbiddenStatus": 400,
+  "forbiddenEvidenceStatus": 400,
+  "forbiddenModelMetadataStatus": 400,
+  "selectAllStatus": 200,
+  "rowReturned": true,
+  "allowedKeys": [
+    "entities",
+    "id",
+    "local_id"
+  ],
+  "selectAllKeys": [
+    "ai_relevance_score",
+    "categories",
+    "collected_at",
+    "confidence",
+    "created_at",
+    "credibility_score",
+    "entities",
+    "exclusion_reason",
+    "freshness_score",
+    "id",
+    "importance_score",
+    "language",
+    "local_id",
+    "novelty_score",
+    "overall_score",
+    "processed_at",
+    "published_at",
+    "source_id",
+    "source_name",
+    "source_tier",
+    "source_weight",
+    "status",
+    "summary_en",
+    "summary_zh",
+    "tags",
+    "title",
+    "topics",
+    "understanding_status",
+    "updated_at",
+    "url",
+    "why_it_matters"
+  ],
+  "entityKeys": [
+    "confidence",
+    "name",
+    "type"
+  ],
+  "forbiddenRejected": true,
+  "forbiddenEvidenceRejected": true,
+  "forbiddenModelMetadataRejected": true,
+  "forbiddenCode": "42703",
+  "forbiddenEvidenceCode": "42703",
+  "forbiddenModelMetadataCode": "42703"
+}
+```
+
+Release status: `npm run supabase:public-contract` passes. The remote migration history includes `20260701062850 public_radar_items_public_safe_entities` and `20260701063844 public_radar_items_remove_evidence_notes_sensitive_urls_v2`, applied from local migration `supabase/migrations/202607010001_public_radar_items_entities.sql`. The public `public_radar_items` view now includes entity `name/type/confidence`, no longer exposes `raw_item_id`, `evidence_notes`, or `model_metadata`, and rejects sensitive query-parameter URLs.
+
 ## Access Status
 
 Root cause: the local/company DNS resolver returned non-Vercel addresses for the production Vercel hostname, including `199.59.150.45`, which timed out on port 443. A pinned request to the Vercel edge IP `76.76.21.21` returned `200 OK`.
@@ -34,7 +107,7 @@ Rollback:
 
 ## Production Content
 
-The production homepage serves AI Industry Radar content. Expected strings such as `AI Industry Radar`, `Editorial Intelligence Desk`, `Radar`, `Reports`, `Ask`, and `Write` are present. Wrong LLM Ecosystem strings checked in this milestone are absent. Legacy routes `/rankings`, `/models`, `/compare`, `/sentiment`, and `/tools` return `404`.
+At the time of this record, the production homepage served AI Industry Radar content. Current expected public strings are `AI Industry Radar`, `Radar`, `Entities`, and `Reports`; public assistant route expectations are superseded. Wrong LLM Ecosystem strings checked in this milestone are absent. Legacy routes `/rankings`, `/models`, `/compare`, `/sentiment`, and `/tools` return `404`.
 
 ## Current Data Counts
 
@@ -82,7 +155,7 @@ Latest saved report candidates:
 - `/` Radar Pulse uses real Supabase-backed categories, sources, source families, and latest signals.
 - `/radar` uses `supabase_radar_items`, with server-side filters, category tabs, search, status counts, caveats, evidence rows, and citations.
 - `/reports` prefers saved Supabase report candidates and exposes saved candidate mode, status, windows, citations, caveats, markdown export, and detail links.
-- `/ask` and `/write` show query/prompt examples shaped by current categories, display data source and caveats, and call public APIs in mock generation mode without changing response shapes.
+- Current public surfaces should not include public generation assistants; radar, entity, and report pages carry the evidence, caveat, and citation surfaces.
 
 ## Data Growth Attempt
 

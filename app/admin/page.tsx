@@ -7,7 +7,8 @@ import { EvidenceBadge } from "@/components/evidence-badge";
 import { StatusChip } from "@/components/status-chip";
 import { readCleanedSources } from "@/lib/ingestion/select-sources";
 import { mockRadarItems } from "@/lib/radar/mock-data";
-import { countBy, isSourceHealthEligible } from "@/lib/supabase/persistence";
+import { isSourceHealthEligible } from "@/lib/ingestion/source-health";
+import { countBy } from "@/lib/supabase/persistence";
 
 const sections = [
   {
@@ -27,10 +28,18 @@ const sections = [
     tone: "admin" as const
   },
   {
+    boundary: "external_unreviewed",
+    href: "/admin/source-gaps",
+    title: "Source gaps",
+    description: "Compare LearnPrompt public signals with AI Radar's public snapshot to classify source-repair gaps.",
+    metric: "operator-only",
+    tone: "caution" as const
+  },
+  {
     boundary: "local/dry-run",
     href: "/admin/ingestion",
     title: "Ingestion",
-    description: "Trace source selection, local artifacts, understanding output, and write-gated persistence commands.",
+    description: "Trace source selection, local artifacts, understanding output, and mutation-gated persistence commands.",
     metric: "manual only",
     tone: "caution" as const
   },
@@ -66,7 +75,7 @@ export default function AdminPage() {
       <section>
         <div className="flex flex-wrap items-center gap-2">
           <StatusChip label="Production-safe Analyst Console" tone="admin" />
-          <StatusChip label="Writes gated" tone="risk" />
+          <StatusChip label="Mutations gated" tone="risk" />
           <StatusChip label="Scheduled dry-run only" tone="caution" />
         </div>
         <h1 className="mt-4 text-3xl font-semibold text-radar-ink">
@@ -75,8 +84,9 @@ export default function AdminPage() {
         <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
           Operations entry point for source review, local ingestion, understanding
           scoring, read-only retrieval, and feature-flag boundaries. This console
-          documents state and commands; it does not enable production writes,
-          scheduled persistence, live model calls, or source-health writes.
+          documents state and commands; it does not enable production
+          mutations, scheduled persistence, live model calls, or source-health
+          history updates.
         </p>
       </section>
 
@@ -109,7 +119,7 @@ export default function AdminPage() {
           value={mockRadarItems.length}
         />
         <AdminStatusCard
-          detail="Supabase retrieval is read-only; persistence scripts remain dry-run unless CLI and env gates both allow writes."
+          detail="Supabase retrieval is read-only; persistence scripts remain dry-run unless CLI and env gates both allow mutations."
           label="Persistence"
           tone="risk"
           value="gated"
@@ -135,7 +145,7 @@ export default function AdminPage() {
               System boundaries
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
-              Read-only status, dry-run scripts, and write-gated scripts are
+              Read-only status, dry-run scripts, and mutation-gated scripts are
               separate concepts. No admin surface here executes commands.
             </p>
           </div>
@@ -146,8 +156,8 @@ export default function AdminPage() {
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <BoundaryItem
-            detail="Supabase persistence requires explicit CLI write mode and ENABLE_SUPABASE_WRITES=true; admin UI remains non-writing."
-            label="Supabase writes"
+            detail="Supabase persistence requires explicit CLI mutation mode and ENABLE_SUPABASE_WRITES=true; admin UI remains non-mutating."
+            label="Supabase mutations"
             tone="risk"
           />
           <BoundaryItem
@@ -161,8 +171,8 @@ export default function AdminPage() {
             tone="caution"
           />
           <BoundaryItem
-            detail="Source-health status can be dry-run reviewed only; write history is not enabled here."
-            label="Source-health writes"
+            detail="Source-health status can be dry-run reviewed only; history persistence is not enabled here."
+            label="Source-health history"
             tone="risk"
           />
         </div>
@@ -226,7 +236,7 @@ export default function AdminPage() {
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
               These links inspect public read surfaces only. They do not create
-              review tasks, publish reports, run live models, or write to Supabase.
+              review tasks, publish reports, run live models, or mutate Supabase.
             </p>
           </div>
           <StatusChip label="Read-only" tone="success" />

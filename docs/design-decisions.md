@@ -40,7 +40,7 @@ Rejected patterns:
 Phase 8.2, 8.3, and 8.4 should redesign surfaces deliberately after the foundation is agreed:
 
 - Phase 8.2: public/product page hierarchy and evidence-first homepage or Radar improvements.
-- Phase 8.3: Ask and Write response anatomy, citation visibility, and uncertainty states.
+- Phase 8.3: historical public assistant response anatomy, later superseded by the no-public-generation-assistant boundary.
 - Phase 8.4: admin console density, write gates, source/review operations, and table ergonomics.
 
 The Phase 8.1 foundation intentionally avoids broad page redesigns.
@@ -53,21 +53,23 @@ The `/` route now carries the public product direction instead of a generic skel
 
 ### Data Source Disclosure Is Route-Level
 
-The homepage preview labels itself as mock data, but it does not add global Supabase/local/mock noise to the shell. Ask and Write remain responsible for disclosing the actual route-level retrieval source: Supabase public view when enabled, local understanding output when present, or mock fallback.
+The homepage preview labels itself as mock data, but it does not add global Supabase/local/mock noise to the shell. Current public radar, entity, and report surfaces disclose their own data source and evidence boundary.
 
 ### Admin Is Distinguished Without a New Sidebar
 
 Admin remains in the top navigation, but it is visually grouped as operations. This keeps route names stable and avoids introducing an admin sidebar before the broader admin console redesign.
 
-## Phase 8.3 Ask and Write Response Surface Decisions
+## Phase 8.3 Public Assistant Decisions (Superseded)
+
+This section records historical decisions from an earlier implementation. The current product boundary removes public generation assistants and keeps the public flow centered on radar, entities, reports, and admin review.
 
 ### Data Source Comes Before Synthesis
 
-`/ask` and `/write` now use a shared evidence rail so the rendered response discloses data source, resolved time window, citation count, generation mode, model status, and fallback caveats before the answer or candidate topics.
+Public assistant routes have been removed. Radar, entity, and report surfaces should continue to disclose data source, resolved time window, citation count, review status, and fallback caveats before synthesis.
 
 ### Citations and Uncertainty Are Response Anatomy
 
-Ask separates short answer, facts, evidence-backed inference, uncertainty, and citations. Write separates candidate topics, counterpoints, missing evidence, and citations. Missing evidence is treated as a planning feature instead of a failure state.
+Reports separate formal status, evidence-backed inference, uncertainty, citations, and missing evidence. Missing evidence is treated as a product feature instead of a failure state.
 
 ### Review States Stay Cautious
 

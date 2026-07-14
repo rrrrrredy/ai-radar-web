@@ -1,0 +1,149 @@
+{
+  "id": "local-reviewed-daily-2026-06-22",
+  "report_type": "daily",
+  "mode": "saved_report",
+  "status": "reviewed",
+  "title": "AI Radar reviewed daily evidence snapshot - 2026-06-22",
+  "summary": "As of the 2026-06-16 to 2026-06-22 public evidence window, the strongest reviewed signals cluster around enterprise AI rollout, developer-tool operations, SDK infrastructure changes, and verifiable agent research.",
+  "executive_summary": "This reviewed local public report turns the existing evidence draft into a formal read-only report without running live model generation or writing to Supabase. It is intentionally scoped to the public evidence available in this repository snapshot: Samsung's enterprise ChatGPT/Codex rollout, OpenAI enterprise spend-control tooling, Anthropic SDK code-execution support, and recent arXiv work on device-cloud RAG and tool-grounded time-series agents.",
+  "language": "en",
+  "data_source": "local_understanding_output",
+  "time_window": {
+    "start": "2026-06-16T00:00:00.000Z",
+    "end": "2026-06-22T03:00:00.000Z"
+  },
+  "generated_at": "2026-06-22T03:00:00.000Z",
+  "saved_at": "2026-06-30T00:00:00.000Z",
+  "source_item_count": 5,
+  "usable_item_count": 5,
+  "citation_count": 5,
+  "distinct_source_count": 4,
+  "category_count": 5,
+  "quality_gate_passed": true,
+  "quality_gate_reasons": [],
+  "quality_gate": {
+    "report_type": "daily",
+    "passed": true,
+    "reasons": [],
+    "usable_item_count": 5,
+    "citation_count": 5,
+    "distinct_source_count": 4,
+    "category_count": 5,
+    "category_gate_applicable": true,
+    "thresholds": {
+      "usable_items": 5,
+      "citations": 3,
+      "distinct_sources": 2,
+      "categories": 2
+    }
+  },
+  "confidence": 0.82,
+  "source_item_ids": [
+    "radar_22a503b2b8f0d346",
+    "radar_d2873ff600b2f909",
+    "radar_229b28215c194f05",
+    "radar_dba8b443cd61711e",
+    "radar_153bd86d4389e91b"
+  ],
+  "sections": [
+    {
+      "id": "model_product_company_updates",
+      "title": "Enterprise AI deployment became the clearest market signal",
+      "summary": "The strongest product/business evidence in this window is enterprise adoption rather than a single model benchmark. Samsung's internal ChatGPT/Codex rollout and OpenAI's enterprise spend-control tooling point to operationalization pressure: buyers want both broad deployment and management controls.",
+      "bullets": [
+        "Samsung's global ChatGPT Enterprise and Codex rollout is one of the strongest public signals that enterprise AI usage is moving from pilot to workforce-scale deployment.",
+        "OpenAI's spend controls and usage analytics indicate that cost governance is becoming a first-class enterprise AI product requirement."
+      ],
+      "citations": [
+        "radar_22a503b2b8f0d346",
+        "radar_d2873ff600b2f909"
+      ],
+      "caveats": [
+        "Both enterprise signals come from OpenAI-owned public sources, so independent buyer-side validation remains important."
+      ],
+      "missing_evidence": [
+        "Independent Samsung operator metrics and third-party enterprise adoption benchmarks are not available in this public evidence window."
+      ]
+    },
+    {
+      "id": "research_open_source",
+      "title": "Developer and research evidence points toward operational reliability",
+      "summary": "The developer/research side of the window is less about consumer launches and more about reliability: SDK support for code execution, device-cloud RAG under document isolation, and tool-grounded reasoning for irregular time-series question answering.",
+      "bullets": [
+        "Anthropic's Python SDK update adds code-execution support and reliability fixes, reinforcing SDKs as the operational surface for AI application builders.",
+        "CONCORD and IRTS-ToolBench show research attention moving toward verifiable, tool-grounded, privacy-aware agent and retrieval systems."
+      ],
+      "citations": [
+        "radar_229b28215c194f05",
+        "radar_dba8b443cd61711e",
+        "radar_153bd86d4389e91b"
+      ],
+      "caveats": [
+        "The arXiv evidence is research-stage and should not be read as production adoption."
+      ],
+      "missing_evidence": [
+        "Runtime adoption data for the SDK and independent replication of the research results are not included."
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "id": "radar_22a503b2b8f0d346",
+      "title": "Samsung Electronics brings ChatGPT and Codex to employees",
+      "source_name": "OpenAI News",
+      "url": "https://openai.com/index/samsung-electronics-chatgpt-codex-deployment",
+      "published_at": "2026-06-21T23:00:00.000Z",
+      "collected_at": "2026-06-22T02:36:42.885Z",
+      "status": "included",
+      "confidence": 0.82
+    },
+    {
+      "id": "radar_d2873ff600b2f909",
+      "title": "New usage analytics and updated spend controls for enterprises",
+      "source_name": "OpenAI News",
+      "url": "https://openai.com/index/chatgpt-enterprise-spend-controls",
+      "published_at": "2026-06-18T17:00:00.000Z",
+      "collected_at": "2026-06-22T02:36:42.885Z",
+      "status": "included",
+      "confidence": 0.78
+    },
+    {
+      "id": "radar_229b28215c194f05",
+      "title": "v0.110.0",
+      "source_name": "Anthropic Python SDK",
+      "url": "https://github.com/anthropics/anthropic-sdk-python/releases/tag/v0.110.0",
+      "published_at": "2026-06-18T17:18:34Z",
+      "collected_at": "2026-06-22T02:40:37.025Z",
+      "status": "included",
+      "confidence": 0.86
+    },
+    {
+      "id": "radar_dba8b443cd61711e",
+      "title": "CONCORD: Asynchronous Sparse Aggregation for Device-Cloud RAG under Document Isolation",
+      "source_name": "arXiv cs.AI",
+      "url": "https://arxiv.org/abs/2606.15179",
+      "published_at": "2026-06-16T04:00:00.000Z",
+      "collected_at": "2026-06-17T03:49:15.495Z",
+      "status": "included",
+      "confidence": 0.76
+    },
+    {
+      "id": "radar_153bd86d4389e91b",
+      "title": "Towards Verifiable Agentic Data Science: Solving Irregular TSQA Via Tool-Grounded Reasoning",
+      "source_name": "arXiv cs.AI",
+      "url": "https://arxiv.org/abs/2606.15107",
+      "published_at": "2026-06-16T04:00:00.000Z",
+      "collected_at": "2026-06-17T03:49:15.495Z",
+      "status": "included",
+      "confidence": 0.74
+    }
+  ],
+  "caveats": [
+    "This report is reviewed against the public evidence snapshot in the local repository and should not be presented as autonomous live monitoring.",
+    "The evidence window is not June 30 live data; freshness depends on the latest available public radar snapshot."
+  ],
+  "missing_evidence": [
+    "Independent enterprise buyer-side metrics.",
+    "Production adoption data for the research systems."
+  ]
+}

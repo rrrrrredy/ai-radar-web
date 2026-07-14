@@ -16,6 +16,17 @@ import type { ReportPreviewType, ReportQualityGate } from "@/lib/reports/types";
 import { getSupabaseServerReadClient } from "@/lib/supabase/server-read";
 import { getSupabaseServiceClient, getSupabaseServiceStatus } from "@/lib/supabase/service";
 
+type StepOutcome = "success" | "failure" | "cancelled" | "skipped" | "not_run";
+
+type StepOutcomes = {
+  validation: StepOutcome;
+  activation: StepOutcome;
+  events_cluster: StepOutcome;
+  reports: StepOutcome;
+  cloudflare_build: StepOutcome;
+  cloudflare_deploy: StepOutcome;
+};
+
 type CliOptions = {
   stage: "before" | "after";
   runId: string;
@@ -26,6 +37,8 @@ type CliOptions = {
   runEventsCluster: boolean;
   cloudflareUrl?: string;
   outputDir: string;
+  writeGateSatisfied: boolean;
+  outcomes: StepOutcomes;
   warnings: string[];
   errors: string[];
 };
@@ -72,25 +85,60 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   await fs.mkdir(options.outputDir, { recursive: true });
 
-  const counts = await loadCounts();
+  const collectionWarnings: string[] = [];
+  const counts = await safeResult("Coverage counts", loadCounts, emptyOpsCounts(), collectionWarnings);
   if (options.stage === "before") {
     await writeJson(beforeCountsPath, counts);
   }
 
-  const beforeCounts = options.stage === "after" ? await readOptionalJson<OpsCounts>(beforeCountsPath) : counts;
-  const activation = await readOptionalJson<ActivationSummary>(path.join(process.cwd(), "data", "activation", "latest", "summary.json"));
-  const coverage = await loadPublicDataCompletenessSummary();
-  const [dailyCandidate, weeklyCandidate] = await Promise.all([
-    latestReportCandidate("daily"),
-    latestReportCandidate("weekly")
+  const rawBeforeCounts = options.stage === "after"
+    ? await safeResult(
+        "Before counts",
+        () => readOptionalJson<OpsCounts>(beforeCountsPath),
+        null,
+        collectionWarnings
+      )
+    : counts;
+  const beforeCounts = rawBeforeCounts ? normalizeOpsCounts(rawBeforeCounts) : null;
+  const activation = await safeResult(
+    "Activation summary",
+    () => readOptionalJson<ActivationSummary>(path.join(process.cwd(), "data", "activation", "latest", "summary.json")),
+    null,
+    collectionWarnings
+  );
+  const coverage = await safeResult<Awaited<ReturnType<typeof loadPublicDataCompletenessSummary>> | null>(
+    "Coverage summary",
+    loadPublicDataCompletenessSummary,
+    null,
+    collectionWarnings
+  );
+  const [dailyCandidate, weeklyCandidate, eventClusters] = await Promise.all([
+    safeResult(
+      "Daily report candidate summary",
+      () => latestReportCandidate("daily"),
+      unavailableReportCandidate("daily"),
+      collectionWarnings
+    ),
+    safeResult(
+      "Weekly report candidate summary",
+      () => latestReportCandidate("weekly"),
+      unavailableReportCandidate("weekly"),
+      collectionWarnings
+    ),
+    safeResult("Event cluster count", eventClusterCount, 0, collectionWarnings)
   ]);
+  const failureFamilies = safeCountMap(activation?.failure_families ?? coverage?.failureFamilies ?? {});
   const warnings = uniqueStrings([
     ...options.warnings,
-    ...(activation?.warnings ?? []),
-    ...coverage.warnings
+    ...collectionWarnings,
+    ...stringArray(activation?.warnings),
+    ...stringArray(coverage?.warnings)
   ]).map(sanitizeLogValue);
-  const errors = uniqueStrings(options.errors).map(sanitizeLogValue);
-  const summary = {
+  const outcomeErrors = Object.entries(options.outcomes)
+    .filter(([, outcome]) => outcome === "failure" || outcome === "cancelled")
+    .map(([step, outcome]) => `Step ${step} finished with outcome ${outcome}.`);
+  const errors = uniqueStrings([...options.errors, ...outcomeErrors]).map(sanitizeLogValue);
+  const summary = sanitizeArtifact({
     schema_version: 1,
     generated_at: new Date().toISOString(),
     run_id: options.runId,
@@ -111,36 +159,48 @@ async function main() {
       failed: counts.failed
     },
     chunks: {
-      attempted: activation?.totals?.chunks_attempted ?? 0,
-      succeeded: activation?.totals?.chunks_succeeded ?? 0,
-      failed: activation?.totals?.chunks_failed ?? 0
+      attempted: integer(activation?.totals?.chunks_attempted),
+      succeeded: integer(activation?.totals?.chunks_succeeded),
+      failed: integer(activation?.totals?.chunks_failed)
     },
-    deepseek_api_calls: activation?.totals?.deepseek_api_calls ?? 0,
-    failure_families: activation?.failure_families ?? coverage.failureFamilies,
-    event_clusters: await eventClusterCount(),
+    deepseek_api_calls: integer(activation?.totals?.deepseek_api_calls),
+    failure_families: failureFamilies,
+    event_clusters: eventClusters,
     source_problem_counts: {
-      timeout: (activation?.failure_families ?? coverage.failureFamilies).timeout ?? 0,
-      "403": (activation?.failure_families ?? coverage.failureFamilies)["403"] ?? 0,
-      rate_limit: (activation?.failure_families ?? coverage.failureFamilies).rate_limit ?? 0
+      timeout: failureFamilies.timeout ?? 0,
+      "403": failureFamilies["403"] ?? 0,
+      rate_limit: failureFamilies.rate_limit ?? 0
     },
     daily_candidate: dailyCandidate,
     weekly_candidate: weeklyCandidate,
-    cloudflare_url: options.deployCloudflare ? options.cloudflareUrl ?? "https://ai-industry-radar.pages.dev" : null,
+    step_outcomes: options.outcomes,
+    cloudflare_url:
+      options.deployCloudflare && options.outcomes.cloudflare_deploy === "success"
+        ? options.cloudflareUrl ?? "https://ai-industry-radar.pages.dev"
+        : null,
     warnings,
     errors,
     safety: {
       supabase_writes_requested: options.persist,
+      write_gate_satisfied: options.writeGateSatisfied,
+      writes_enabled_for_persist_steps: options.persist && options.writeGateSatisfied,
+      event_cluster_persist_requested: options.persist && options.runEventsCluster,
+      report_candidate_writes_requested: options.persist && options.generateReports,
       scheduled_jobs_run: false,
       x_wechat_auto_crawl_run: false,
       source_health_writes_run: false,
-      secrets_printed: false
+      secrets_printed: false,
+      summary_redaction_applied: true
     }
-  };
+  });
   const jsonPath = path.join(options.outputDir, "radar-refresh-summary.json");
   const markdownPath = path.join(options.outputDir, "radar-refresh-summary.md");
+  const markdown = renderMarkdown(summary);
+
+  assertNoConfiguredSecrets(`${JSON.stringify(summary)}\n${markdown}`);
 
   await writeJson(jsonPath, summary);
-  await fs.writeFile(markdownPath, renderMarkdown(summary), "utf8");
+  await fs.writeFile(markdownPath, markdown, "utf8");
 
   console.log(`Ops summary written: ${relative(jsonPath)} ${relative(markdownPath)}`);
 }
@@ -151,12 +211,21 @@ function parseArgs(args: string[]): CliOptions {
     errors: [],
     generateReports: false,
     mode: "mock",
+    outcomes: {
+      activation: "not_run",
+      cloudflare_build: "not_run",
+      cloudflare_deploy: "not_run",
+      events_cluster: "not_run",
+      reports: "not_run",
+      validation: "not_run"
+    },
     outputDir: latestOpsDir,
     persist: false,
     runEventsCluster: false,
     runId: process.env.GITHUB_RUN_ID ? `github_${process.env.GITHUB_RUN_ID}` : `local_${timestampForId(new Date().toISOString())}`,
     stage: "after",
-    warnings: []
+    warnings: [],
+    writeGateSatisfied: false
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -191,8 +260,36 @@ function parseArgs(args: string[]): CliOptions {
         options.runEventsCluster = booleanValue(readArg(args, index));
         index += 1;
         break;
+      case "--write-gate-satisfied":
+        options.writeGateSatisfied = booleanValue(readArg(args, index));
+        index += 1;
+        break;
+      case "--validation-outcome":
+        options.outcomes.validation = stepOutcome(readArg(args, index));
+        index += 1;
+        break;
+      case "--activation-outcome":
+        options.outcomes.activation = stepOutcome(readArg(args, index));
+        index += 1;
+        break;
+      case "--events-cluster-outcome":
+        options.outcomes.events_cluster = stepOutcome(readArg(args, index));
+        index += 1;
+        break;
+      case "--reports-outcome":
+        options.outcomes.reports = stepOutcome(readArg(args, index));
+        index += 1;
+        break;
+      case "--cloudflare-build-outcome":
+        options.outcomes.cloudflare_build = stepOutcome(readArg(args, index));
+        index += 1;
+        break;
+      case "--cloudflare-deploy-outcome":
+        options.outcomes.cloudflare_deploy = stepOutcome(readArg(args, index));
+        index += 1;
+        break;
       case "--cloudflare-url":
-        options.cloudflareUrl = readArg(args, index).slice(0, 240);
+        options.cloudflareUrl = publicHttpsUrl(readArg(args, index));
         index += 1;
         break;
       case "--output-dir":
@@ -210,6 +307,10 @@ function parseArgs(args: string[]): CliOptions {
       default:
         throw new Error(`Unknown argument: ${arg}`);
     }
+  }
+
+  if (options.writeGateSatisfied && !options.persist) {
+    throw new Error("--write-gate-satisfied=true is only valid when --persist=true.");
   }
 
   return options;
@@ -297,6 +398,47 @@ function summarizeCandidateDraft(
   };
 }
 
+function emptyOpsCounts(): OpsCounts {
+  return {
+    excluded: null,
+    failed: null,
+    included: null,
+    needs_review: null,
+    public_radar_items: null,
+    radar_items: null,
+    raw_items: null,
+    report_candidates: null
+  };
+}
+
+function normalizeOpsCounts(value: OpsCounts): OpsCounts {
+  return {
+    excluded: nullableInteger(value.excluded),
+    failed: nullableInteger(value.failed),
+    included: nullableInteger(value.included),
+    needs_review: nullableInteger(value.needs_review),
+    public_radar_items: nullableInteger(value.public_radar_items),
+    radar_items: nullableInteger(value.radar_items),
+    raw_items: nullableInteger(value.raw_items),
+    report_candidates: nullableInteger(value.report_candidates)
+  };
+}
+
+function unavailableReportCandidate(reportType: ReportPreviewType): ReportCandidateSummary {
+  return {
+    id: null,
+    quality_gate: normalizeReportQualityGate(null, {
+      categoryCount: 0,
+      categoryGateApplicable: false,
+      citationCount: 0,
+      distinctSourceCount: 0,
+      reportType,
+      usableItemCount: 0
+    }),
+    status: "unavailable"
+  };
+}
+
 async function eventClusterCount() {
   const feed = await loadRadarFeed();
   return buildEventLayer(
@@ -338,6 +480,8 @@ function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never 
     mode: string;
     persist: boolean;
     deploy_cloudflare: boolean;
+    generate_reports: boolean;
+    run_events_cluster: boolean;
     counts: { before: OpsCounts | null; after: OpsCounts };
     status_counts: Record<string, number | null>;
     chunks: Record<string, number>;
@@ -346,9 +490,18 @@ function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never 
     failure_families: Record<string, number>;
     daily_candidate: ReportCandidateSummary;
     weekly_candidate: ReportCandidateSummary;
+    step_outcomes: StepOutcomes;
     cloudflare_url: string | null;
     warnings: string[];
     errors: string[];
+    safety: {
+      supabase_writes_requested: boolean;
+      write_gate_satisfied: boolean;
+      writes_enabled_for_persist_steps: boolean;
+      event_cluster_persist_requested: boolean;
+      report_candidate_writes_requested: boolean;
+      summary_redaction_applied: boolean;
+    };
   };
 
   return [
@@ -359,6 +512,8 @@ function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never 
     `Mode: ${value.mode}`,
     `Persist: ${yesNo(value.persist)}`,
     `Deploy Cloudflare: ${yesNo(value.deploy_cloudflare)}`,
+    `Generate reports: ${yesNo(value.generate_reports)}`,
+    `Run event clustering: ${yesNo(value.run_events_cluster)}`,
     "",
     "## Counts",
     "",
@@ -375,6 +530,15 @@ function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never 
     `- Failure families: ${formatDistribution(value.failure_families)}`,
     `- Event clusters: ${value.event_clusters}`,
     "",
+    "## Step Outcomes",
+    "",
+    `- Validation: ${value.step_outcomes.validation}`,
+    `- Activation: ${value.step_outcomes.activation}`,
+    `- Event clustering: ${value.step_outcomes.events_cluster}`,
+    `- Reports: ${value.step_outcomes.reports}`,
+    `- Cloudflare build: ${value.step_outcomes.cloudflare_build}`,
+    `- Cloudflare deploy: ${value.step_outcomes.cloudflare_deploy}`,
+    "",
     "## Reports",
     "",
     reportLine("Daily", value.daily_candidate),
@@ -383,6 +547,15 @@ function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never 
     "## Cloudflare",
     "",
     `- URL: ${value.cloudflare_url ?? "not deployed"}`,
+    "",
+    "## Safety",
+    "",
+    `- Supabase writes requested: ${yesNo(value.safety.supabase_writes_requested)}`,
+    `- Write gate satisfied: ${yesNo(value.safety.write_gate_satisfied)}`,
+    `- Writes enabled for persist steps: ${yesNo(value.safety.writes_enabled_for_persist_steps)}`,
+    `- Event cluster persistence requested: ${yesNo(value.safety.event_cluster_persist_requested)}`,
+    `- Report candidate writes requested: ${yesNo(value.safety.report_candidate_writes_requested)}`,
+    `- Summary redaction applied: ${yesNo(value.safety.summary_redaction_applied)}`,
     "",
     "## Warnings",
     "",
@@ -480,6 +653,42 @@ function booleanValue(value: string) {
   throw new Error("Boolean options must be true or false.");
 }
 
+function stepOutcome(value: string): StepOutcome {
+  if (value === "success" || value === "failure" || value === "cancelled" || value === "skipped" || value === "not_run") {
+    return value;
+  }
+
+  throw new Error("Step outcomes must be success, failure, cancelled, skipped, or not_run.");
+}
+
+function publicHttpsUrl(value: string) {
+  let parsed: URL;
+
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("--cloudflare-url must be a valid HTTPS URL.");
+  }
+
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash ||
+    !parsed.hostname
+  ) {
+    throw new Error("--cloudflare-url must be an HTTPS URL without credentials, query parameters, or a fragment.");
+  }
+
+  const normalized = `${parsed.origin}${parsed.pathname === "/" ? "" : parsed.pathname}`;
+  if (normalized.length > 240) {
+    throw new Error("--cloudflare-url must be 240 characters or fewer.");
+  }
+
+  return normalized;
+}
+
 function record(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
 }
@@ -504,6 +713,19 @@ function integer(value: unknown, fallback = 0) {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue) || numberValue < 0) {
     return fallback;
+  }
+
+  return Math.floor(numberValue);
+}
+
+function nullableInteger(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue) || numberValue < 0) {
+    return null;
   }
 
   return Math.floor(numberValue);
@@ -538,14 +760,90 @@ function sanitizeIdentifier(value: string) {
   return value.replace(/[^A-Za-z0-9_.:-]+/g, "_").slice(0, 120);
 }
 
+async function safeResult<T>(
+  label: string,
+  operation: () => Promise<T>,
+  fallback: T,
+  warnings: string[]
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    warnings.push(`${label} unavailable: ${sanitizeLogValue(error instanceof Error ? error.message : String(error))}`);
+    return fallback;
+  }
+}
+
+function safeCountMap(value: Record<string, number>) {
+  const result: Record<string, number> = {};
+
+  for (const [rawKey, rawCount] of Object.entries(value).slice(0, 50)) {
+    const key = sanitizeIdentifier(sanitizeLogValue(rawKey)) || "unknown";
+    result[key] = (result[key] ?? 0) + integer(rawCount);
+  }
+
+  return result;
+}
+
+function sanitizeArtifact<T>(value: T): T {
+  if (typeof value === "string") {
+    return sanitizeLogValue(value) as T;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeArtifact(entry)) as unknown as T;
+  }
+
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, sanitizeArtifact(entry)])
+    ) as T;
+  }
+
+  return value;
+}
+
+function configuredSecrets() {
+  const sensitiveName = /(?:SECRET|TOKEN|PASSWORD|PASSWD|API[_-]?KEY|SERVICE[_-]?ROLE|PRIVATE[_-]?KEY|ANON[_-]?KEY|ACCOUNT[_-]?ID|COOKIE|AUTH)/i;
+
+  return Object.entries(process.env)
+    .filter((entry): entry is [string, string] => sensitiveName.test(entry[0]) && typeof entry[1] === "string" && entry[1].length >= 4)
+    .sort((left, right) => right[1].length - left[1].length);
+}
+
+function redactConfiguredSecrets(value: string) {
+  let sanitized = value;
+
+  for (const [, secret] of configuredSecrets()) {
+    sanitized = sanitized.split(secret).join("[configured-secret-redacted]");
+  }
+
+  return sanitized;
+}
+
+function assertNoConfiguredSecrets(value: string) {
+  const leaked = configuredSecrets().find(([, secret]) => value.includes(secret));
+  if (leaked) {
+    throw new Error(`Refusing to write ops summary because configured credential ${sanitizeIdentifier(leaked[0])} was not redacted.`);
+  }
+}
+
 function sanitizeLogValue(value: string) {
-  return value
+  return redactConfiguredSecrets(value)
+    .replace(/-----BEGIN [^-]+-----[\s\S]*?-----END [^-]+-----/gi, "[private-key-redacted]")
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
     .replace(/\bsk-(?:proj-)?[A-Za-z0-9_-]{8,}/gi, "sk-[redacted]")
     .replace(/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]+/g, "[github-token-redacted]")
     .replace(/\bgithub_pat_[A-Za-z0-9_]+/gi, "[github-token-redacted]")
-    .replace(/\b(DEEPSEEK_API_KEY|SUPABASE_SERVICE_ROLE_KEY|NEXT_PUBLIC_SUPABASE_ANON_KEY|CLOUDFLARE_API_TOKEN|CLOUDFLARE_ACCOUNT_ID)\s*=\s*[^\s]+/gi, "$1=[redacted]")
-    .replace(/\b(authorization|api[-_]?key|token|cookie)\b\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,}\b/g, "[jwt-redacted]")
+    .replace(/([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/@\s]+@/g, "$1[credentials-redacted]@")
+    .replace(/(https?:\/\/[^\s?#]+)\?[^\s#]*/gi, "$1?[query-redacted]")
+    .replace(/\b(DEEPSEEK_API_KEY|SUPABASE_SERVICE_ROLE_KEY|NEXT_PUBLIC_SUPABASE_ANON_KEY|CLOUDFLARE_API_TOKEN|CLOUDFLARE_ACCOUNT_ID|GITHUB_TOKEN)\s*=\s*[^\s]+/gi, "$1=[redacted]")
+    .replace(/\b(authorization|api[-_]?key|token|secret|password|cookie)\b\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .replace(/[A-Za-z0-9+/_=-]{48,}/g, "[long-token-redacted]")
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
     .slice(0, 600);
 }
 

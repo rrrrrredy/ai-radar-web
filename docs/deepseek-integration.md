@@ -7,7 +7,7 @@ DeepSeek supports low-cost understanding and higher-quality synthesis. The proje
 ## Model Split
 
 - DeepSeek V4 Flash: AI relevance, language classification, category classification, tag generation, short summaries, and entity extraction.
-- DeepSeek V4 Pro: scoring explanations, importance/credibility/novelty reasoning, why-it-matters drafts, report-ready synthesis fields, future Q&A, and writing assistant synthesis.
+- DeepSeek V4 Pro: scoring explanations, importance/credibility/novelty reasoning, why-it-matters drafts, and report-ready synthesis fields.
 
 ## Environment Variables
 
@@ -147,14 +147,11 @@ Inclusion thresholds:
 - Keep DeepSeek calls out of ingestion fetching.
 - Do not run live DeepSeek from scheduled jobs.
 
-## Phase 6 Q&A and Writing
+## Phase 6 Retrieval Foundation
 
-Phase 6 adds retrieval-backed Q&A and writing assistant APIs over local radar items:
+Phase 6 added retrieval over local radar items. Public assistant APIs have since been removed; retrieval remains available for server-side report and quality workflows.
 
-- `POST /api/ask`
-- `POST /api/writing-assistant`
-
-Both routes default to `generationMode: "mock"`, use deterministic local generation, and do not require a DeepSeek key. Live generation is only attempted when the request explicitly sets `generationMode: "live"` and `DEEPSEEK_API_KEY` exists in the server environment.
+Public live generation is not exposed. Live model calls require explicit server-side workflow mode and `DEEPSEEK_API_KEY` in the server environment.
 
 The API key contract remains environment-only and blank in committed examples:
 
@@ -165,7 +162,7 @@ DEEPSEEK_FAST_MODEL=deepseek-v4-flash
 DEEPSEEK_SMART_MODEL=deepseek-v4-pro
 ```
 
-Q&A and writing prompts must use retrieved radar-item evidence, citations, time windows, and uncertainty. They must not invent facts from model priors.
+Report prompts must use retrieved radar-item evidence, citations, time windows, and uncertainty. They must not invent facts from model priors.
 
 ## Phase 7 Persistence Boundary
 

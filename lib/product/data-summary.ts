@@ -1,9 +1,7 @@
 import "server-only";
 
-import {
-  loadPublicDataCompletenessSummary,
-  type PublicDataCompletenessSummary
-} from "@/lib/data-completeness/public-summary";
+import { loadPublicSafeDataCompletenessSummary } from "@/lib/data-completeness/public-safe-summary";
+import type { PublicDataCompletenessSummary } from "@/lib/data-completeness/types";
 import {
   buildEventLayer,
   filterPublicDisplayEventLayer,
@@ -13,8 +11,7 @@ import { loadRadarFeed, type RadarFeed, itemEvidenceTimestamp } from "@/lib/rada
 import { loadReportWorkflowData } from "@/lib/reports/load-report-data";
 import type { ReportWorkflowDocument } from "@/lib/reports/types";
 import type { RetrievalRadarItem } from "@/lib/retrieval/types";
-import { getSupabaseServiceClient } from "@/lib/supabase/service";
-import type { UnderstandingStatus } from "@/lib/understanding/types";
+import type { RadarCategory, UnderstandingStatus } from "@/lib/understanding/types";
 
 export type CountEntry = {
   label: string;
@@ -43,6 +40,9 @@ export type ProductDataSummary = {
   };
   freshnessNote: string;
   topCategories: CountEntry[];
+  categorySignals: Array<{
+    categories: RadarCategory[];
+  }>;
   topSources: CountEntry[];
   topSourceFamilies: CountEntry[];
   eventCount: number;
@@ -66,39 +66,11 @@ export type ProductDataSummary = {
   coverage: PublicDataCompletenessSummary;
 };
 
-type OperationalSummary = {
-  sources: number | null;
-  rawItems: number | null;
-  radarItems: number | null;
-  reportCandidates: number | null;
-  statusCounts: Partial<Record<UnderstandingStatus, number>>;
-  latestIngestion: string | null;
-  latestUnderstanding: string | null;
-  warnings: string[];
-};
-
-type SupabaseCountQuery = {
-  count: number | null;
-  error: { message: string } | null;
-};
-
-const emptyOperationalSummary: OperationalSummary = {
-  latestIngestion: null,
-  latestUnderstanding: null,
-  radarItems: null,
-  rawItems: null,
-  reportCandidates: null,
-  sources: null,
-  statusCounts: {},
-  warnings: []
-};
-
 export async function loadProductDataSummary(): Promise<ProductDataSummary> {
-  const [feed, reportData, operational, coverage] = await Promise.all([
-    loadRadarFeed(),
-    loadReportWorkflowData(),
-    loadOperationalSummary(),
-    loadPublicDataCompletenessSummary()
+  const feed = await loadRadarFeed();
+  const [reportData, coverage] = await Promise.all([
+    loadReportWorkflowData({ feed, publicSnapshotLocalOnly: true }),
+    loadPublicSafeDataCompletenessSummary(feed)
   ]);
   const eventLayer = filterPublicDisplayEventLayer(buildEventLayer(
     feed.items.map((item) => ({
@@ -132,31 +104,34 @@ export async function loadProductDataSummary(): Promise<ProductDataSummary> {
   ));
   const reportsByType = new Map(reportData.reports.map((report) => [report.report_type, report]));
   const caveats = Array.from(new Set([...feed.caveats, ...reportData.warnings]));
-  const warnings = Array.from(new Set([...operational.warnings, ...reportData.warnings]));
+  const warnings = Array.from(new Set([...coverage.warnings, ...reportData.warnings]));
 
   return {
     dataSource: feed.data_source,
     counts: {
-      sources: operational.sources,
-      rawItems: operational.rawItems,
-      radarItems: operational.radarItems,
+      sources: coverage.sourcesTotal,
+      rawItems: coverage.rawItems,
+      radarItems: coverage.radarItems,
       visibleRadarItems: feed.counts.total,
-      included: operational.statusCounts.included ?? feed.counts.included,
-      needsReview: operational.statusCounts.needs_review ?? feed.counts.needs_review,
-      excluded: operational.statusCounts.excluded ?? feed.counts.excluded,
-      failed: operational.statusCounts.failed ?? feed.counts.failed,
-      reportCandidates: operational.reportCandidates,
+      included: coverage.included ?? feed.counts.included,
+      needsReview: coverage.needsReview ?? feed.counts.needs_review,
+      excluded: coverage.excluded ?? feed.counts.excluded,
+      failed: coverage.failedRadarItems ?? feed.counts.failed,
+      reportCandidates: coverage.reportCandidates,
       citations: feed.citations.length
     },
     latest: {
-      ingestion: operational.latestIngestion,
+      ingestion: coverage.latestIngestion,
       radar: feed.freshness.latestTimestamp ?? feed.processed_at ?? null,
-      understanding: operational.latestUnderstanding
+      understanding: coverage.latestUnderstanding
     },
     freshnessNote: feed.freshness_note,
     topCategories: countEntries(feed.counts.by_category, (category) => ({
       href: `/radar?category=${encodeURIComponent(category)}`,
       label: labelize(category)
+    })),
+    categorySignals: feed.items.map((item) => ({
+      categories: item.categories
     })),
     topSources: countEntries(feed.counts.by_source),
     topSourceFamilies: countSourceFamilies(feed.items),
@@ -180,99 +155,6 @@ export async function loadProductDataSummary(): Promise<ProductDataSummary> {
     warnings,
     coverage
   };
-}
-
-async function loadOperationalSummary(): Promise<OperationalSummary> {
-  try {
-    const supabase = getSupabaseServiceClient();
-    const [sources, rawItems, radarItems, reportCandidates, statusRows, ingestionRows, understandingRows] =
-      await Promise.all([
-        exactCount("sources"),
-        exactCount("raw_items"),
-        exactCount("radar_items"),
-        exactCount("report_candidates"),
-        supabase.from("radar_items").select("understanding_status").limit(5000),
-        supabase
-          .from("ingestion_runs")
-          .select("finished_at,started_at")
-          .order("started_at", { ascending: false, nullsFirst: false })
-          .limit(1),
-        supabase
-          .from("understanding_runs")
-          .select("ended_at,started_at")
-          .order("started_at", { ascending: false, nullsFirst: false })
-          .limit(1)
-      ]);
-
-    const warnings = [sources, rawItems, radarItems, reportCandidates]
-      .filter((result): result is { error: string } => typeof result === "object" && result !== null && "error" in result)
-      .map((result) => result.error);
-
-    return {
-      sources: readCount(sources),
-      rawItems: readCount(rawItems),
-      radarItems: readCount(radarItems),
-      reportCandidates: readCount(reportCandidates),
-      statusCounts: statusRows.error
-        ? {}
-        : countStatuses((statusRows.data ?? []) as Array<{ understanding_status?: string | null }>),
-      latestIngestion: latestRunTimestamp(
-        ingestionRows.error
-          ? null
-          : ((ingestionRows.data ?? [])[0] as { finished_at?: string | null; started_at?: string | null } | undefined)
-      ),
-      latestUnderstanding: latestRunTimestamp(
-        understandingRows.error
-          ? null
-          : ((understandingRows.data ?? [])[0] as { ended_at?: string | null; started_at?: string | null } | undefined)
-      ),
-      warnings
-    };
-  } catch (error) {
-    return {
-      ...emptyOperationalSummary,
-      warnings: [`Aggregate Supabase counts unavailable: ${sanitizeSummaryError(error)}`]
-    };
-  }
-}
-
-async function exactCount(table: string): Promise<number | { error: string }> {
-  const supabase = getSupabaseServiceClient();
-  const { count, error } = (await supabase
-    .from(table)
-    .select("id", { count: "exact", head: true })) as SupabaseCountQuery;
-
-  if (error) {
-    return { error: `${table} count failed: ${sanitizeSummaryError(error.message)}` };
-  }
-
-  return count ?? 0;
-}
-
-function readCount(value: number | { error: string }) {
-  return typeof value === "number" ? value : null;
-}
-
-function countStatuses(rows: Array<{ understanding_status?: string | null }>) {
-  const counts: Partial<Record<UnderstandingStatus, number>> = {};
-
-  for (const row of rows) {
-    const status = row.understanding_status;
-    if (
-      status === "included" ||
-      status === "needs_review" ||
-      status === "excluded" ||
-      status === "failed"
-    ) {
-      counts[status] = (counts[status] ?? 0) + 1;
-    }
-  }
-
-  return counts;
-}
-
-function latestRunTimestamp(row: { ended_at?: string | null; finished_at?: string | null; started_at?: string | null } | null | undefined) {
-  return row?.ended_at ?? row?.finished_at ?? row?.started_at ?? null;
 }
 
 function countEntries(
@@ -330,24 +212,19 @@ export function labelize(value: string) {
   const labels: Record<string, string> = {
     benchmark: "基准",
     business: "商业",
+    agent: "智能体",
+    funding: "融资",
     infrastructure: "基础设施",
+    media_interview: "访谈/播客",
     model_release: "模型发布",
     open_source: "开源",
+    opinion: "观点",
     policy: "政策",
     product_update: "产品更新",
+    regulation: "监管",
     research: "研究",
     safety: "安全",
     tooling: "工具"
   };
   return labels[value] ?? value.replace(/_/g, " ");
-}
-
-function sanitizeSummaryError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-
-  return message
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
-    .replace(/\bsk-(?:proj-)?[A-Za-z0-9_-]{8,}/gi, "sk-[redacted]")
-    .replace(/\b(authorization|api[-_]?key|token|cookie)\b\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
-    .slice(0, 300);
 }

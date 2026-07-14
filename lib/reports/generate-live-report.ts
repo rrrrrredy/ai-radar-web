@@ -2,6 +2,7 @@ import { getDeepSeekConfig } from "@/lib/deepseek/provider";
 import type { RadarFeed } from "@/lib/radar/feed";
 import { generateReportPreview } from "@/lib/reports/generate-report-preview";
 import {
+  evaluateReportEvidenceFreshness,
   qualityGateCaveats,
   reportQualityGateFields,
   reportQualityGateFromPreview
@@ -191,7 +192,8 @@ export function buildDeterministicReportDraft(
   language: ReportLanguage = "zh",
   audience?: string
 ): GeneratedReportDraft {
-  const qualityGate = reportQualityGateFromPreview(preview);
+  const generatedAt = new Date();
+  const qualityGate = reportQualityGateFromPreview(preview, generatedAt);
   const sections = preview.sections.map((section): GeneratedReportSection => ({
     caveats: section.caveats,
     citations: section.items.map((item) => item.id).filter((id) => citationIdSet(preview).has(id)),
@@ -213,7 +215,7 @@ export function buildDeterministicReportDraft(
     citations: preview.citations,
     data_source: preview.data_source,
     executive_summary: deterministicExecutiveSummary(preview),
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt.toISOString(),
     language,
     missing_evidence: preview.missing_evidence,
     mode: "deterministic_preview",
@@ -243,6 +245,12 @@ export function buildDeterministicReportDraft(
 }
 
 export function formatMarkdownReport(report: GeneratedReportDraft): string {
+  const evidenceFreshness = evaluateReportEvidenceFreshness(
+    report.report_type,
+    report.time_window.end,
+    report.citations.map((citation) => citation.published_at ?? citation.collected_at),
+    report.generated_at
+  );
   const lines = [
     `# ${report.title}`,
     "",
@@ -251,8 +259,9 @@ export function formatMarkdownReport(report: GeneratedReportDraft): string {
     `- Data source: ${report.data_source}`,
     `- Time window: ${report.time_window.start} to ${report.time_window.end}`,
     `- Generated at: ${report.generated_at}`,
-    `- Model: ${report.model_metadata.provider}${report.model_metadata.model ? ` / ${report.model_metadata.model}` : ""}`,
-    `- API calls: ${report.model_metadata.api_call_count}`,
+    `- 证据窗口新鲜度: ${evidenceFreshness.passed ? "通过" : "未通过"}`,
+    `- 最新可引用证据: ${evidenceFreshness.latestEvidenceAt ?? "无法验证"}`,
+    `- 新鲜度上限: ${evidenceFreshness.maxAgeHours} 小时`,
     `- Quality gate: ${report.quality_gate_passed ? "passed" : "needs_more_data"}`,
     `- Usable items: ${report.usable_item_count}`,
     `- Citations: ${report.citation_count}`,
@@ -327,7 +336,8 @@ function normalizeLiveReport(
   modelMetadata: SafeReportModelMetadata
 ): GeneratedReportDraft {
   const validCitationIds = citationIdSet(preview);
-  const qualityGate = reportQualityGateFromPreview(preview);
+  const generatedAt = new Date();
+  const qualityGate = reportQualityGateFromPreview(preview, generatedAt);
   const normalizedSections = normalizeLiveSections(value.sections, preview, validCitationIds);
   const caveats = liveCompatibleCaveats(dedupe([
     ...stringArray(value.caveats),
@@ -342,7 +352,7 @@ function normalizeLiveReport(
     citations: preview.citations,
     data_source: preview.data_source,
     executive_summary: text(value.executive_summary) || deterministicExecutiveSummary(preview),
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt.toISOString(),
     language,
     missing_evidence: missingEvidence,
     mode: "live_deepseek",

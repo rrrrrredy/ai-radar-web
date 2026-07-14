@@ -1,68 +1,48 @@
 # Event Clustering Release Candidate
 
-Generated: 2026-05-26
+Updated: 2026-07-14
 
-## Implementation
+## Contract
 
-- Module: `lib/events/clustering.ts`
-- Script: `npm run events:cluster`
-- Output: `data/events/latest/event-layer.json` (ignored)
-- Cloudflare export: `dist/cloudflare-pages/data/radar-snapshot.json`
+- implementation: `lib/events/clustering.ts`;
+- command: `npm run events:cluster`;
+- artifact: `data/events/latest/event-layer.json`;
+- controlled persistence: `npm run events:cluster -- --persist` with temporary `ENABLE_SUPABASE_WRITES=true`;
+- public export: `scripts/export-public-snapshot.ts`.
 
-The event layer is public-safe and derived from `public_radar_items`/retrieval-safe radar fields. It does not export `raw_text`, `raw_metadata`, `model_metadata`, private notes, raw provider payloads, or operational logs.
+Only public-safe `included` and `needs_review` items enter clustering. Raw text, provider/model metadata, private notes, credentials, and operational logs are not cluster fields.
 
-## Clustering Signals
+## Matching
 
-- normalized title similarity
-- shared entities or inferred company/model/product names
-- shared category
-- source family diversity
-- time-window proximity
-- keyword overlap
-- canonical URL/domain similarity
+The deterministic score combines normalized title overlap, explicit and inferred entities, keywords, category, source/domain identity, and evidence time distance. A merge normally requires at least 0.58 similarity.
 
-## Over-Merge Safeguards
+Specific legal, funding, and acquisition actions can add corroboration weight only when both items share at least two canonical strong entities, occur within 72 hours, retain title overlap, and retain meaningful keyword overlap. This handles wording such as `sues` versus `lawsuit` without making a generic action sufficient.
 
-- different strong company/model entities are penalized unless title similarity is very high
-- generic-only overlaps such as `AI`, `agent`, `model`, `大模型` are not enough
-- unrelated research/product/business items require stronger title/entity/category evidence
-- every singleton remains visible as an event with caveats
+## Over-Merge Controls
 
-## Event Fields
+- generic terms such as AI, model, agent, tool, and research are weak evidence;
+- conflicting strong entities are penalized;
+- different open-source projects and conflicting release versions do not merge;
+- different partnership counterparts do not merge;
+- same-domain or same-category proximity cannot establish identity alone;
+- source homepage, directory, documentation-index, and repository-metadata shapes are blocked from public events;
+- low-score/noise clusters remain auditable but do not enter curated display.
 
-Each public event includes:
+`scripts/event-clustering.test.ts` verifies that the two Apple/OpenAI lawsuit reports merge while an adjacent Apple/OpenAI product update and an unrelated Apple/Meta lawsuit stay separate.
 
-- `event_cluster_id`
-- `canonical_title`
-- `summary_zh`
-- `category`
-- `event_score`
-- `event_score_label`
-- `score_reason`
-- `source_count`
-- `source_tier_max`
-- `source_families`
-- `first_seen_at`
-- `latest_seen_at`
-- `related_item_ids`
-- `related_entities`
-- `timeline`
-- `citations`
-- `caveats`
+## Current Results
 
-## Current Run
+| metric | value |
+| --- | ---: |
+| input public radar items | 242 |
+| current-run event clusters | 234 |
+| relationships | 242 |
+| multi-item clusters | 3 |
+| average items per cluster | 1.03 |
+| curated events | 8 |
+| Cloudflare visible signals/events | 192 / 188 |
+| genuine public multi-source events | 1 |
 
-- `public_radar_items`: 183
-- event clusters: 159
-- multi-item merged events: 12
-- average items per cluster: about 1.14
-- curated events visible: yes
-- timeline visible: yes
-- source diversity scoring visible: yes
+The public multi-source example is the Apple/OpenAI lawsuit from The Verge and Ars Technica: source count 2, two citations, timeline preserved, event score 82, label `高优先级`. A low-score Gemini documentation/changelog cluster is excluded from display.
 
-Backend clustering changes the UI:
-
-- homepage first screen is `今日行业精选`
-- `/radar/` defaults to `行业精选`
-- raw rows are moved under `全部信号`
-- `/reports/`, `/ask/`, and `/write/` show event-aware context and prompts
+Persistence is additive and non-destructive: clusters upsert by stable local ID and relationships by event/radar pair. Historical rows are not deleted automatically, so current-run counts come from the generated event artifact rather than an accumulated table count.
