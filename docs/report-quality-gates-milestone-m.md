@@ -13,6 +13,8 @@ The gate fails closed when required metrics or metadata are missing. It recomput
 
 Approval and publication call the same readiness gate and verify every evidence ID, source ID, category, status, and timestamp against `public_radar_items`. A stored `quality_gate_passed=true` value cannot override a current failure.
 
+Candidate duplicate suppression uses a versioned content signature over evidence IDs, quality counts, caveats, missing evidence, and gate reasons. A changed event projection therefore refreshes the candidate even when the evidence IDs are unchanged; order-only changes remain deduplicated.
+
 ## Final Candidates
 
 | type | candidate ID | status | usable | citations | sources | categories | source gate |

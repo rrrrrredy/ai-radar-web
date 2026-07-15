@@ -1,9 +1,13 @@
 import "@/lib/config/load-cli-env";
 
-import { createHash } from "node:crypto";
 import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { loadRadarFeed } from "@/lib/radar/feed";
+import {
+  reportCandidateContentMatches,
+  reportCandidateSignature,
+  reportCandidateSignatureVersion
+} from "@/lib/reports/candidate-signature";
 import { formatMarkdownReport, generateReportDraft } from "@/lib/reports/generate-live-report";
 import { validateReportCandidateQualityGate } from "@/lib/reports/quality-gates";
 import type { GeneratedReportDraft, ReportLanguage, ReportPreviewType } from "@/lib/reports/types";
@@ -137,6 +141,7 @@ async function persistCandidate(
       confidence: confidenceForReport(candidateDraft),
       metadata: {
         candidate_signature: candidateSignature,
+        candidate_signature_version: reportCandidateSignatureVersion,
         category_count: candidateDraft.category_count,
         citation_count: candidateDraft.citation_count,
         created_from: "report_candidate_cli",
@@ -199,6 +204,7 @@ async function insertAuditEvent(
       metadata: {
         api_call_count: report.model_metadata.api_call_count,
         candidate_signature: candidateSignature,
+        candidate_signature_version: reportCandidateSignatureVersion,
         category_count: report.category_count,
         caveats_count: report.caveats.length,
         citation_count: report.citation_count,
@@ -389,20 +395,6 @@ function candidateDraftForPersistence(report: GeneratedReportDraft): GeneratedRe
   };
 }
 
-function reportCandidateSignature(report: GeneratedReportDraft) {
-  return createHash("sha256")
-    .update(
-      JSON.stringify({
-        data_source: report.data_source,
-        report_type: report.report_type,
-        source_item_ids: stableStringArray(report.source_item_ids),
-        time_window_end: report.time_window.end,
-        time_window_start: report.time_window.start
-      })
-    )
-    .digest("hex");
-}
-
 function isMatchingSeed(
   row: Record<string, unknown>,
   report: GeneratedReportDraft,
@@ -411,13 +403,15 @@ function isMatchingSeed(
   const metadata = isRecord(row.metadata) ? row.metadata : {};
   const draft = reportDraftRecord(metadata);
   const rowSignature = text(metadata.candidate_signature) || text(draft?.candidate_signature);
-  if (rowSignature && rowSignature === candidateSignature) {
-    return true;
-  }
-
   const rowSourceItemIds = Array.isArray(row.source_item_ids)
     ? stringArray(row.source_item_ids)
     : stringArray(draft?.source_item_ids);
+
+  if (rowSignature) {
+    if (rowSignature === candidateSignature) return true;
+    return sameStringSet(rowSourceItemIds, report.source_item_ids) && reportCandidateContentMatches(draft, report);
+  }
+
   if (sameStringSet(rowSourceItemIds, report.source_item_ids)) {
     return true;
   }
