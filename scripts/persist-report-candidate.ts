@@ -5,6 +5,7 @@ import { type SupabaseClient } from "@supabase/supabase-js";
 
 import { loadRadarFeed } from "@/lib/radar/feed";
 import { formatMarkdownReport, generateReportDraft } from "@/lib/reports/generate-live-report";
+import { validateReportCandidateQualityGate } from "@/lib/reports/quality-gates";
 import type { GeneratedReportDraft, ReportLanguage, ReportPreviewType } from "@/lib/reports/types";
 import { getSupabaseServiceClientForWrite, getSupabaseServiceStatus } from "@/lib/supabase/service";
 
@@ -61,6 +62,16 @@ function printCandidateSummary(
   result: CandidateWriteResult | null
 ) {
   const candidateDraft = candidateDraftForPersistence(report);
+  if (candidateDraft.quality_gate_passed) {
+    const validation = validateReportCandidateQualityGate(
+      candidateDraft.report_type,
+      candidateDraft,
+      candidateDraft.generated_at
+    );
+    if (!validation.passed) {
+      throw new Error(`Generated report candidate failed evidence recomputation: ${validation.reasons.join("; ")}`);
+    }
+  }
 
   console.log("Report candidate generation");
   console.log(`Type: ${candidateDraft.report_type}`);

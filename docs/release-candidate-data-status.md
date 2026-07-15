@@ -12,7 +12,7 @@ Updated: 2026-07-15
 | blocked or manual | 226 |
 | sources with raw / radar / public items | 83 / 83 / 64 |
 | raw / radar / public radar items | 287 / 283 / 261 |
-| report candidates | 34 |
+| report candidates | 36 |
 
 - source-to-raw coverage: 91.2%;
 - raw-to-radar conversion: 98.6%;
@@ -48,7 +48,7 @@ The final run selected OGX through the stable legacy slug `meta-llama-stack`. It
 | Supabase public view / Cloudflare `全部信号` | 261 | 207 | 205 | 8 |
 | persisted event tables | 261 input | 209 | 207 | 8 |
 
-All 261 public-safe signals are exported. Fifty low-event records that were previously omitted are now retained only in `全部信号`; clustering still excludes them. The remaining event-layer difference is the public display score boundary, not a loss of raw public signals.
+All 261 public-safe signals are exported. Fifty-four signal-only audit rows are retained in `全部信号` and disclosed in the UI; clustering excludes them because they do not meet the event contract. The remaining event-layer difference is the public display score boundary, not a loss of raw public signals.
 
 Two multi-item public events reduce four repeated signals to two event cards. One is cross-family Anthropic/MIT Technology Review coverage; one is same-family Apple/OpenAI lawsuit coverage. Source-family diversity is visible but does not assert independence.
 
@@ -56,8 +56,8 @@ Two multi-item public events reduce four repeated signals to two event cards. On
 
 | type | ID | status | source-stage metrics | public event metrics | gate |
 | --- | --- | --- | --- | --- | --- |
-| daily | `a25e6f48-db5e-491d-84fe-16af7d78243d` | `needs_review` | 38 / 12 / 19 / 6 | 8 / 8 / 5 / 5 | passed |
-| weekly | `54ddc6ff-637e-4a87-b14a-fecc39135bca` | `needs_review` | 78 / 12 / 13 / 12 | 26 / 26 / 13 / 10 | passed |
+| daily | `c03df7dd-7da3-4b27-86a8-353e4ff2fdd8` | `needs_review` | 21 / 12 / 9 / 10 | 8 / 8 / 5 / 5 | passed |
+| weekly | `21f9f53d-48eb-47d1-bab3-1a26b60055ce` | `needs_review` | 41 / 12 / 18 / 12 | 25 / 25 / 13 / 10 | passed |
 
 Metrics are usable evidence/events, citations, distinct sources, and categories. Both event-aware public gates pass. Editorial review remains required; neither candidate is published.
 

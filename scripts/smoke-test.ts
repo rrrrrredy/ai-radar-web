@@ -609,6 +609,16 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
     true,
     "Cloudflare static site must expose Ask/Write, entity index/detail pages, and a public version marker."
   );
+  assert.equal(
+    cloudflareSite.includes("timeWindowHours") &&
+      cloudflareSite.includes("eventWithinIntentWindow") &&
+      cloudflareSite.includes("function eventDate(event)") &&
+      cloudflareSite.includes('[event.canonical_title || "", ...(event.related_entities || [])]') &&
+      cloudflareSite.includes("仅信号审计行") &&
+      cloudflareSite.includes("Signal-only audit rows"),
+    true,
+    "Cloudflare Ask/Write and radar UI must enforce evidence windows, avoid category-only Agent matches, and disclose signal-only rows."
+  );
 
   const snapshotExporter = readSource("scripts/export-public-snapshot.ts");
   const supabasePublicContract = readSource("scripts/check-supabase-public-contract.ts");
@@ -864,9 +874,19 @@ function assertPublicSnapshotSourceContract(snapshotExporter: string, supabaseLo
   );
   assert.equal(
     snapshotExporter.includes('snapshot.report_quality_summary.weekly.quality_gate_passed') &&
-      snapshotExporter.includes('CLOUDFLARE_SNAPSHOT_MAX_AGE_HOURS'),
+      snapshotExporter.includes('CLOUDFLARE_SNAPSHOT_MAX_AGE_HOURS') &&
+      snapshotExporter.includes("assertReportEvidenceInsideDeclaredWindows(snapshot)") &&
+      snapshotExporter.includes("selectReportEvents(report, eventLayer, latestTimestamp)"),
     true,
-    "Production Cloudflare snapshot export must enforce report quality and publication freshness."
+    "Production Cloudflare snapshot export must enforce report quality, declared report windows, and publication freshness."
+  );
+  assert.equal(
+    supabaseLoader.includes('{ count: "exact" }') &&
+      supabaseLoader.includes('.order("id", { ascending: false })') &&
+      supabaseLoader.includes(".range(offset, offset + retrievalPageSize - 1)") &&
+      supabaseLoader.includes("validateCompleteSupabaseRadarRows(rows, expectedCount)"),
+    true,
+    "Authoritative Supabase reads must use exact-count stable pagination and completeness validation."
   );
 
   assert.deepEqual(
@@ -955,11 +975,15 @@ function selectListStringLiterals(source: string, tableName: string) {
   const tableIndex = source.indexOf(`.from("${tableName}")`);
   assert.notEqual(tableIndex, -1, `Expected Supabase query for ${tableName}.`);
   const selectIndex = source.indexOf(".select(", tableIndex);
-  const joinIndex = source.indexOf("].join", selectIndex);
   assert.notEqual(selectIndex, -1, `Expected select list for ${tableName}.`);
+  const selectCall = source.slice(selectIndex, selectIndex + 160);
+  const variable = selectCall.match(/^\.select\(\s*([A-Za-z_$][\w$]*)/u)?.[1];
+  const listStart = variable ? source.indexOf(`const ${variable} = [`) : selectIndex;
+  const joinIndex = source.indexOf("].join", listStart);
+  assert.notEqual(listStart, -1, `Expected select-list declaration for ${tableName}.`);
   assert.notEqual(joinIndex, -1, `Expected array join select list for ${tableName}.`);
 
-  const selectSource = source.slice(selectIndex, joinIndex);
+  const selectSource = source.slice(listStart, joinIndex);
   return [...selectSource.matchAll(/"([^"]+)"/g)].map((entry) => entry[1]);
 }
 
@@ -1113,6 +1137,29 @@ function assertPublicSnapshotJsonContract(snapshotPath: string) {
     [],
     `${snapshotPath} credential redaction must not corrupt ordinary AI terms such as token or token-wise.`
   );
+
+  const radarById = new Map(
+    publicRadarItems
+      .filter(isRecord)
+      .map((item) => [String(item.id ?? ""), item] as const)
+      .filter(([id]) => id)
+  );
+  const reports = snapshot.reports;
+  assert.equal(Array.isArray(reports), true, `${snapshotPath}.reports must be an array.`);
+  for (const [reportIndex, reportValue] of (reports as unknown[]).entries()) {
+    assert.equal(isRecord(reportValue), true, `${snapshotPath}.reports[${reportIndex}] must be an object.`);
+    const report = reportValue as JsonRecord;
+    assert.equal(isRecord(report.time_window), true, `${snapshotPath}.reports[${reportIndex}].time_window must be an object.`);
+    const start = Date.parse(String((report.time_window as JsonRecord).start ?? ""));
+    const end = Date.parse(String((report.time_window as JsonRecord).end ?? ""));
+    assert.equal(Number.isFinite(start) && Number.isFinite(end) && start <= end, true, `${snapshotPath}.reports[${reportIndex}] must have a valid evidence window.`);
+    const sourceIds = Array.isArray(report.source_item_ids) ? report.source_item_ids.map(String) : [];
+    for (const sourceId of sourceIds) {
+      const item = radarById.get(sourceId);
+      const timestamp = item ? Date.parse(String(item.published_at ?? item.collected_at ?? "")) : Number.NaN;
+      assert.equal(Boolean(item) && timestamp >= start && timestamp <= end, true, `${snapshotPath}.reports[${reportIndex}] source item ${sourceId} must remain inside the declared evidence window.`);
+    }
+  }
 }
 
 function assertPublicViewSecurityMigration(securitySql: string, privateGrantSql: string) {
@@ -1883,6 +1930,15 @@ function mockReport(overrides: Partial<ReportWorkflowDocument>): ReportWorkflowD
     ],
     data_source: "mock_data",
     distinct_source_count: 1,
+    evidence_items: [
+      {
+        categories: ["research"],
+        id: "citation-smoke",
+        source_name: "Source",
+        status: "included",
+        timestamp: "2026-06-29T00:00:00.000Z"
+      }
+    ],
     executive_summary: "Evidence-backed summary.",
     generated_at: "2026-06-29T00:00:00.000Z",
     id: "report-smoke",

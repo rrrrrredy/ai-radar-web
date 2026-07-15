@@ -13,6 +13,7 @@ import {
 import { publicInternetHttpUrl } from "@/lib/public-url";
 import type {
   GeneratedReportDraft,
+  GeneratedReportEvidenceItem,
   GeneratedReportMode,
   GeneratedReportSection,
   GeneratedReportStatus,
@@ -416,6 +417,7 @@ function normalizeSnapshotReportDocument(row: unknown): ReportWorkflowDocument |
     caveats: stringArray(row.caveats),
     citations,
     data_source: dataSourceValue(row.data_source) ?? "supabase_radar_items",
+    evidence_items: normalizeEvidenceItems(row.evidence_items),
     executive_summary: text(row.executive_summary) || summary,
     generated_at: generatedAt,
     id,
@@ -494,6 +496,7 @@ function normalizeReportDraft(
     caveats: stringArray(value.caveats),
     citations,
     data_source: dataSourceValue(value.data_source) ?? fallback.dataSource,
+    evidence_items: normalizeEvidenceItems(value.evidence_items),
     executive_summary: text(value.executive_summary) || fallback.summary,
     generated_at: generatedAt,
     id: fallback.id,
@@ -542,6 +545,7 @@ function minimalSavedDraft(fallback: {
     caveats: ["Saved report metadata does not include a structured report draft payload."],
     citations: [],
     data_source: fallback.dataSource,
+    evidence_items: [],
     executive_summary: fallback.summary,
     generated_at: fallback.generatedAt,
     id: fallback.id,
@@ -677,6 +681,31 @@ function defaultSectionId(index: number): GeneratedReportSection["id"] {
   ] as const;
 
   return ids[index] ?? "weak_signals_needs_review";
+}
+
+function normalizeEvidenceItems(value: unknown): GeneratedReportEvidenceItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item): GeneratedReportEvidenceItem | null => {
+      if (!isRecord(item)) return null;
+      const id = text(item.id);
+      const sourceName = text(item.source_name);
+      const timestamp = text(item.timestamp);
+      if (!id || !sourceName || !timestamp || !Number.isFinite(Date.parse(timestamp))) return null;
+
+      return {
+        categories: stringArray(item.categories) as GeneratedReportEvidenceItem["categories"],
+        database_id: optionalText(item.database_id),
+        id,
+        source_name: sourceName,
+        status: statusForCitation(item.status),
+        timestamp
+      };
+    })
+    .filter((item): item is GeneratedReportEvidenceItem => Boolean(item));
 }
 
 function normalizeCitations(value: unknown): RetrievalCitation[] {

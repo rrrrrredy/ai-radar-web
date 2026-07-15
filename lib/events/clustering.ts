@@ -483,7 +483,7 @@ function materializeCluster(cluster: WorkingCluster): PublicEventCluster {
   const sourceFamilies = unique(items.map(sourceFamilyForEvent));
   const sourceNames = unique(items.map((item) => item.source_name));
   const relatedItemIds = items.map((item) => item.id);
-  const canonicalTitle = publicEventTitle(primary);
+  const canonicalTitle = publicEventTitle(primary, items);
   const timeline = items
     .map((item) => ({
       item_id: item.id,
@@ -727,10 +727,19 @@ function publicSummary(primary: ClusterableRadarItem, items: ClusterableRadarIte
   return `${multiSource}，来源覆盖 ${sourceFamilies.join("、") || "未知来源家族"}。`;
 }
 
-function publicEventTitle(primary: ClusterableRadarItem) {
+function publicEventTitle(primary: ClusterableRadarItem, items: ClusterableRadarItem[]) {
   const title = primary.title.trim();
   const source = primary.source_name.trim();
   const summary = (primary.summary_zh || primary.summary_en || "").trim();
+  const githubReleaseItem = items.find((item) => githubReleaseIdentity(item.url) && releaseVersion(item.title));
+  const githubRelease = githubReleaseItem ? githubReleaseIdentity(githubReleaseItem.url) : null;
+
+  if (githubRelease && releaseVersion(title)) {
+    const releaseSource = githubReleaseItem?.source_name.trim() || source;
+    return releaseSource
+      ? `${releaseSource} 发布 ${githubRelease.tag} 版本`
+      : `${githubRelease.repository} 发布 ${githubRelease.tag} 版本`;
+  }
 
   if (/^release\s+v?\d+(?:\.\d+){1,3}/i.test(title)) {
     const version = title.match(/v?\d+(?:\.\d+){1,3}/i)?.[0] ?? title.replace(/^release\s+/i, "");

@@ -68,12 +68,14 @@ export type StaleClusterReconciliationGuard = {
   directSupabaseRead: boolean;
   dataSource: RetrievalDataSource;
   eligibleInputItemCount: number;
+  minimumClusteredInputCoverageRatio: number;
   minimumExistingClusterCoverageRatio: number;
   minimumInputItemCount: number;
 };
 
 export const MINIMUM_STALE_CLUSTER_INPUT_ITEMS = 20;
-export const MINIMUM_STALE_CLUSTER_COVERAGE_RATIO = 0.5;
+export const MINIMUM_STALE_CLUSTER_COVERAGE_RATIO = 0.9;
+export const MINIMUM_STALE_CLUSTERED_INPUT_COVERAGE_RATIO = 0.75;
 
 export function assertEventPersistenceWriteEnabled(value = process.env.ENABLE_SUPABASE_WRITES) {
   if (!isEnabled(value)) {
@@ -299,6 +301,26 @@ function assertStaleClusterReconciliationGuard(
   if (clusteredInputItemCount > eligibleInputItemCount) {
     throw new Error(
       `Stale event reconciliation guard is inconsistent: ${clusteredInputItemCount} clustered items exceeds ${eligibleInputItemCount} eligible input items.`
+    );
+  }
+
+  const minimumClusteredInputCoverageRatio = guard.minimumClusteredInputCoverageRatio;
+  if (
+    !Number.isFinite(minimumClusteredInputCoverageRatio) ||
+    minimumClusteredInputCoverageRatio < MINIMUM_STALE_CLUSTERED_INPUT_COVERAGE_RATIO ||
+    minimumClusteredInputCoverageRatio > 1
+  ) {
+    throw new Error(
+      `Stale event reconciliation clustered-input ratio guard must be between ${MINIMUM_STALE_CLUSTERED_INPUT_COVERAGE_RATIO} and 1.`
+    );
+  }
+
+  const clusteredInputCoverageRatio = eligibleInputItemCount === 0
+    ? 0
+    : clusteredInputItemCount / eligibleInputItemCount;
+  if (clusteredInputCoverageRatio < minimumClusteredInputCoverageRatio) {
+    throw new Error(
+      `Stale event reconciliation clustered-input coverage guard failed: ${clusteredInputItemCount}/${eligibleInputItemCount} eligible items were clustered (${clusteredInputCoverageRatio.toFixed(3)}), below the required ${minimumClusteredInputCoverageRatio.toFixed(3)}.`
     );
   }
 

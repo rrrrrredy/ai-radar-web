@@ -17,7 +17,40 @@ type SupabaseReadError = {
   hint?: string;
 };
 
-const retrievalLimit = 500;
+const retrievalPageSize = 500;
+const publicRadarSelectColumns = [
+  "id",
+  "local_id",
+  "source_id",
+  "source_name",
+  "title",
+  "url",
+  "published_at",
+  "collected_at",
+  "processed_at",
+  "language",
+  "summary_zh",
+  "summary_en",
+  "topics",
+  "categories",
+  "tags",
+  "status",
+  "understanding_status",
+  "exclusion_reason",
+  "ai_relevance_score",
+  "importance_score",
+  "credibility_score",
+  "novelty_score",
+  "freshness_score",
+  "overall_score",
+  "source_tier",
+  "source_weight",
+  "confidence",
+  "why_it_matters",
+  "entities",
+  "created_at",
+  "updated_at"
+].join(",");
 
 export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
   const appConfig = getAppConfig();
@@ -46,63 +79,70 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
       };
     }
 
-    const { data, error } = await supabase
-      .from("public_radar_items")
-      .select(
-        [
-          "id",
-          "local_id",
-          "source_id",
-          "source_name",
-          "title",
-          "url",
-          "published_at",
-          "collected_at",
-          "processed_at",
-          "language",
-          "summary_zh",
-          "summary_en",
-          "topics",
-          "categories",
-          "tags",
-          "status",
-          "understanding_status",
-          "exclusion_reason",
-          "ai_relevance_score",
-          "importance_score",
-          "credibility_score",
-          "novelty_score",
-          "freshness_score",
-          "overall_score",
-          "source_tier",
-          "source_weight",
-          "confidence",
-          "why_it_matters",
-          "entities",
-          "created_at",
-          "updated_at"
-        ].join(",")
-      )
-      .in("understanding_status", ["included", "needs_review"])
-      .order("processed_at", { ascending: false, nullsFirst: false })
-      .limit(retrievalLimit);
+    const rows: SupabaseRadarRow[] = [];
+    let expectedCount: number | null = null;
 
-    if (error) {
-      const readError = error as SupabaseReadError;
-      if (isMissingPublicRetrievalViewError(readError)) {
+    for (let offset = 0; ; offset += retrievalPageSize) {
+      const { count, data, error } = await supabase
+        .from("public_radar_items")
+        .select(publicRadarSelectColumns, { count: "exact" })
+        .in("understanding_status", ["included", "needs_review"])
+        .order("processed_at", { ascending: false, nullsFirst: false })
+        .order("id", { ascending: false })
+        .range(offset, offset + retrievalPageSize - 1);
+
+      if (error) {
+        const readError = error as SupabaseReadError;
+        if (isMissingPublicRetrievalViewError(readError)) {
+          return {
+            loaded: null,
+            warnings: ["公开证据库视图暂不可读，已尝试切换到公开快照。"]
+          };
+        }
+
         return {
           loaded: null,
-          warnings: ["公开证据库视图暂不可读，已尝试切换到公开快照。"]
+          warnings: ["公开证据库分页读取失败，已尝试切换到公开快照。"]
         };
       }
 
+      if (!Number.isInteger(count) || Number(count) < 0) {
+        return {
+          loaded: null,
+          warnings: ["公开证据库无法确认完整行数，已尝试切换到公开快照。"]
+        };
+      }
+
+      if (expectedCount === null) {
+        expectedCount = Number(count);
+      } else if (expectedCount !== Number(count)) {
+        return {
+          loaded: null,
+          warnings: ["公开证据库在分页期间发生变化，已尝试切换到公开快照。"]
+        };
+      }
+
+      const pageRows = (data ?? []) as unknown as SupabaseRadarRow[];
+      rows.push(...pageRows);
+      if (rows.length >= expectedCount) {
+        break;
+      }
+      if (pageRows.length === 0) {
+        return {
+          loaded: null,
+          warnings: ["公开证据库分页读取不完整，已尝试切换到公开快照。"]
+        };
+      }
+    }
+
+    const completeness = validateCompleteSupabaseRadarRows(rows, expectedCount);
+    if (!completeness.complete) {
       return {
         loaded: null,
-        warnings: ["公开证据库读取失败，已尝试切换到公开快照。"]
+        warnings: ["公开证据库完整性校验未通过，已尝试切换到公开快照。"]
       };
     }
 
-    const rows = (data ?? []) as unknown as SupabaseRadarRow[];
     const items = rows.map(normalizeSupabaseRow).filter((item): item is RetrievalRadarItem => Boolean(item));
 
     if (rows.length === 0 || items.length === 0) {
@@ -112,16 +152,20 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
       };
     }
 
+    if (items.length !== rows.length) {
+      return {
+        loaded: null,
+        warnings: ["公开证据库包含不完整公开行，已尝试切换到公开快照。"]
+      };
+    }
+
     return {
       loaded: {
         items,
         dataSource: "supabase_radar_items",
         authoritativeSupabaseRead: true,
         freshness: freshnessFromItems(items),
-        warnings:
-          items.length < rows.length
-            ? ["Some Supabase public retrieval view rows were skipped because required fields were missing."]
-            : []
+        warnings: []
       },
       warnings: []
     };
@@ -131,6 +175,22 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
       warnings: ["公开证据库读取异常，已尝试切换到公开快照。"]
     };
   }
+}
+
+export function validateCompleteSupabaseRadarRows(rows: SupabaseRadarRow[], expectedCount: number | null) {
+  if (!Number.isInteger(expectedCount) || Number(expectedCount) < 0) {
+    return { complete: false, reason: "exact count unavailable" } as const;
+  }
+  if (rows.length !== expectedCount) {
+    return { complete: false, reason: "row count mismatch" } as const;
+  }
+
+  const ids = rows.map((row) => text(row.id));
+  if (ids.some((id) => !id) || new Set(ids).size !== ids.length) {
+    return { complete: false, reason: "missing or duplicate row ids" } as const;
+  }
+
+  return { complete: true, reason: null } as const;
 }
 
 function isMissingPublicRetrievalViewError(error: SupabaseReadError) {

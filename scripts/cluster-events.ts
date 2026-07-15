@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { buildEventLayer } from "@/lib/events/clustering";
 import {
+  MINIMUM_STALE_CLUSTERED_INPUT_COVERAGE_RATIO,
   MINIMUM_STALE_CLUSTER_COVERAGE_RATIO,
   MINIMUM_STALE_CLUSTER_INPUT_ITEMS,
   persistEventLayer,
@@ -58,6 +59,7 @@ function buildStaleClusterReconciliationGuard(
     directSupabaseRead: true,
     dataSource: feed.data_source,
     eligibleInputItemCount: feed.counts.included + feed.counts.needs_review,
+    minimumClusteredInputCoverageRatio: MINIMUM_STALE_CLUSTERED_INPUT_COVERAGE_RATIO,
     minimumExistingClusterCoverageRatio: MINIMUM_STALE_CLUSTER_COVERAGE_RATIO,
     minimumInputItemCount: MINIMUM_STALE_CLUSTER_INPUT_ITEMS
   };

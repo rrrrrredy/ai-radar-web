@@ -264,6 +264,16 @@ assert.equal(
   2,
   "distinct canonical GitHub tags must not merge when their release titles are identical"
 );
+assert.equal(
+  ollamaRc22Event.canonical_title,
+  "GitHub Releases 发布 v0.30.0-rc22 版本",
+  "the public title must expose the exact canonical GitHub tag"
+);
+assert.equal(
+  ollamaRc23Event.canonical_title,
+  "GitHub Releases 发布 v0.30.0-rc23 版本",
+  "different release tags must not render as duplicate public titles"
+);
 
 const semanticKernelTracks = [
   radarItem({

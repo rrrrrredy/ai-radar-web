@@ -31,6 +31,8 @@ A narrow alias joins `J-space`, `Jacobian lens`, and `global workspace` only whe
 
 Regression tests cover Apple/OpenAI and Anthropic/MIT positive merges plus unrelated Claude robotics, other-lab global-workspace research, adjacent llama.cpp/Ollama versions, release candidates, and directory pages as negative cases.
 
+Canonical release titles retain the exact GitHub tag found across cluster items. For example, Ollama `v0.30.0-rc22` and `v0.30.0-rc23` remain separate titles and clusters.
+
 ## Results
 
 | metric | persisted layer | Cloudflare display |
@@ -49,4 +51,4 @@ Deduplication examples:
 
 The current duplicate reduction is two readings: four related signals become two cards. This is intentionally reported as thin coverage rather than overstated product maturity.
 
-Persistence upserts stable cluster IDs and event/radar relationships. The final authoritative write persisted 207 clusters and 209 relationships and archived 0 stale clusters. Archival safeguards require authoritative Supabase input, a minimum feed size, adequate retained-cluster coverage, and an explicit reconciliation guard. Rows are never deleted by clustering.
+Persistence upserts stable cluster IDs and event/radar relationships. The final authoritative write persisted 207 clusters and 209 relationships and archived 0 stale clusters. Archival safeguards require authoritative Supabase input, a minimum feed size, at least 75% eligible-item clustering coverage, at least 90% retained-cluster coverage, and an explicit reconciliation guard. Rows are never deleted by clustering.

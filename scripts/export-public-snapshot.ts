@@ -1259,62 +1259,52 @@ function buildEventAwareReports(
   eventLayer: PublicEventLayer,
   latestTimestamp: string | null
 ): PublicReportSnapshot[] {
-  if (reports.length === 0 || eventLayer.event_clusters.length === 0) {
+  if (reports.length === 0) {
     return reports;
   }
 
   return reports
-    .map((report) =>
-      shouldPreserveReviewedPublicReport(report)
-        ? report
-        : eventAwareReport(
-            report,
-            selectReportEvents(report.report_type, eventLayer, latestTimestamp),
-            latestTimestamp
-          )
-    )
+    .map((report) => eventAwareReport(report, selectReportEvents(report, eventLayer, latestTimestamp), latestTimestamp))
     .filter(isPublicReportSnapshotCandidate);
 }
 
-function shouldPreserveReviewedPublicReport(report: PublicReportSnapshot) {
-  return report.mode === "saved_report" &&
-    publicSavedReportStatus(report.status) !== null &&
-    report.quality_gate_passed &&
-    report.sections.length > 0 &&
-    report.citations.length > 0 &&
-    report.source_item_ids.length > 0;
-}
-
 function selectReportEvents(
-  reportType: ReportPreviewType,
+  report: PublicReportSnapshot,
   eventLayer: PublicEventLayer,
   latestTimestamp: string | null
 ) {
-  const preferred = reportType === "daily"
+  const preferred = report.report_type === "daily"
     ? [...eventLayer.curated_events, ...eventLayer.event_clusters]
     : eventLayer.event_clusters;
   const seen = new Set<string>();
-  const limit = reportType === "daily" ? 8 : 24;
-  const cutoff = reportWindowCutoff(reportType, latestTimestamp);
+  const limit = report.report_type === "daily" ? 8 : 24;
+  const window = reportEventWindow(report, latestTimestamp);
+
+  if (!window) {
+    return [];
+  }
 
   return preferred
     .filter((event) => {
       if (seen.has(event.event_cluster_id)) return false;
-      if (cutoff && eventLatestTime(event) < cutoff) return false;
+      const latest = eventLatestTime(event);
+      if (latest < window.start || latest > window.end) return false;
       seen.add(event.event_cluster_id);
       return true;
     })
     .slice(0, limit);
 }
 
-function reportWindowCutoff(reportType: ReportPreviewType, latestTimestamp: string | null) {
-  const latest = latestTimestamp ? Date.parse(latestTimestamp) : NaN;
-  if (!Number.isFinite(latest)) {
+function reportEventWindow(report: PublicReportSnapshot, latestTimestamp: string | null) {
+  const declaredStart = Date.parse(report.time_window.start);
+  const declaredEnd = Date.parse(report.time_window.end);
+  const snapshotLatest = latestTimestamp ? Date.parse(latestTimestamp) : declaredEnd;
+  if (!Number.isFinite(declaredStart) || !Number.isFinite(declaredEnd) || !Number.isFinite(snapshotLatest)) {
     return null;
   }
 
-  const windowMs = reportType === "daily" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
-  return latest - windowMs;
+  const end = Math.min(declaredEnd, snapshotLatest);
+  return declaredStart <= end ? { start: declaredStart, end } : null;
 }
 
 function eventLatestTime(event: PublicEventCluster) {
@@ -1330,12 +1320,20 @@ function eventAwareReport(
   selectedEvents: PublicEventCluster[],
   latestTimestamp: string | null
 ): PublicReportSnapshot {
-  if (selectedEvents.length === 0) {
-    return report;
-  }
-
-  const citations = reportEventCitations(selectedEvents);
-  const relatedItemIds = dedupe(selectedEvents.flatMap((event) => event.related_item_ids));
+  const reportWindow = reportEventWindow(report, latestTimestamp);
+  const relatedItemIds = reportWindow
+    ? dedupe(
+        selectedEvents.flatMap((event) =>
+          event.timeline
+            .filter((entry) => {
+              const timestamp = Date.parse(entry.timestamp);
+              return Number.isFinite(timestamp) && timestamp >= reportWindow.start && timestamp <= reportWindow.end;
+            })
+            .map((entry) => entry.item_id)
+        )
+      )
+    : [];
+  const citations = reportEventCitations(selectedEvents, new Set(relatedItemIds), reportWindow);
   const categories = dedupe(selectedEvents.map((event) => event.category).filter(Boolean));
   const sourceNames = dedupe(citations.map((citation) => citation.source_name));
   const gate = eventReportQualityGate(report.report_type, {
@@ -1349,14 +1347,16 @@ function eventAwareReport(
   const crossFamilyEvents = multiReportEvents.filter((event) => event.source_families.length > 1);
   const sameFamilyEvents = multiReportEvents.filter((event) => event.source_families.length === 1);
   const latestLabel = latestTimestamp ? formatPublicDate(latestTimestamp) : "未知时间";
+  const declaredWindow = `${formatPublicDate(report.time_window.start)} 至 ${formatPublicDate(report.time_window.end)}`;
   const evidenceBoundary = `公开内容发布时间最新到 ${latestLabel}；当前页面展示的是公开快照，不代表今日实时全网覆盖。`;
-  const summary = `${reportLabel}事件预览基于 ${selectedEvents.length} 个公开事件、${relatedItemIds.length} 条相关信号、${citations.length} 条引用和 ${sourceNames.length} 个来源生成；已过滤目录页、文档首页、仓库元数据等低事件性内容。`;
+  const summary = `${reportLabel}事件预览严格限定在声明时间窗 ${declaredWindow}，基于 ${selectedEvents.length} 个公开事件、${relatedItemIds.length} 条相关信号、${citations.length} 条引用和 ${sourceNames.length} 个来源生成；已过滤目录页、文档首页、仓库元数据等低事件性内容。`;
 
   return {
     ...report,
     category_count: categories.length,
     caveats: publicSafeNotes(dedupe([
       evidenceBoundary,
+      `报告证据严格限定在声明时间窗 ${declaredWindow}。`,
       "这是事件感知的公开报告视图；原始信号仍可在“全部信号”中审计。",
       crossFamilyEvents.length === 0 ? "当前没有跨来源家族多源报道事件，报告判断中需要保留不确定性。" : "",
       ...report.caveats
@@ -1376,10 +1376,14 @@ function eventAwareReport(
     quality_gate_reasons: gate.reasons,
     sections: [
       {
-        bullets: selectedEvents.slice(0, 6).map(eventReportBullet),
+        bullets: selectedEvents.length > 0
+          ? selectedEvents.slice(0, 6).map(eventReportBullet)
+          : ["声明时间窗内没有足够的公开事件证据，不能生成完整报告。"],
         caveats: selectedEvents.some((event) => event.source_count === 1) ? ["部分事件仍是单源观察，不能写成已被广泛验证的行业结论。"] : [],
         citations: citations.slice(0, 8).map((citation) => citation.id),
-        summary: "按事件分数、来源可信度、来源多样性和新鲜度排序，优先保留能说明行业变化的事件。",
+        summary: selectedEvents.length > 0
+          ? "按事件分数、来源可信度、来源多样性和新鲜度排序，优先保留能说明行业变化的事件。"
+          : "声明时间窗内证据不足，质量门保持未通过。",
         title: "行业精选事件"
       },
       {
@@ -1407,18 +1411,32 @@ function eventAwareReport(
     ],
     source_item_count: relatedItemIds.length,
     source_item_ids: relatedItemIds,
-    status: report.status,
+    status: gate.passed ? report.status : "needs_review",
     summary,
     title: `AI 行业雷达${reportLabel} - 事件预览`,
     usable_item_count: relatedItemIds.length
   };
 }
 
-function reportEventCitations(events: PublicEventCluster[]) {
+function reportEventCitations(
+  events: PublicEventCluster[],
+  allowedItemIds: ReadonlySet<string>,
+  window: { start: number; end: number } | null
+) {
   const byKey = new Map<string, PublicReportSnapshot["citations"][number]>();
 
   for (const event of events) {
     for (const citation of event.citations) {
+      const timestamp = Date.parse(citation.published_at || citation.collected_at);
+      if (
+        !allowedItemIds.has(citation.item_id) ||
+        !window ||
+        !Number.isFinite(timestamp) ||
+        timestamp < window.start ||
+        timestamp > window.end
+      ) {
+        continue;
+      }
       const key = citation.item_id || citation.url;
       if (!byKey.has(key)) {
         byKey.set(key, {
@@ -2378,6 +2396,8 @@ function assertStrictProductionSnapshot(snapshot: PublicMirrorSnapshot) {
     throw new Error("Production snapshot export requires the weekly report quality gate to pass.");
   }
 
+  assertReportEvidenceInsideDeclaredWindows(snapshot);
+
   if (
     snapshot.freshness.latest_timestamp_source !== "published_at" ||
     !Number.isFinite(latestTime) ||
@@ -2387,6 +2407,39 @@ function assertStrictProductionSnapshot(snapshot: PublicMirrorSnapshot) {
     throw new Error(
       `Production snapshot export requires a valid public publication timestamp no older than ${maxAgeHours} hours.`
     );
+  }
+}
+
+function assertReportEvidenceInsideDeclaredWindows(snapshot: PublicMirrorSnapshot) {
+  const itemsById = new Map(snapshot.radar_items.map((item) => [item.id, item]));
+
+  for (const report of snapshot.reports) {
+    const start = Date.parse(report.time_window.start);
+    const end = Date.parse(report.time_window.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) {
+      throw new Error(`Report ${report.id} has an invalid declared evidence window.`);
+    }
+
+    const sourceIds = new Set(report.source_item_ids);
+    for (const sourceId of sourceIds) {
+      const item = itemsById.get(sourceId);
+      const timestamp = item ? Date.parse(item.published_at || item.collected_at) : Number.NaN;
+      if (!item || !Number.isFinite(timestamp) || timestamp < start || timestamp > end) {
+        throw new Error(`Report ${report.id} includes source item ${sourceId} outside its declared evidence window.`);
+      }
+    }
+
+    for (const citation of report.citations) {
+      const timestamp = Date.parse(citation.published_at || citation.collected_at || "");
+      if (
+        !sourceIds.has(citation.id) ||
+        !Number.isFinite(timestamp) ||
+        timestamp < start ||
+        timestamp > end
+      ) {
+        throw new Error(`Report ${report.id} includes citation ${citation.id} outside its declared evidence window.`);
+      }
+    }
   }
 }
 

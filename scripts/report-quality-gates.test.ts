@@ -30,7 +30,8 @@ function main() {
   testCandidateGateRequiresExplicitPassFlags();
   testCandidateGateEnforcesCurrentThresholds();
   testCandidateGateRejectsMalformedLegacyMetadata();
-  testCandidateGateRejectsCollectionTimeAsPublication();
+  testCandidateGateRejectsEvidenceOutsideWindow();
+  testCandidateGateRejectsSelfReportedSourceDiversity();
 
   console.log("Report quality gate regression tests passed.");
 }
@@ -215,7 +216,8 @@ function testCandidateGateEnforcesCurrentThresholds() {
     draft.citation_count = 1;
     draft.distinct_source_count = 1;
     draft.category_count = 1;
-    draft.citations = [candidateCitation("only-citation")];
+    draft.evidence_items = [candidateEvidence("evidence-0", 0, 1, 1)];
+    draft.citations = [candidateCitation("evidence-0", "来源-0")];
     qualityGate.usable_item_count = 1;
     qualityGate.citation_count = 1;
     qualityGate.distinct_source_count = 1;
@@ -242,18 +244,35 @@ function testCandidateGateRejectsMalformedLegacyMetadata() {
   assert.match(malformedValidation.reasons.join("\n"), /usable_item_count must be a non-negative integer/);
 }
 
-function testCandidateGateRejectsCollectionTimeAsPublication() {
+function testCandidateGateRejectsEvidenceOutsideWindow() {
   const draft = passingCandidateDraft("daily");
-  draft.citations = (draft.citations as Array<Record<string, unknown>>).map((citation) => {
-    const withoutPublicationTime = { ...citation };
-    delete withoutPublicationTime.published_at;
-    return withoutPublicationTime;
-  });
+  draft.evidence_items = (draft.evidence_items as Array<Record<string, unknown>>).map((item) => ({
+    ...item,
+    timestamp: "2026-07-12T11:00:00.000Z"
+  }));
 
   const validation = validateReportCandidateQualityGate("daily", draft, evaluatedAt);
 
   assert.equal(validation.passed, false);
-  assert.match(validation.reasons.join("\n"), /发布时间|证据时间戳|publication|新鲜度|fresh/i);
+  assert.match(validation.reasons.join("\n"), /outside the declared time window/);
+}
+
+function testCandidateGateRejectsSelfReportedSourceDiversity() {
+  const draft = passingCandidateDraft("weekly");
+  draft.evidence_items = (draft.evidence_items as Array<Record<string, unknown>>).map((item) => ({
+    ...item,
+    source_name: "同一来源"
+  }));
+  draft.citations = (draft.citations as Array<Record<string, unknown>>).map((citation) => ({
+    ...citation,
+    source_name: "同一来源"
+  }));
+
+  const validation = validateReportCandidateQualityGate("weekly", draft, evaluatedAt);
+
+  assert.equal(validation.passed, false);
+  assert.match(validation.reasons.join("\n"), /distinct_source_count must match recomputed evidence count 1/);
+  assert.match(validation.reasons.join("\n"), /独立来源 1 个/);
 }
 
 function passingGate(reportType: ReportPreviewType, evidenceTimestamp: string) {
@@ -302,8 +321,13 @@ function passingCandidateDraft(reportType: ReportPreviewType): Record<string, un
   return {
     category_count: metrics.categoryCount,
     citation_count: metrics.citationCount,
-    citations: Array.from({ length: metrics.citationCount }, (_, index) => candidateCitation(`citation-${index}`)),
+    citations: Array.from({ length: metrics.citationCount }, (_, index) =>
+      candidateCitation(`evidence-${index}`, `来源-${index % metrics.distinctSourceCount}`)
+    ),
     distinct_source_count: metrics.distinctSourceCount,
+    evidence_items: Array.from({ length: metrics.usableItemCount }, (_, index) =>
+      candidateEvidence(`evidence-${index}`, index, metrics.distinctSourceCount, metrics.categoryCount)
+    ),
     quality_gate: gate,
     quality_gate_passed: true,
     quality_gate_reasons: [],
@@ -316,12 +340,24 @@ function passingCandidateDraft(reportType: ReportPreviewType): Record<string, un
   };
 }
 
-function candidateCitation(id: string) {
+function candidateCitation(id: string, sourceName: string) {
   return {
     collected_at: "2026-07-14T12:00:00.000Z",
     id,
     published_at: "2026-07-14T12:00:00.000Z",
-    source_name: "测试来源"
+    source_name: sourceName
+  };
+}
+
+function candidateEvidence(id: string, index: number, sourceCount: number, categoryCount: number) {
+  const categories = ["model_release", "research", "agent"];
+  return {
+    categories: [categories[index % categoryCount]],
+    database_id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+    id,
+    source_name: `来源-${index % sourceCount}`,
+    status: "included",
+    timestamp: "2026-07-14T12:00:00.000Z"
   };
 }
 
@@ -342,6 +378,7 @@ function staleDailyPreview(): ReportPreview {
       url: item.url
     })),
     data_source: "supabase_radar_items",
+    evidence_items: items,
     generated_at: timestamp,
     missing_evidence: [],
     report_type: "daily",

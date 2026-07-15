@@ -269,7 +269,7 @@ export async function updateReportCandidateStatus(
 
     const now = new Date().toISOString();
     if (value.status === "approved") {
-      assertReportCandidatePublishable(existing, existing.metadata, "approval", now);
+      await assertReportCandidatePublishable(supabase, existing, existing.metadata, "approval", now);
     }
 
     const metadata = mergeMetadata(existing.metadata, {
@@ -343,7 +343,7 @@ export async function publishReportCandidate(
     const now = new Date().toISOString();
     const candidateMetadata = isRecord(existing.metadata) ? existing.metadata : {};
     const draft = reportDraftRecord(candidateMetadata);
-    assertReportCandidatePublishable(existing, candidateMetadata, "publication", now);
+    await assertReportCandidatePublishable(supabase, existing, candidateMetadata, "publication", now);
     const timeWindow = resolveReportTimeWindow(existing, draft, now);
     const title = text(existing.title) || "Untitled report";
     const summary = text(existing.summary) || title;
@@ -766,7 +766,8 @@ function reportBody(draft: Record<string, unknown>, summary: string) {
   return text(draft.markdown) || text(draft.executive_summary) || text(draft.one_sentence_summary) || summary;
 }
 
-function assertReportCandidatePublishable(
+async function assertReportCandidatePublishable(
+  supabase: SupabaseClient,
   existing: Record<string, unknown>,
   metadata: unknown,
   operation: "approval" | "publication",
@@ -817,7 +818,9 @@ function assertReportCandidatePublishable(
 
   const reportType = text(existing.report_type);
   if (reportType === "daily" || reportType === "weekly") {
-    const validation = validateReportCandidateQualityGate(reportType, draftValue, evaluatedAt);
+    const verified = await verifiedReportCandidateDraft(supabase, draftValue, existing.source_item_ids);
+    blockers.push(...verified.blockers);
+    const validation = validateReportCandidateQualityGate(reportType, verified.draft ?? draftValue, evaluatedAt);
     if (!validation.passed) {
       blockers.push(`quality gate validation failed: ${validation.reasons.join("; ")}`);
     }
@@ -828,6 +831,114 @@ function assertReportCandidatePublishable(
   if (blockers.length > 0) {
     throw new SafeActionError(`Report candidate is not ready for ${operation}: ${Array.from(new Set(blockers)).join("; ")}.`);
   }
+}
+
+async function verifiedReportCandidateDraft(
+  supabase: SupabaseClient,
+  draftValue: unknown,
+  storedSourceItemIdsValue: unknown
+) {
+  if (!isRecord(draftValue) || !Array.isArray(draftValue.evidence_items)) {
+    return {
+      blockers: ["evidence items are missing or malformed"],
+      draft: null as Record<string, unknown> | null
+    };
+  }
+
+  const declaredEvidence = draftValue.evidence_items.filter(isRecord);
+  if (declaredEvidence.length !== draftValue.evidence_items.length || declaredEvidence.length === 0) {
+    return {
+      blockers: ["every evidence item must be a structured object"],
+      draft: null as Record<string, unknown> | null
+    };
+  }
+
+  const databaseIds = declaredEvidence.map((item) => text(item.database_id));
+  if (databaseIds.some((id) => !isUuid(id)) || new Set(databaseIds).size !== databaseIds.length) {
+    return {
+      blockers: ["every evidence item must have a unique Supabase radar item id"],
+      draft: null as Record<string, unknown> | null
+    };
+  }
+
+  const storedSourceItemIds = completeStringArray(storedSourceItemIdsValue);
+  if (!sameStringSet(storedSourceItemIds, databaseIds)) {
+    return {
+      blockers: ["stored source item ids must exactly match the report evidence items"],
+      draft: null as Record<string, unknown> | null
+    };
+  }
+
+  const rows: Record<string, unknown>[] = [];
+  for (let offset = 0; offset < databaseIds.length; offset += 200) {
+    const batch = databaseIds.slice(offset, offset + 200);
+    const { data, error } = await supabase
+      .from("public_radar_items")
+      .select("id, local_id, source_name, categories, topics, understanding_status, published_at, collected_at, processed_at")
+      .in("id", batch);
+    if (error) {
+      return {
+        blockers: ["report evidence could not be verified against the public radar view"],
+        draft: null as Record<string, unknown> | null
+      };
+    }
+    rows.push(...((data ?? []) as Record<string, unknown>[]));
+  }
+
+  const rowsById = new Map(rows.map((row) => [text(row.id), row]));
+  if (rowsById.size !== databaseIds.length) {
+    return {
+      blockers: ["one or more report evidence items no longer exist in the public radar view"],
+      draft: null as Record<string, unknown> | null
+    };
+  }
+
+  const verifiedEvidence: Record<string, unknown>[] = [];
+  for (const databaseId of databaseIds) {
+    const row = rowsById.get(databaseId);
+    if (!row) continue;
+    const localId = text(row.local_id);
+    const sourceName = text(row.source_name);
+    const timestamp = text(row.published_at) || text(row.collected_at) || text(row.processed_at);
+    const status = text(row.understanding_status);
+    if (!localId || !sourceName || !timestamp || !Number.isFinite(Date.parse(timestamp))) {
+      return {
+        blockers: ["one or more public radar evidence rows are incomplete"],
+        draft: null as Record<string, unknown> | null
+      };
+    }
+    verifiedEvidence.push({
+      categories: completeStringArray(row.categories ?? row.topics),
+      database_id: databaseId,
+      id: localId,
+      source_name: sourceName,
+      status,
+      timestamp
+    });
+  }
+
+  return {
+    blockers: [] as string[],
+    draft: {
+      ...draftValue,
+      evidence_items: verifiedEvidence
+    }
+  };
+}
+
+function completeStringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.map(text).filter(Boolean)));
+}
+
+function sameStringSet(left: string[], right: string[]) {
+  if (left.length !== right.length) return false;
+  const rightSet = new Set(right);
+  return left.every((value) => rightSet.has(value));
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function stringArray(value: unknown) {

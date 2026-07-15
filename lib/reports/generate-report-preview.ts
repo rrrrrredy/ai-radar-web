@@ -1,4 +1,6 @@
 import { citationFromItem } from "@/lib/retrieval/citations";
+import { buildEventLayer, filterPublicDisplayEventLayer } from "@/lib/events/clustering";
+import { toClusterableRadarItem } from "@/lib/events/radar-item-adapter";
 import { itemEvidenceTimestamp, type RadarFeed } from "@/lib/radar/feed";
 import { publicSignalAdjustedScore } from "@/lib/radar/public-signal-quality";
 import type { RetrievalCitation, RetrievalRadarItem } from "@/lib/retrieval/types";
@@ -43,10 +45,26 @@ const sectionDefinitions: SectionDefinition[] = [
 ];
 
 export function generateReportPreview(feed: RadarFeed, reportType: ReportPreviewType): ReportPreview {
-  const anchor = anchorDate(feed);
+  const eventLayer = filterPublicDisplayEventLayer(
+    buildEventLayer(feed.items.map(toClusterableRadarItem))
+  );
+  const eventItemIds = new Set(eventLayer.event_cluster_items.map((item) => item.radar_item_id));
+  const eventScores = new Map(
+    eventLayer.event_cluster_items.map((relationship) => [
+      relationship.radar_item_id,
+      eventLayer.event_clusters.find((event) => event.event_cluster_id === relationship.event_cluster_id)?.event_score ?? 0
+    ])
+  );
+  const reportItems = feed.items
+    .filter((item) => eventItemIds.has(item.id))
+    .map((item) => ({
+      ...item,
+      overall_score: (eventScores.get(item.id) ?? 0) / 100
+    }));
+  const anchor = anchorDate(feed, reportItems);
   const windowDuration = reportType === "daily" ? oneDayMs : 7 * oneDayMs;
   const windowStart = new Date(anchor.getTime() - windowDuration);
-  const windowItems = feed.items.filter((item) => isInsideWindow(item, windowStart, anchor));
+  const windowItems = reportItems.filter((item) => isInsideWindow(item, windowStart, anchor));
   const usableItems = sortReportItems(
     windowItems.filter((item) => item.status === "included" || item.status === "needs_review")
   );
@@ -70,9 +88,13 @@ export function generateReportPreview(feed: RadarFeed, reportType: ReportPreview
     },
     data_source: feed.data_source,
     summary: summaryForReport(reportType, usableItems, includedCount, needsReviewCount, feed.counts.total),
+    evidence_items: usableItems.map(mapPreviewItem),
     top_items: topItems.map(mapPreviewItem),
     sections,
-    caveats: buildReportCaveats(feed, usableItems, windowItems),
+    caveats: dedupe([
+      ...buildReportCaveats(feed, usableItems, windowItems),
+      `事件层将 ${feed.items.length} 条公开信号中的 ${reportItems.length} 条映射为 ${eventLayer.event_count} 个可报告事件；其余低事件性信号只保留在“全部信号”中。`
+    ]),
     citations,
     missing_evidence: buildMissingEvidence(feed, usableItems, citations),
     generated_at: anchor.toISOString(),
@@ -309,8 +331,12 @@ function sectionMissingEvidence(items: RetrievalRadarItem[]) {
   ]);
 }
 
-function anchorDate(feed: RadarFeed) {
-  const timestamp =
+function anchorDate(feed: RadarFeed, reportItems: RetrievalRadarItem[]) {
+  const latestReportTimestamp = reportItems
+    .map(itemEvidenceTimestamp)
+    .filter((timestamp) => Number.isFinite(Date.parse(timestamp)))
+    .sort((left, right) => Date.parse(right) - Date.parse(left))[0];
+  const timestamp = latestReportTimestamp ??
     feed.freshness.latestTimestamp ?? feed.processed_at ?? feed.collected_at ?? feed.generated_at;
   const parsed = Date.parse(timestamp);
 

@@ -7,6 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { PublicEventCluster, PublicEventClusterItem } from "@/lib/events/clustering";
 import {
+  MINIMUM_STALE_CLUSTERED_INPUT_COVERAGE_RATIO,
   MINIMUM_STALE_CLUSTER_COVERAGE_RATIO,
   MINIMUM_STALE_CLUSTER_INPUT_ITEMS,
   assertEventPersistenceWriteEnabled,
@@ -23,6 +24,7 @@ const authoritativeReconciliationGuard: StaleClusterReconciliationGuard = {
   directSupabaseRead: true,
   dataSource: "supabase_radar_items",
   eligibleInputItemCount: MINIMUM_STALE_CLUSTER_INPUT_ITEMS,
+  minimumClusteredInputCoverageRatio: MINIMUM_STALE_CLUSTERED_INPUT_COVERAGE_RATIO,
   minimumExistingClusterCoverageRatio: MINIMUM_STALE_CLUSTER_COVERAGE_RATIO,
   minimumInputItemCount: MINIMUM_STALE_CLUSTER_INPUT_ITEMS
 };
@@ -74,15 +76,24 @@ const coveredRadarItemIds = Array.from(
   { length: MINIMUM_STALE_CLUSTER_INPUT_ITEMS },
   (_, index) => `radar_item_${index + 1}`
 );
+const coveredEventIds = Array.from({ length: 9 }, (_, index) =>
+  index === 0 ? event.event_cluster_id : `event_covered_${String(index + 1).padStart(2, "0")}`
+);
 const coveredRelationships: PublicEventClusterItem[] = coveredRadarItemIds.map((radarItemId, index) => ({
-  event_cluster_id: event.event_cluster_id,
+  event_cluster_id: coveredEventIds[index % coveredEventIds.length],
   radar_item_id: radarItemId,
   role: index === 0 ? "primary" : "supporting",
   source_name: index === 0 ? "OpenAI" : `Public source ${index + 1}`
 }));
 const coveredLayer = {
   event_cluster_items: coveredRelationships,
-  event_clusters: [{ ...event, related_item_ids: coveredRadarItemIds }]
+  event_clusters: coveredEventIds.map((eventId) => ({
+    ...event,
+    event_cluster_id: eventId,
+    related_item_ids: coveredRelationships
+      .filter((item) => item.event_cluster_id === eventId)
+      .map((item) => item.radar_item_id)
+  }))
 };
 
 test("event persistence requires the explicit Supabase write gate", () => {
@@ -156,7 +167,7 @@ test("authoritative persistence performs idempotent upserts and guarded non-dest
     assert.deepEqual(first, {
       eventClusterItemsUpserted: MINIMUM_STALE_CLUSTER_INPUT_ITEMS,
       eventClustersArchived: 1,
-      eventClustersUpserted: 1
+      eventClustersUpserted: coveredEventIds.length
     });
     assert.deepEqual(second, first);
     assert.equal(fake.upserts.length, 4);
@@ -300,7 +311,11 @@ function createFakeSupabase(options: {
   const upserts: Array<{ onConflict: string; rows: Array<Record<string, unknown>>; table: string }> = [];
   const updates: Array<{ ids: string[]; statuses: string[]; table: string; values: Record<string, unknown> }> = [];
   const generatedClusters = options.generatedClusters ?? [
-    { id: eventDatabaseId, local_id: event.event_cluster_id, status: "reviewed" },
+    ...coveredEventIds.map((localId, index) => ({
+      id: index === 0 ? eventDatabaseId : `database-${localId}`,
+      local_id: localId,
+      status: "reviewed"
+    })),
     { id: "event-database-stale", local_id: "event_stale", status: "draft" },
     { id: "event-database-published", local_id: "event_published", status: "published" },
     { id: "event-database-archived", local_id: "event_archived", status: "archived" }
@@ -329,9 +344,10 @@ function createFakeSupabase(options: {
 
               if (table === "event_clusters" && column === "local_id") {
                 return Promise.resolve({
-                  data: values.includes(event.event_cluster_id)
-                    ? [{ id: eventDatabaseId, local_id: event.event_cluster_id }]
-                    : [],
+                  data: values.map((localId) => ({
+                    id: localId === event.event_cluster_id ? eventDatabaseId : `database-${localId}`,
+                    local_id: localId
+                  })),
                   error: null
                 });
               }

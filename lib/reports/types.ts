@@ -47,6 +47,7 @@ export type ReportPreview = {
   time_window: ResolvedTimeWindow;
   data_source: RetrievalDataSource;
   summary: string;
+  evidence_items: ReportPreviewItem[];
   top_items: ReportPreviewItem[];
   sections: ReportPreviewSection[];
   caveats: string[];
@@ -86,6 +87,15 @@ export type GeneratedReportSection = {
   citations: string[];
   caveats: string[];
   missing_evidence: string[];
+};
+
+export type GeneratedReportEvidenceItem = {
+  id: string;
+  database_id?: string;
+  source_name: string;
+  categories: RetrievalRadarItem["categories"];
+  timestamp: string;
+  status: RetrievalRadarItem["status"];
 };
 
 export type SafeReportModelMetadata = {
@@ -131,6 +141,7 @@ export type GeneratedReportDraft = {
   one_sentence_summary: string;
   executive_summary: string;
   sections: GeneratedReportSection[];
+  evidence_items: GeneratedReportEvidenceItem[];
   citations: RetrievalCitation[];
   caveats: string[];
   missing_evidence: string[];

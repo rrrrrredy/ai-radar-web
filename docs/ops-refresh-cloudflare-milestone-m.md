@@ -44,7 +44,7 @@ Required configuration is read from GitHub secrets/variables without printing va
 - no private/raw fields in the summary artifact;
 - deployed environments keep `ENABLE_SUPABASE_WRITES=false`.
 
-The authoritative release build sets both `CLOUDFLARE_SNAPSHOT_READ_SUPABASE=true` and `CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE=true` only for the build process. The exporter fails closed on missing/fallback data, incomplete public-signal parity, fewer than 180 public rows, missing event/report layers, a failed weekly gate, or stale/invalid publication time. The resulting JSON contains all public-safe signals plus allowlisted events, report gates, aggregate health, and safe failure reasons. It contains no source error payloads or private logs.
+The authoritative release build sets both `CLOUDFLARE_SNAPSHOT_READ_SUPABASE=true` and `CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE=true` only for the build process. Public-radar loading uses exact-count pagination and rejects short pages, count drift, duplicate/missing IDs, or normalization loss. The exporter fails closed on missing/fallback data, incomplete public-signal parity, fewer than 180 public rows, missing event/report layers, a failed weekly gate, report evidence outside its declared window, or stale/invalid publication time. The resulting JSON contains all public-safe signals plus allowlisted events, report gates, aggregate health, and safe failure reasons. It contains no source error payloads or private logs.
 
 ## Operator Command
 

@@ -10,6 +10,7 @@ import {
 import { buildReportSynthesisMessages, reportPromptVersion } from "@/lib/reports/report-prompts";
 import type {
   GeneratedReportDraft,
+  GeneratedReportEvidenceItem,
   GeneratedReportSection,
   GeneratedReportSectionId,
   ReportLanguage,
@@ -215,6 +216,7 @@ export function buildDeterministicReportDraft(
     citations: preview.citations,
     data_source: preview.data_source,
     executive_summary: deterministicExecutiveSummary(preview),
+    evidence_items: collectEvidenceItems(preview),
     generated_at: generatedAt.toISOString(),
     language,
     missing_evidence: preview.missing_evidence,
@@ -248,7 +250,7 @@ export function formatMarkdownReport(report: GeneratedReportDraft): string {
   const evidenceFreshness = evaluateReportEvidenceFreshness(
     report.report_type,
     report.time_window.end,
-    report.citations.map((citation) => citation.published_at ?? ""),
+    report.evidence_items.map((item) => item.timestamp),
     report.generated_at
   );
   const lines = [
@@ -352,6 +354,7 @@ function normalizeLiveReport(
     citations: preview.citations,
     data_source: preview.data_source,
     executive_summary: text(value.executive_summary) || deterministicExecutiveSummary(preview),
+    evidence_items: collectEvidenceItems(preview),
     generated_at: generatedAt.toISOString(),
     language,
     missing_evidence: missingEvidence,
@@ -474,10 +477,7 @@ function liveCompatibleCaveats(caveats: string[]) {
 
 function collectSourceItemIds(preview: ReportPreview) {
   const ids = new Set<string>();
-  const items = [
-    ...preview.top_items,
-    ...preview.sections.flatMap((section) => section.items)
-  ];
+  const items = preview.evidence_items;
 
   for (const item of items) {
     const id = item.database_id ?? item.id;
@@ -486,7 +486,26 @@ function collectSourceItemIds(preview: ReportPreview) {
     }
   }
 
-  return Array.from(ids).slice(0, 24);
+  return Array.from(ids);
+}
+
+function collectEvidenceItems(preview: ReportPreview): GeneratedReportEvidenceItem[] {
+  const items = preview.evidence_items;
+  const byId = new Map<string, GeneratedReportEvidenceItem>();
+
+  for (const item of items) {
+    if (byId.has(item.id)) continue;
+    byId.set(item.id, {
+      categories: [...item.categories],
+      database_id: item.database_id,
+      id: item.id,
+      source_name: item.source_name,
+      status: item.status,
+      timestamp: item.timestamp
+    });
+  }
+
+  return [...byId.values()];
 }
 
 function citationIdSet(preview: ReportPreview) {

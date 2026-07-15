@@ -64,10 +64,8 @@ export function reportQualityGateFromPreview(
   preview: ReportPreview,
   evaluatedAt: Date | string = new Date()
 ): ReportQualityGate {
-  const usableItems = uniquePreviewItems([
-    ...preview.top_items,
-    ...preview.sections.flatMap((section) => section.items)
-  ]).filter((item) => item.status === "included" || item.status === "needs_review");
+  const usableItems = uniquePreviewItems(preview.evidence_items)
+    .filter((item) => item.status === "included" || item.status === "needs_review");
   const sourceNames = usableItems.map((item) => item.source_name);
   const categories = usableItems.flatMap((item) => item.categories);
   const evidenceTimestamps = dedupeStrings([
@@ -93,17 +91,20 @@ export function reportQualityGateFromDraft(
   report: GeneratedReportDraft,
   evaluatedAt: Date | string = new Date()
 ): ReportQualityGate {
+  const evidenceItems = uniqueReportEvidenceItems(report.evidence_items).filter(
+    (item) => item.status === "included" || item.status === "needs_review"
+  );
   return evaluateReportQualityGate({
-    categoryCount: report.category_count,
-    categoryGateApplicable: report.category_count > 0,
-    citationCount: report.citation_count || report.citations.length,
-    distinctSourceCount: report.distinct_source_count || distinctSourcesFromCitations(report.citations),
+    categoryCount: uniqueCount(evidenceItems.flatMap((item) => item.categories)),
+    categoryGateApplicable: evidenceItems.some((item) => item.categories.length > 0),
+    citationCount: uniqueCount(report.citations.map((citation) => citation.id)),
+    distinctSourceCount: uniqueCount(evidenceItems.map((item) => item.source_name)),
     evaluatedAt,
-    evidenceTimestamps: report.citations.map(citationEvidenceTimestamp),
+    evidenceTimestamps: evidenceItems.map((item) => item.timestamp),
     evidenceWindowEnd: report.time_window.end,
     freshnessGateApplicable: true,
     reportType: report.report_type,
-    usableItemCount: report.usable_item_count
+    usableItemCount: evidenceItems.length
   });
 }
 
@@ -219,13 +220,20 @@ export function validateReportCandidateQualityGate(
   }
 
   const qualityGate = isRecord(value.quality_gate) ? value.quality_gate : null;
-  const usableItemCount = strictNonNegativeInteger(value.usable_item_count);
-  const citationCount = strictNonNegativeInteger(value.citation_count);
-  const distinctSourceCount = strictNonNegativeInteger(value.distinct_source_count);
-  const categoryCount = strictNonNegativeInteger(value.category_count);
+  const claimedUsableItemCount = strictNonNegativeInteger(value.usable_item_count);
+  const claimedCitationCount = strictNonNegativeInteger(value.citation_count);
+  const claimedDistinctSourceCount = strictNonNegativeInteger(value.distinct_source_count);
+  const claimedCategoryCount = strictNonNegativeInteger(value.category_count);
   const citations = Array.isArray(value.citations) ? value.citations : null;
   const timeWindow = isRecord(value.time_window) ? value.time_window : null;
-  const reasons: string[] = [];
+  const evidence = parseCandidateEvidenceItems(value.evidence_items);
+  const citationEvidence = parseCandidateCitations(citations);
+  const window = parseCandidateTimeWindow(timeWindow);
+  const reasons: string[] = [...evidence.reasons, ...citationEvidence.reasons, ...window.reasons];
+  const usableItemCount = evidence.items.length;
+  const citationCount = citationEvidence.items.length;
+  const distinctSourceCount = uniqueCount(evidence.items.map((item) => item.source_name));
+  const categoryCount = uniqueCount(evidence.items.flatMap((item) => item.categories));
 
   if (value.report_type !== reportType) {
     reasons.push(`report_type must match the ${reportType} candidate`);
@@ -256,27 +264,50 @@ export function validateReportCandidateQualityGate(
   }
 
   const draftCounts = [
-    ["usable_item_count", usableItemCount],
-    ["citation_count", citationCount],
-    ["distinct_source_count", distinctSourceCount],
-    ["category_count", categoryCount]
+    ["usable_item_count", claimedUsableItemCount, usableItemCount],
+    ["citation_count", claimedCitationCount, citationCount],
+    ["distinct_source_count", claimedDistinctSourceCount, distinctSourceCount],
+    ["category_count", claimedCategoryCount, categoryCount]
   ] as const;
 
-  for (const [field, count] of draftCounts) {
-    if (count === null) {
+  for (const [field, claimedCount, recomputedCount] of draftCounts) {
+    if (claimedCount === null) {
       reasons.push(`${field} must be a non-negative integer`);
       continue;
     }
 
-    if (qualityGate && strictNonNegativeInteger(qualityGate[field]) !== count) {
+    if (claimedCount !== recomputedCount) {
+      reasons.push(`${field} must match recomputed evidence count ${recomputedCount}`);
+    }
+
+    if (qualityGate && strictNonNegativeInteger(qualityGate[field]) !== recomputedCount) {
       reasons.push(`quality_gate.${field} must match ${field}`);
     }
   }
 
   if (!citations) {
     reasons.push("citations must be an array");
-  } else if (citationCount !== null && citations.length !== citationCount) {
+  } else if (citations.length !== citationCount) {
     reasons.push("citation_count must match the citations array length");
+  }
+
+  const evidenceById = new Map(evidence.items.map((item) => [item.id, item]));
+  for (const citation of citationEvidence.items) {
+    const evidenceItem = evidenceById.get(citation.id);
+    if (!evidenceItem) {
+      reasons.push(`citation ${citation.id} does not map to an evidence item`);
+    } else if (normalizeComparableText(evidenceItem.source_name) !== normalizeComparableText(citation.source_name)) {
+      reasons.push(`citation ${citation.id} source does not match its evidence item`);
+    }
+  }
+
+  if (window.start !== null && window.end !== null) {
+    for (const item of evidence.items) {
+      const timestamp = Date.parse(item.timestamp);
+      if (timestamp < window.start || timestamp > window.end) {
+        reasons.push(`evidence item ${item.id} falls outside the declared time window`);
+      }
+    }
   }
 
   const qualityGateReasons = strictStringArray(qualityGate?.reasons);
@@ -294,16 +325,16 @@ export function validateReportCandidateQualityGate(
   }
 
   const gate = evaluateReportQualityGate({
-    categoryCount: categoryCount ?? 0,
+    categoryCount,
     categoryGateApplicable: true,
-    citationCount: citationCount ?? 0,
-    distinctSourceCount: distinctSourceCount ?? 0,
+    citationCount,
+    distinctSourceCount,
     evaluatedAt,
-    evidenceTimestamps: storedCitationTimestamps(citations ?? []),
+    evidenceTimestamps: evidence.items.map((item) => item.timestamp),
     evidenceWindowEnd: typeof timeWindow?.end === "string" ? timeWindow.end : null,
     freshnessGateApplicable: true,
     reportType,
-    usableItemCount: usableItemCount ?? 0
+    usableItemCount
   });
 
   reasons.push(...gate.reasons);
@@ -447,6 +478,15 @@ function uniquePreviewItems(items: ReportPreviewItem[]) {
   return output;
 }
 
+function uniqueReportEvidenceItems(items: GeneratedReportDraft["evidence_items"]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
 function uniqueCount(values: string[]) {
   return new Set(values.map((value) => value.trim()).filter(Boolean)).size;
 }
@@ -530,19 +570,111 @@ function strictStringArray(value: unknown) {
   return Array.from(new Set(value.map((item) => item.trim())));
 }
 
-function storedCitationTimestamps(citations: unknown[]) {
-  return citations.flatMap((citation) => {
-    if (!isRecord(citation)) {
-      return [];
+type CandidateEvidenceItem = {
+  id: string;
+  database_id?: string;
+  source_name: string;
+  categories: string[];
+  timestamp: string;
+};
+
+type CandidateCitation = {
+  id: string;
+  source_name: string;
+};
+
+function parseCandidateEvidenceItems(value: unknown) {
+  if (!Array.isArray(value)) {
+    return { items: [] as CandidateEvidenceItem[], reasons: ["evidence_items must be an array"] };
+  }
+
+  const items: CandidateEvidenceItem[] = [];
+  const reasons: string[] = [];
+  const seen = new Set<string>();
+  for (const [index, row] of value.entries()) {
+    if (!isRecord(row)) {
+      reasons.push(`evidence_items[${index}] must be an object`);
+      continue;
     }
 
-    const timestamp =
-      typeof citation.published_at === "string" && citation.published_at.trim().length > 0
-        ? citation.published_at
-        : "";
+    const id = typeof row.id === "string" ? row.id.trim() : "";
+    const sourceName = typeof row.source_name === "string" ? row.source_name.trim() : "";
+    const timestamp = typeof row.timestamp === "string" ? row.timestamp.trim() : "";
+    const categories = strictStringArray(row.categories);
+    if (!id || !sourceName || !timestamp || !validDate(timestamp) || categories === null) {
+      reasons.push(`evidence_items[${index}] has malformed id, source, categories, or timestamp`);
+      continue;
+    }
+    if (row.status !== "included" && row.status !== "needs_review") {
+      reasons.push(`evidence_items[${index}] is not an included or needs_review item`);
+      continue;
+    }
+    if (seen.has(id)) {
+      reasons.push(`evidence_items contains duplicate id ${id}`);
+      continue;
+    }
+    seen.add(id);
+    items.push({
+      categories,
+      database_id: typeof row.database_id === "string" && row.database_id.trim() ? row.database_id.trim() : undefined,
+      id,
+      source_name: sourceName,
+      timestamp
+    });
+  }
 
-    return timestamp ? [timestamp] : [];
-  });
+  return { items, reasons };
+}
+
+function parseCandidateCitations(value: unknown[] | null) {
+  if (!value) {
+    return { items: [] as CandidateCitation[], reasons: [] as string[] };
+  }
+
+  const items: CandidateCitation[] = [];
+  const reasons: string[] = [];
+  const seen = new Set<string>();
+  for (const [index, row] of value.entries()) {
+    if (!isRecord(row)) {
+      reasons.push(`citations[${index}] must be an object`);
+      continue;
+    }
+    const id = typeof row.id === "string" ? row.id.trim() : "";
+    const sourceName = typeof row.source_name === "string" ? row.source_name.trim() : "";
+    if (!id || !sourceName) {
+      reasons.push(`citations[${index}] has malformed id or source_name`);
+      continue;
+    }
+    if (seen.has(id)) {
+      reasons.push(`citations contains duplicate id ${id}`);
+      continue;
+    }
+    seen.add(id);
+    items.push({ id, source_name: sourceName });
+  }
+  return { items, reasons };
+}
+
+function parseCandidateTimeWindow(value: Record<string, unknown> | null) {
+  const startValue = typeof value?.start === "string" ? value.start : "";
+  const endValue = typeof value?.end === "string" ? value.end : "";
+  const startDate = validDate(startValue);
+  const endDate = validDate(endValue);
+  const reasons: string[] = [];
+  if (!startDate || !endDate) {
+    reasons.push("time_window must contain valid start and end timestamps");
+  } else if (startDate.getTime() > endDate.getTime()) {
+    reasons.push("time_window start must not be after end");
+  }
+  return {
+    end: endDate?.getTime() ?? null,
+    reasons,
+    start: startDate?.getTime() ?? null
+  };
+}
+
+function normalizeComparableText(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function thresholdsMatch(value: unknown, expected: ReportQualityGateThresholds) {

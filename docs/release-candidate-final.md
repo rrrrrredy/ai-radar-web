@@ -21,7 +21,7 @@ Cloudflare Pages is the primary public product. Vercel remains the dynamic/refer
 | raw / radar / public radar items | 287 / 283 / 261 |
 | included / needs review / excluded / failed | 260 / 4 / 19 / 0 |
 | sources with public items | 64 |
-| report candidate rows / public latest candidates | 34 / 2 |
+| report candidate rows / snapshot candidates / latest summaries | 36 / 16 / 2 |
 
 The preferred public target of 200 and minimum target of 180 are both met. Source-to-raw coverage is 91.2%, raw-to-radar conversion is 98.6%, radar-to-public conversion is 92.2%, and public-source visibility is 20.2%.
 
@@ -45,8 +45,8 @@ Cross-family coverage is not called independent confirmation. The UI keeps that 
 
 | type | candidate ID | status | source-stage gate | public event projection |
 | --- | --- | --- | --- | --- |
-| daily | `a25e6f48-db5e-491d-84fe-16af7d78243d` | `needs_review` | passed: 38 usable / 12 citations / 19 sources / 6 categories | passed: 8 / 8 / 5 / 5 |
-| weekly | `54ddc6ff-637e-4a87-b14a-fecc39135bca` | `needs_review` | passed: 78 / 12 / 13 / 12 | passed: 26 / 26 / 13 / 10 |
+| daily | `c03df7dd-7da3-4b27-86a8-353e4ff2fdd8` | `needs_review` | passed: 21 usable / 12 citations / 9 sources / 10 categories | passed: 8 / 8 / 5 / 5 |
+| weekly | `21f9f53d-48eb-47d1-bab3-1a26b60055ce` | `needs_review` | passed: 41 / 12 / 18 / 12 | passed: 25 / 25 / 13 / 10 |
 
 Both quality gates pass. `needs_review` is the editorial state and is not a gate failure; neither candidate is labeled published. The failure UI remains implemented and tested: a future failing daily candidate must display `今日数据不足，需补充信源或等待下一轮刷新`.
 
@@ -61,6 +61,16 @@ Both quality gates pass. `needs_review` is the editorial state and is not a gate
 - `/data/radar-snapshot.json`: allowlisted public data only.
 
 All 261 public-safe radar rows are present under `全部信号`; event-quality filtering applies only to event construction and curation.
+
+The event layer maps 207 signals into 205 public events. The remaining 54 signal-only audit rows are disclosed on the homepage and radar page instead of being silently omitted or promoted into weak events. `待复核` contains only events backed by `needs_review` signals. Browser-local Ask/Write understands explicit 24-hour and seven-day windows, anchors them to snapshot freshness, displays evidence dates, and returns an honest empty state when no event matches.
+
+## Release Hardening
+
+- Supabase public-radar reads use exact-count pagination and fail closed on a short page, count drift, duplicate or missing IDs, or normalization loss; a silent 500-row cap cannot be marked authoritative.
+- Event persistence requires at least 75% candidate clustering coverage and 90% retained-cluster coverage before stale rows can be archived. Clustering never deletes rows.
+- Report candidates carry the full evidence set. Quality counts are recomputed from evidence, timestamps must fit the declared window, and approval/publication rechecks each item and source against `public_radar_items`.
+- Cloudflare independently reprojects report evidence into the declared daily/weekly window and fails the gate when the window has insufficient public evidence.
+- Chrome desktop/mobile interaction and visual QA passed 28/28 checks with no relevant console errors.
 
 ## Security and Operations
 
