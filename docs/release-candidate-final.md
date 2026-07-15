@@ -21,7 +21,7 @@ Cloudflare Pages is the primary public product. Vercel remains the dynamic/refer
 | raw / radar / public radar items | 287 / 283 / 261 |
 | included / needs review / excluded / failed | 260 / 4 / 19 / 0 |
 | sources with public items | 64 |
-| report candidate rows / snapshot candidates / latest summaries | 36 / 16 / 2 |
+| report candidate rows / snapshot candidates / latest summaries | 38 / 15 / 2 |
 
 The preferred public target of 200 and minimum target of 180 are both met. Source-to-raw coverage is 91.2%, raw-to-radar conversion is 98.6%, radar-to-public conversion is 92.2%, and public-source visibility is 20.2%.
 
@@ -45,8 +45,8 @@ Cross-family coverage is not called independent confirmation. The UI keeps that 
 
 | type | candidate ID | status | source-stage gate | public event projection |
 | --- | --- | --- | --- | --- |
-| daily | `c03df7dd-7da3-4b27-86a8-353e4ff2fdd8` | `needs_review` | passed: 21 usable / 12 citations / 9 sources / 10 categories | passed: 8 / 8 / 5 / 5 |
-| weekly | `21f9f53d-48eb-47d1-bab3-1a26b60055ce` | `needs_review` | passed: 41 / 12 / 18 / 12 | passed: 25 / 25 / 13 / 10 |
+| daily | `39b6efc5-90bf-474a-964a-6eb4c0cad663` | `needs_review` | passed: 21 usable / 12 citations / 9 sources / 10 categories | passed: 8 / 8 / 5 / 4 |
+| weekly | `451d6048-5ec0-4164-bafa-3886a503af60` | `needs_review` | passed: 40 / 12 / 18 / 12 | passed: 25 / 25 / 14 / 9 |
 
 Both quality gates pass. `needs_review` is the editorial state and is not a gate failure; neither candidate is labeled published. The failure UI remains implemented and tested: a future failing daily candidate must display `今日数据不足，需补充信源或等待下一轮刷新`.
 
@@ -80,7 +80,7 @@ The event layer maps 205 signals into 203 public events. The remaining 56 signal
 
 Production snapshot export fails closed unless it reads current Supabase public evidence, preserves all public rows, meets the 180-item minimum, has a populated event layer, includes both report summaries, passes the weekly gate, and has a recent `published_at` timestamp.
 
-The three Supabase public views now use `security_invoker=true`. Anonymous roles receive only allowlisted base columns and public RLS rows. Security Advisor reports 0 ERROR and no mutable-search-path warning. Anonymous read tests return 261 public radar rows and 34 report candidates while denying `raw_items`, raw/model metadata, report metadata, and private fields.
+The three Supabase public views now use `security_invoker=true`. Anonymous roles receive only allowlisted base columns and public RLS rows. Security Advisor reports 0 ERROR and no mutable-search-path warning. Anonymous read tests return 261 public radar rows and 38 report candidates while denying `raw_items`, raw/model metadata, report metadata, and private fields.
 
 The refresh workflow is `workflow_dispatch` only. No schedule, X/WeChat auto-crawl, source-health write, destructive SQL, automatic publication, or deployed write gate is enabled.
 

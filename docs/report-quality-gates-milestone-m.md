@@ -19,15 +19,15 @@ Candidate duplicate suppression uses a versioned content signature over evidence
 
 | type | candidate ID | status | usable | citations | sources | categories | source gate |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
-| daily | `c03df7dd-7da3-4b27-86a8-353e4ff2fdd8` | `needs_review` | 21 | 12 | 9 | 10 | passed |
-| weekly | `21f9f53d-48eb-47d1-bab3-1a26b60055ce` | `needs_review` | 41 | 12 | 18 | 12 | passed |
+| daily | `39b6efc5-90bf-474a-964a-6eb4c0cad663` | `needs_review` | 21 | 12 | 9 | 10 | passed |
+| weekly | `451d6048-5ec0-4164-bafa-3886a503af60` | `needs_review` | 40 | 12 | 18 | 12 | passed |
 
 Cloudflare independently projects the candidates onto public event evidence:
 
 | type | usable events | citations | sources | categories | event gate |
 | --- | ---: | ---: | ---: | ---: | --- |
-| daily | 8 | 8 | 5 | 5 | passed |
-| weekly | 25 | 25 | 13 | 10 | passed |
+| daily | 8 | 8 | 5 | 4 | passed |
+| weekly | 25 | 25 | 14 | 9 | passed |
 
 Both candidates are sufficient evidence drafts and remain `needs_review` for editorial review. Gate pass does not mean publication.
 

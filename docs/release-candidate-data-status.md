@@ -12,7 +12,7 @@ Updated: 2026-07-15
 | blocked or manual | 226 |
 | sources with raw / radar / public items | 83 / 83 / 64 |
 | raw / radar / public radar items | 287 / 283 / 261 |
-| report candidates | 36 |
+| report candidates | 38 |
 
 - source-to-raw coverage: 91.2%;
 - raw-to-radar conversion: 98.6%;
@@ -56,8 +56,8 @@ Two multi-item public events reduce four repeated signals to two event cards. On
 
 | type | ID | status | source-stage metrics | public event metrics | gate |
 | --- | --- | --- | --- | --- | --- |
-| daily | `c03df7dd-7da3-4b27-86a8-353e4ff2fdd8` | `needs_review` | 21 / 12 / 9 / 10 | 8 / 8 / 5 / 5 | passed |
-| weekly | `21f9f53d-48eb-47d1-bab3-1a26b60055ce` | `needs_review` | 41 / 12 / 18 / 12 | 25 / 25 / 13 / 10 | passed |
+| daily | `39b6efc5-90bf-474a-964a-6eb4c0cad663` | `needs_review` | 21 / 12 / 9 / 10 | 8 / 8 / 5 / 4 | passed |
+| weekly | `451d6048-5ec0-4164-bafa-3886a503af60` | `needs_review` | 40 / 12 / 18 / 12 | 25 / 25 / 14 / 9 | passed |
 
 Metrics are usable evidence/events, citations, distinct sources, and categories. Both event-aware public gates pass. Editorial review remains required; neither candidate is published.
 
