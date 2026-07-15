@@ -21,7 +21,6 @@ import {
   type PublicTimelineEntry
 } from "@/lib/events/clustering";
 import { buildRadarFeed } from "@/lib/radar/feed";
-import { assessPublicSignalQuality } from "@/lib/radar/public-signal-quality";
 import { isExternalSourceRepairSignal } from "@/lib/radar/public-source-boundary";
 import { publicInternetHttpUrl } from "@/lib/public-url";
 import { loadRadarItems } from "@/lib/retrieval/load-radar-items";
@@ -324,6 +323,7 @@ function debugStep(message: string) {
 async function main() {
   debugStep("main:start");
   const snapshot = await createPublicSnapshot();
+  assertStrictProductionSnapshot(snapshot);
   debugStep(`main:snapshot-ready rows=${snapshot.radar_items.length}`);
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
   await fs.writeFile(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
@@ -342,9 +342,14 @@ async function main() {
 
 async function createPublicSnapshot(): Promise<PublicMirrorSnapshot> {
   const generatedAt = new Date().toISOString();
+  const strictSupabaseExport = process.env.CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE === "true";
   debugStep("create:start");
 
   if (process.env.CLOUDFLARE_SNAPSHOT_READ_SUPABASE !== "true") {
+    if (strictSupabaseExport) {
+      throw new Error("Production snapshot export requires Supabase public reads to be enabled.");
+    }
+
     debugStep("create:local-first");
     const warnings = [
       "Cloudflare static snapshot export used public-safe local snapshot mode; set CLOUDFLARE_SNAPSHOT_READ_SUPABASE=true to opt into Supabase public reads."
@@ -364,6 +369,10 @@ async function createPublicSnapshot(): Promise<PublicMirrorSnapshot> {
   if (supabase) {
     const preflight = await supabaseReadPreflight();
     if (!preflight.ok) {
+      if (strictSupabaseExport) {
+        throw new Error(`Production snapshot export Supabase preflight failed: ${preflight.reason}`);
+      }
+
       const warnings = [
         `Supabase public reads skipped before export: ${preflight.reason}`
       ];
@@ -383,6 +392,10 @@ async function createPublicSnapshot(): Promise<PublicMirrorSnapshot> {
         "Supabase public reads timed out before export."
       );
     } catch (error) {
+      if (strictSupabaseExport) {
+        throw new Error(`Production snapshot export could not read Supabase public data: ${sanitizeError(error)}`);
+      }
+
       const warnings = [`Supabase public reads failed before export fallback: ${sanitizeError(error)}`];
       const previousSnapshot = await readPreviousPublicSnapshot(generatedAt, warnings);
       if (previousSnapshot) {
@@ -393,7 +406,18 @@ async function createPublicSnapshot(): Promise<PublicMirrorSnapshot> {
     }
 
     if (supabaseSnapshot.snapshot) {
+      if (strictSupabaseExport) {
+        const fatalWarning = supabaseSnapshot.warnings.find(isStrictSupabaseReadFailure);
+        if (fatalWarning) {
+          throw new Error(`Production snapshot export received an incomplete Supabase result: ${fatalWarning}`);
+        }
+      }
+
       return supabaseSnapshot.snapshot;
+    }
+
+    if (strictSupabaseExport) {
+      throw new Error("Production snapshot export returned no public Supabase radar rows.");
     }
 
     const previousSnapshot = await readPreviousPublicSnapshot(generatedAt, supabaseSnapshot.warnings);
@@ -402,6 +426,10 @@ async function createPublicSnapshot(): Promise<PublicMirrorSnapshot> {
     }
 
     return readLocalFallbackSnapshot(generatedAt, supabaseSnapshot.warnings);
+  }
+
+  if (strictSupabaseExport) {
+    throw new Error("Production snapshot export requires configured Supabase public credentials.");
   }
 
   const warnings = [
@@ -996,32 +1024,7 @@ function isPublicSnapshotRadarCandidate(item: PublicRadarSnapshotItem) {
     return false;
   }
 
-  if (item.scores.ai_relevance < 0.55 || item.scores.overall < 0.45) {
-    return false;
-  }
-
-  const quality = assessPublicSignalQuality(item);
-  if (quality.isLowEventSignal) {
-    return false;
-  }
-
-  const weakCategoryOnly = item.categories.every((category) =>
-    category === "other" || category === "opinion" || category === "media_interview"
-  );
-
-  return !weakCategoryOnly || hasAiIndustryCue(item);
-}
-
-function hasAiIndustryCue(item: PublicRadarSnapshotItem) {
-  const haystack = [
-    item.title,
-    item.summary_zh ?? "",
-    item.summary_en ?? "",
-    item.source_name,
-    ...item.tags
-  ].join(" ");
-
-  return /\b(AI|OpenAI|Anthropic|DeepMind|Gemini|Claude|GPT|LLM|Llama|agent|model|benchmark|SDK|API|Lean|autoformalization|transformer|vision|diffusion)\b|人工智能|模型|智能体|大模型|基准|开源|安全|对齐/i.test(haystack);
+  return true;
 }
 
 function mergePublicRadarItems(items: PublicRadarSnapshotItem[]) {
@@ -1082,7 +1085,7 @@ function buildSnapshot(input: {
   const droppedItems = input.items.length - items.length;
   const warnings = publicSafeNotes([
     ...input.warnings,
-    droppedItems > 0 ? `${droppedItems} local/supabase radar row(s) were blocked by final public snapshot safety filters.` : ""
+    droppedItems > 0 ? `${droppedItems} public radar row(s) were omitted because they did not meet the public display contract.` : ""
   ]);
   const latest = latestTimestamp(items);
   const statusCounts = countStatuses(items);
@@ -1123,8 +1126,8 @@ function buildSnapshot(input: {
       latest_timestamp_source: latest?.source ?? null,
       latest_understanding: input.publicCounts.latest_understanding,
       note: latest
-        ? `Latest public radar timestamp is ${latest.value} (${latest.source}).`
-        : "No public radar freshness timestamp is available."
+        ? `Latest public content publication timestamp is ${latest.value}.`
+        : "No public content publication timestamp is available."
     },
     counts: {
       citations: items.length + reportCitationCount,
@@ -1178,8 +1181,8 @@ function buildSnapshot(input: {
     event_count: eventLayer.event_count,
     failure_family_summary: sourceHealthFailureFamilies,
     report_quality_summary: {
-      daily: reportQualitySummary(reports, "daily", eventLayer.curated_events),
-      weekly: reportQualitySummary(reports, "weekly", eventLayer.curated_events)
+      daily: reportQualitySummary(reports, "daily", eventLayer.event_clusters),
+      weekly: reportQualitySummary(reports, "weekly", eventLayer.event_clusters)
     },
     radar_items: items,
     reports,
@@ -1208,7 +1211,7 @@ function buildSnapshot(input: {
 function reportQualitySummary(
   reports: PublicReportSnapshot[],
   reportType: ReportPreviewType,
-  curatedEvents: PublicEventCluster[]
+  events: PublicEventCluster[]
 ): ReportQualitySummary | null {
   const report = reports.find((candidate) => candidate.report_type === reportType);
 
@@ -1216,10 +1219,20 @@ function reportQualitySummary(
     return null;
   }
 
+  const sourceOrder = new Map(report.source_item_ids.map((itemId, index) => [itemId, index]));
   const citationIds = new Set(report.citations.map((citation) => citation.id));
-  const topEventIds = curatedEvents
-    .filter((event) => event.related_item_ids.some((itemId) => citationIds.has(itemId)))
-    .map((event) => event.event_cluster_id)
+  const topEventIds = events
+    .map((event) => ({
+      event,
+      order: Math.min(
+        ...event.related_item_ids
+          .map((itemId) => sourceOrder.get(itemId))
+          .filter((index): index is number => index !== undefined)
+      )
+    }))
+    .filter(({ event, order }) => Number.isFinite(order) || event.related_item_ids.some((itemId) => citationIds.has(itemId)))
+    .sort((left, right) => left.order - right.order)
+    .map(({ event }) => event.event_cluster_id)
     .slice(0, 6);
 
   return {
@@ -1336,7 +1349,7 @@ function eventAwareReport(
   const crossFamilyEvents = multiReportEvents.filter((event) => event.source_families.length > 1);
   const sameFamilyEvents = multiReportEvents.filter((event) => event.source_families.length === 1);
   const latestLabel = latestTimestamp ? formatPublicDate(latestTimestamp) : "未知时间";
-  const evidenceBoundary = `公开证据最新到 ${latestLabel}；当前页面展示的是公开快照，不代表今日实时全网覆盖。`;
+  const evidenceBoundary = `公开内容发布时间最新到 ${latestLabel}；当前页面展示的是公开快照，不代表今日实时全网覆盖。`;
   const summary = `${reportLabel}事件预览基于 ${selectedEvents.length} 个公开事件、${relatedItemIds.length} 条相关信号、${citations.length} 条引用和 ${sourceNames.length} 个来源生成；已过滤目录页、文档首页、仓库元数据等低事件性内容。`;
 
   return {
@@ -1736,11 +1749,7 @@ function isMissingPublicViewError(tableName: string, error: SupabaseReadError) {
 
 function latestTimestamp(items: PublicRadarSnapshotItem[]) {
   return items
-    .flatMap((item) => [
-      timestampCandidate(item.processed_at, "processed_at"),
-      timestampCandidate(item.collected_at, "collected_at"),
-      timestampCandidate(item.published_at, "published_at")
-    ])
+    .map((item) => timestampCandidate(item.published_at, "published_at"))
     .filter((candidate): candidate is { value: string; source: string } => Boolean(candidate))
     .sort((left, right) => Date.parse(right.value) - Date.parse(left.value))[0];
 }
@@ -2025,6 +2034,7 @@ function dedupe(values: string[]) {
 
 function sanitizePublicSnapshot(snapshot: PublicMirrorSnapshot): PublicMirrorSnapshot {
   const radarItems = snapshot.radar_items.map(publicSafeRadarItem).filter(isPublicSnapshotRadarCandidate);
+  const latest = latestTimestamp(radarItems);
   debugStep(`sanitize:build-event-layer-start rows=${radarItems.length}`);
   const eventInputItems = radarItems.map((item) => ({ ...item, evidence_notes: [] }));
   const rawEventLayer = buildEventLayer(eventInputItems);
@@ -2036,7 +2046,7 @@ function sanitizePublicSnapshot(snapshot: PublicMirrorSnapshot): PublicMirrorSna
     buildEventAwareReports(
       snapshot.reports.map(publicSafeReport).filter(isPublicReportSnapshotCandidate),
       eventLayer,
-      snapshot.freshness.latest_timestamp
+      latest?.value ?? null
     )
   );
   debugStep(`sanitize:reports-done reports=${reports.length}`);
@@ -2090,10 +2100,12 @@ function sanitizePublicSnapshot(snapshot: PublicMirrorSnapshot): PublicMirrorSna
     },
     freshness: {
       latest_ingestion: optionalText(snapshot.freshness.latest_ingestion) ?? null,
-      latest_timestamp: optionalText(snapshot.freshness.latest_timestamp) ?? null,
-      latest_timestamp_source: optionalText(snapshot.freshness.latest_timestamp_source) ?? null,
+      latest_timestamp: latest?.value ?? null,
+      latest_timestamp_source: latest?.source ?? null,
       latest_understanding: optionalText(snapshot.freshness.latest_understanding) ?? null,
-      note: publicSafeNote(text(snapshot.freshness.note) || "No public radar freshness timestamp is available.")
+      note: latest
+        ? `Latest public content publication timestamp is ${latest.value}.`
+        : "No public content publication timestamp is available."
     },
     top_categories: countEntryList(snapshot.top_categories),
     top_sources: countEntryList(snapshot.top_sources),
@@ -2124,8 +2136,8 @@ function sanitizePublicSnapshot(snapshot: PublicMirrorSnapshot): PublicMirrorSna
     })).filter((failure) => failure.source_slug && failure.source_name),
     failure_family_summary: numericRecord(snapshot.failure_family_summary),
     report_quality_summary: {
-      daily: publicSafeReportQuality(reportQualitySummary(reports, "daily", eventLayer.curated_events)),
-      weekly: publicSafeReportQuality(reportQualitySummary(reports, "weekly", eventLayer.curated_events))
+      daily: publicSafeReportQuality(reportQualitySummary(reports, "daily", eventLayer.event_clusters)),
+      weekly: publicSafeReportQuality(reportQualitySummary(reports, "weekly", eventLayer.event_clusters))
     },
     data_completeness_summary: {
       attempted_sources: integer(snapshot.data_completeness_summary.attempted_sources),
@@ -2320,6 +2332,71 @@ function publicSafeEntities(value: unknown): PublicRadarSnapshotEntity[] {
 function entityTypeValue(value: unknown): UnderstandingEntityType {
   const normalized = text(value, 40).toLowerCase().replace(/\s+/g, "_");
   return publicEntityTypes.has(normalized) ? (normalized as UnderstandingEntityType) : "other";
+}
+
+function assertStrictProductionSnapshot(snapshot: PublicMirrorSnapshot) {
+  if (process.env.CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE !== "true") {
+    return;
+  }
+
+  const minPublicItems = positiveIntegerEnv("CLOUDFLARE_SNAPSHOT_MIN_PUBLIC_ITEMS", 180);
+  const maxAgeHours = positiveIntegerEnv("CLOUDFLARE_SNAPSHOT_MAX_AGE_HOURS", 72);
+  const publicItemCount = snapshot.counts.public_radar_items ?? 0;
+  const latestTimestamp = snapshot.freshness.latest_timestamp;
+  const latestTime = latestTimestamp ? Date.parse(latestTimestamp) : Number.NaN;
+  const ageHours = Number.isFinite(latestTime) ? (Date.now() - latestTime) / 3_600_000 : Number.POSITIVE_INFINITY;
+
+  if (
+    snapshot.source.kind !== "supabase_public_views" ||
+    snapshot.source.data_source !== "public_evidence_store" ||
+    snapshot.source.local_data_used
+  ) {
+    throw new Error("Production snapshot export rejected a non-Supabase or fallback data source.");
+  }
+
+  if (publicItemCount < minPublicItems || snapshot.radar_items.length < minPublicItems) {
+    throw new Error(
+      `Production snapshot export requires at least ${minPublicItems} public-safe items; received ${publicItemCount} visible and ${snapshot.radar_items.length} exportable.`
+    );
+  }
+
+  if (snapshot.radar_items.length !== publicItemCount) {
+    throw new Error(
+      `Production snapshot export requires complete public-signal parity; received ${publicItemCount} visible and ${snapshot.radar_items.length} exportable.`
+    );
+  }
+
+  if (snapshot.event_count < 1 || snapshot.event_cluster_items.length < 1 || snapshot.curated_events.length < 5) {
+    throw new Error("Production snapshot export requires a populated event layer and at least five curated events.");
+  }
+
+  if (!snapshot.report_quality_summary.daily || !snapshot.report_quality_summary.weekly) {
+    throw new Error("Production snapshot export requires both daily and weekly report quality summaries.");
+  }
+
+  if (!snapshot.report_quality_summary.weekly.quality_gate_passed) {
+    throw new Error("Production snapshot export requires the weekly report quality gate to pass.");
+  }
+
+  if (
+    snapshot.freshness.latest_timestamp_source !== "published_at" ||
+    !Number.isFinite(latestTime) ||
+    ageHours > maxAgeHours ||
+    ageHours < -24
+  ) {
+    throw new Error(
+      `Production snapshot export requires a valid public publication timestamp no older than ${maxAgeHours} hours.`
+    );
+  }
+}
+
+function positiveIntegerEnv(name: string, fallback: number) {
+  const parsed = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function isStrictSupabaseReadFailure(warning: string) {
+  return /(read failed|count failed|timestamp failed|unavailable|timed out|returned no public-safe rows)/i.test(warning);
 }
 
 function aggregateSourceFamilyHealth(

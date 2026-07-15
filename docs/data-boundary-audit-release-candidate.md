@@ -1,32 +1,46 @@
 # Data Boundary Audit - Release Candidate
 
-Updated: 2026-07-14
+Updated: 2026-07-15
 
-## A/B/C Table Boundary
+## Table Classification
 
-| group | relations | rule |
+| group | relations | connection state |
 | --- | --- | --- |
-| A: public read views | `public_radar_items`, `public_report_candidates`, `public_reports` | These are the only database relations allowed for runtime public reads. Loaders select allowlisted columns and may fall back to the public Cloudflare snapshot or reviewed local public-report records. |
-| B: internal AI Industry Radar | `sources`, `raw_items`, `radar_items`, `event_clusters`, `event_cluster_items`, `entities`, `item_entities`, `scores`, `reports`, `report_candidates`, `saved_items`, `annotations`, `ingestion_runs`, `understanding_runs`, `source_health_checks`, `users_profile`, `user_roles`, `review_tasks`, `source_change_requests`, `system_settings`, `admin_audit_events`, `api_usage_logs` | Server/operator and admin only. Build jobs may project allowlisted aggregate counts, but public pages must not read or expose raw B rows. Persisted event tables are not a public route dependency. |
-| C: wrong domain | `radar_models`, `radar_model_versions`, `radar_external_metrics`, `radar_deepseek_metrics`, `radar_source_gated_signals`, `radar_pulse_snapshots`, `radar_leaderboard_snapshots`, `radar_admin_review_items`, `radar_audit_events`, `radar_refresh_runs`, `radar_companies`, `radar_deferred_surfaces` | Forbidden from AI Industry Radar public routes, APIs, loaders, and Cloudflare output. |
+| A: AI Industry Radar core | `sources`, `raw_items`, `radar_items`, `public_radar_items`, `event_clusters`, `event_cluster_items`, `entities`, `item_entities`, `scores`, `ingestion_runs`, `understanding_runs`, `report_candidates`, `public_report_candidates`, `public_reports`, `admin_audit_events`, `api_usage_logs` | Crawl, understanding, persistence, events, reports, and public views are connected. Public pages use only the three public views or snapshot. Event tables are persisted but deliberately not direct public dependencies. |
+| B: admin/ops | `users_profile`, `user_roles`, `review_tasks`, `source_change_requests`, `source_health_checks`, `system_settings` | Partially connected in the Vercel/admin application. Not required by Cloudflare and not a public release blocker. |
+| C: wrong domain | `radar_models`, `radar_model_versions`, `radar_external_metrics`, `radar_deepseek_metrics`, `radar_source_gated_signals`, `radar_pulse_snapshots`, `radar_leaderboard_snapshots`, `radar_admin_review_items`, `radar_audit_events`, `radar_refresh_runs`, `radar_companies`, `radar_deferred_surfaces` | Forbidden from AI Industry Radar public routes, APIs, loaders, and Cloudflare output. Tables are retained and not dropped. |
 
-## Route, Loader, Table Map
+## Public Dependency Map
 
-| surface | loader/build path | allowed data dependency |
+| route/surface | loader/build path | database dependency |
 | --- | --- | --- |
-| `/` | `loadProductDataSummary` -> `loadRadarFeed`, `loadReportWorkflowData`, `loadPublicSafeDataCompletenessSummary` | A views or public snapshot/local public fallbacks; events are derived in memory from public-safe radar items. |
-| `/radar` | `loadRadarFeed` plus `buildEventLayer` and public-safe coverage | `public_radar_items` or public snapshot fallback; no direct `event_clusters` read. |
-| `/entities`, `/entities/[entityId]` | `loadRadarFeed` plus entity summaries/evidence graph | `public_radar_items` or public snapshot fallback; entities are derived from allowlisted public item fields. |
-| `/reports`, `/reports/[id]` | `loadReportWorkflowData`, `loadReportWorkflowDocumentById`, and radar traceability | `public_report_candidates`, `public_reports`, and `public_radar_items`, with public snapshot/reviewed-local fallbacks. |
-| `/ask`, `/write` | `loadProductDataSummary` | Same A-view/public-snapshot dependencies as `/`. |
-| `/api/ask`, `/api/writing-assistant` | `retrieveRadarEvidence` -> `loadRadarItems` | `public_radar_items` or public snapshot fallback; generation responses are separately sanitized. |
-| Cloudflare `/`, `/radar/`, `/entities/`, `/reports/`, `/ask/`, `/write/`, and `/en/*` | `scripts/build-cloudflare-public-site.ts` | Static `data/radar-snapshot.json`; no runtime database read. |
-| Cloudflare snapshot build | `scripts/export-public-snapshot.ts` | A views when explicitly enabled, otherwise prior/local public-safe snapshot plus activation output. Build-only completeness may read B tables and serialize counts only. |
+| `/`, `/radar`, `/entities*`, `/ask`, `/write` | radar feed, event and product summaries | `public_radar_items` or public snapshot fallback |
+| `/reports*` | report workflow loader plus radar traceability | `public_report_candidates`, `public_reports`, `public_radar_items`, or reviewed public fallbacks |
+| `/api/ask`, `/api/writing-assistant` | public evidence retrieval | `public_radar_items`; response shapes unchanged |
+| Cloudflare `/`, `/radar/`, `/reports/`, `/ask/`, `/write/`, `/entities/`, `/en/*` | `scripts/build-cloudflare-public-site.ts` | static `data/radar-snapshot.json` only |
+| production snapshot build | `scripts/export-public-snapshot.ts` | three Supabase public views; strict mode forbids local fallback |
 
-## Audit Result
+## Security Boundary
 
-A code search across `app`, `components`, `lib`, `scripts`, `supabase`, and workflows found no C-group table references. Public loaders use A views or public-safe file fallbacks; public routes do not read B event tables or service-role operational rows.
+Migrations `20260715064603_harden_public_views_security_invoker.sql` and `20260715065603_revoke_private_table_api_grants.sql` implement:
 
-The event layer is derived from public-safe radar fields. Event persistence is additive and write-gated, and does not change the public-read boundary. No destructive SQL or cleanup is part of this RC documentation pass.
+- `security_invoker=true` on all three public views;
+- trigger-maintained allowlisted report payloads, so report `metadata` is never granted;
+- column-level grants only for fields required by public views;
+- explicit public-row RLS policies;
+- revocation of anonymous/authenticated privileges on private operational tables;
+- fixed trigger-function search paths.
 
-This audit describes the current worktree. It is not a deployment-completion claim.
+Verification results:
+
+- Supabase Security Advisor ERROR: 0;
+- anonymous public radar rows: 261;
+- anonymous public report candidates: 34;
+- anonymous access to `raw_items`: denied;
+- anonymous access to raw/model/report metadata: denied.
+
+The remaining advisor warning is Auth leaked-password protection. Public Cloudflare access has no login, and admin authentication is not a public release dependency.
+
+## Wrong-Domain Audit
+
+Code search across public routes, loaders, Cloudflare builder, and snapshot exporter found no C-group runtime reads. Snapshot key scans and sensitive scans reject raw/private fields. No table was dropped and no destructive SQL was run.

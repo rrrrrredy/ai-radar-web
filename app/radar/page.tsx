@@ -106,13 +106,13 @@ export default async function RadarPage({
     }))
   ));
   const eventItemIds = new Set(eventLayer.event_cluster_items.map((item) => item.radar_item_id));
-  const filteredItems = rawFilteredItems.filter((item) => eventItemIds.has(item.id));
-  const downgradedFilteredCount = rawFilteredItems.length - filteredItems.length;
-  const filteredCitations = filteredItems
+  const eventEligibleItems = rawFilteredItems.filter((item) => eventItemIds.has(item.id));
+  const downgradedFilteredCount = rawFilteredItems.length - eventEligibleItems.length;
+  const filteredCitations = eventEligibleItems
     .filter((item) => item.status === "included" || item.status === "needs_review")
     .map(citationFromItem)
     .slice(0, 12);
-  const freshness = evidenceFreshnessStatus(feed.freshness.latestTimestamp ?? feed.processed_at);
+  const freshness = evidenceFreshnessStatus(feed.freshness.latestTimestamp);
 
   return (
     <div className="space-y-8">
@@ -151,7 +151,7 @@ export default async function RadarPage({
             />
             <RailRow
               label="当前筛选结果"
-              value={`${filteredItems.length} 条事件信号 / ${rawFilteredItems.length} 条公开信号`}
+              value={`${eventEligibleItems.length} 条事件信号 / ${rawFilteredItems.length} 条公开信号`}
             />
             <RailRow label="事件聚类" value={`${eventLayer.event_count} 个事件`} />
           </dl>
@@ -199,12 +199,12 @@ export default async function RadarPage({
         </div>
       </section>
 
-      <CountRail coverage={coverage} feed={feed} filteredCount={filteredItems.length} />
+      <CountRail coverage={coverage} feed={feed} filteredCount={rawFilteredItems.length} />
       <ReaderIntentTabs feed={feed} filters={filters} />
       <CategoryTabs feed={feed} filters={filters} />
       <EvidenceToInsightPanel
         entities={entitySummaries.slice(0, 4)}
-        filteredCount={filteredItems.length}
+        filteredCount={eventEligibleItems.length}
       />
 
       <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
@@ -341,28 +341,28 @@ export default async function RadarPage({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-radar-ink">
-              证据条目
+              全部信号
             </h2>
             <p className="mt-2 text-sm leading-6 text-radar-muted">
-              只展示能进入事件层的信号；目录页、文档入口、仓库元数据等低事件性内容会被折叠。
+              展示当前筛选命中的全部公开信号；低事件性条目保留用于审计，但不进入事件列表和报告正文。
             </p>
           </div>
           <StatusChip
             label="可见条目"
-            tone={filteredItems.length > 0 ? "evidence" : "caution"}
-            value={filteredItems.length}
+            tone={rawFilteredItems.length > 0 ? "evidence" : "caution"}
+            value={rawFilteredItems.length}
           />
         </div>
 
         {downgradedFilteredCount > 0 ? (
           <div className="rounded-lg border border-radar-caution/40 bg-radar-caution/5 p-4 text-sm leading-6 text-radar-muted">
-            已降级 {downgradedFilteredCount} 条低事件性信号。它们保留在公开快照用于审计，但不进入事件列表、报告正文或引用栏。
+            其中 {downgradedFilteredCount} 条为低事件性审计信号；它们在下方继续可见，但不进入事件列表、报告正文或事件引用栏。
           </div>
         ) : null}
 
-        {filteredItems.length > 0 ? (
+        {rawFilteredItems.length > 0 ? (
           <div className="overflow-hidden rounded-lg border border-radar-line bg-white shadow-soft">
-            {filteredItems.map((item, index) => (
+            {rawFilteredItems.map((item, index) => (
               <RadarItemRow index={index} item={item} key={item.id} />
             ))}
           </div>
@@ -567,11 +567,7 @@ function RadarItemRow({
   item: RetrievalRadarItem;
 }) {
   const summary = item.summary_zh || item.summary_en || "暂无摘要。";
-  const timestampLabel = item.published_at
-    ? "发布时间"
-    : item.collected_at
-      ? "采集时间"
-      : "处理时间";
+  const timestampLabel = "发布时间";
   const timestamp = itemEvidenceTimestamp(item);
 
   return (

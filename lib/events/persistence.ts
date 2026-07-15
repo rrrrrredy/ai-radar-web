@@ -6,6 +6,7 @@ import type {
   PublicEventClusterItem,
   PublicEventLayer
 } from "@/lib/events/clustering";
+import type { RetrievalDataSource } from "@/lib/retrieval/types";
 import { isEnabled } from "@/lib/utils";
 
 type PersistableEventLayer = Pick<PublicEventLayer, "event_clusters" | "event_cluster_items">;
@@ -60,7 +61,19 @@ export type EventLayerPersistenceResult = {
 export type EventLayerPersistenceOptions = {
   batchSize?: number;
   persistedAt?: string;
+  staleClusterReconciliation?: StaleClusterReconciliationGuard;
 };
+
+export type StaleClusterReconciliationGuard = {
+  directSupabaseRead: boolean;
+  dataSource: RetrievalDataSource;
+  eligibleInputItemCount: number;
+  minimumExistingClusterCoverageRatio: number;
+  minimumInputItemCount: number;
+};
+
+export const MINIMUM_STALE_CLUSTER_INPUT_ITEMS = 20;
+export const MINIMUM_STALE_CLUSTER_COVERAGE_RATIO = 0.5;
 
 export function assertEventPersistenceWriteEnabled(value = process.env.ENABLE_SUPABASE_WRITES) {
   if (!isEnabled(value)) {
@@ -164,13 +177,21 @@ export async function persistEventLayer(
 
   const batchSize = positiveInteger(options.batchSize ?? 200, "event persistence batch size");
   const clusterRows = buildEventClusterUpsertRows(layer.event_clusters, options.persistedAt);
+  const eventLocalIds = clusterRows.map((row) => row.local_id);
   const radarItemLocalIds = uniqueIdentifiers(layer.event_cluster_items.map((item) => item.radar_item_id));
+  const staleClusterIds = options.staleClusterReconciliation
+    ? await planStaleGeneratedClusterArchival(
+        supabase,
+        new Set(eventLocalIds),
+        radarItemLocalIds.length,
+        options.staleClusterReconciliation
+      )
+    : [];
   const radarItemDatabaseIds = await loadRadarItemDatabaseIds(supabase, radarItemLocalIds, batchSize);
   assertAllIdentifiersResolved("radar_items", radarItemLocalIds, radarItemDatabaseIds);
 
   await upsertRowsInBatches(supabase, "event_clusters", clusterRows, "local_id", batchSize);
 
-  const eventLocalIds = clusterRows.map((row) => row.local_id);
   const eventDatabaseIds = await loadIdsByLocalId(supabase, "event_clusters", eventLocalIds, batchSize);
   assertAllIdentifiersResolved("event_clusters", eventLocalIds, eventDatabaseIds);
 
@@ -188,7 +209,7 @@ export async function persistEventLayer(
   );
   const eventClustersArchived = await archiveStaleGeneratedClusters(
     supabase,
-    new Set(eventLocalIds),
+    staleClusterIds,
     requiredTimestamp(options.persistedAt ?? new Date().toISOString(), "event persistence timestamp"),
     batchSize
   );
@@ -200,12 +221,14 @@ export async function persistEventLayer(
   };
 }
 
-async function archiveStaleGeneratedClusters(
+async function planStaleGeneratedClusterArchival(
   supabase: SupabaseClient,
   currentLocalIds: ReadonlySet<string>,
-  persistedAt: string,
-  batchSize: number
+  clusteredInputItemCount: number,
+  guard: StaleClusterReconciliationGuard
 ) {
+  assertStaleClusterReconciliationGuard(guard, clusteredInputItemCount);
+
   const { data, error } = await supabase
     .from("event_clusters")
     .select("id, local_id")
@@ -216,15 +239,90 @@ async function archiveStaleGeneratedClusters(
     throw new Error(`Unable to load generated event clusters for reconciliation: ${error.message}`);
   }
 
-  const staleIds = ((data ?? []) as IdRow[])
+  const generatedClusters = ((data ?? []) as IdRow[]).filter((row) => row.local_id);
+  if (generatedClusters.length === 0) {
+    return [];
+  }
+
+  const coveredClusterCount = generatedClusters.filter(
+    (row) => row.local_id && currentLocalIds.has(row.local_id)
+  ).length;
+  const coverageRatio = coveredClusterCount / generatedClusters.length;
+  if (coverageRatio < guard.minimumExistingClusterCoverageRatio) {
+    throw new Error(
+      `Stale event reconciliation coverage guard failed: current clusters cover ${coveredClusterCount}/${generatedClusters.length} active generated clusters (${coverageRatio.toFixed(3)}), below the required ${guard.minimumExistingClusterCoverageRatio.toFixed(3)}.`
+    );
+  }
+
+  return generatedClusters
     .filter((row) => row.local_id && !currentLocalIds.has(row.local_id))
     .map((row) => row.id);
+}
+
+function assertStaleClusterReconciliationGuard(
+  guard: StaleClusterReconciliationGuard,
+  clusteredInputItemCount: number
+) {
+  if (guard.dataSource !== "supabase_radar_items") {
+    throw new Error("Stale event reconciliation requires authoritative public/Supabase radar input.");
+  }
+
+  if (guard.directSupabaseRead !== true) {
+    throw new Error("Stale event reconciliation requires a direct Supabase public-view read from the current run.");
+  }
+
+  const eligibleInputItemCount = boundedInteger(
+    guard.eligibleInputItemCount,
+    0,
+    Number.MAX_SAFE_INTEGER,
+    "eligible event reconciliation input item count"
+  );
+  const minimumInputItemCount = positiveInteger(
+    guard.minimumInputItemCount,
+    "minimum event reconciliation input item count"
+  );
+  if (minimumInputItemCount < MINIMUM_STALE_CLUSTER_INPUT_ITEMS) {
+    throw new Error(
+      `Stale event reconciliation minimum input guard must be at least ${MINIMUM_STALE_CLUSTER_INPUT_ITEMS} items.`
+    );
+  }
+  if (eligibleInputItemCount < minimumInputItemCount) {
+    throw new Error(
+      `Stale event reconciliation input coverage guard failed: ${eligibleInputItemCount} eligible items is below the required ${minimumInputItemCount}.`
+    );
+  }
+  if (clusteredInputItemCount < minimumInputItemCount) {
+    throw new Error(
+      `Stale event reconciliation clustered-input coverage guard failed: ${clusteredInputItemCount} unique clustered items is below the required ${minimumInputItemCount}.`
+    );
+  }
+  if (clusteredInputItemCount > eligibleInputItemCount) {
+    throw new Error(
+      `Stale event reconciliation guard is inconsistent: ${clusteredInputItemCount} clustered items exceeds ${eligibleInputItemCount} eligible input items.`
+    );
+  }
+
+  const minimumCoverageRatio = guard.minimumExistingClusterCoverageRatio;
+  if (!Number.isFinite(minimumCoverageRatio) || minimumCoverageRatio < MINIMUM_STALE_CLUSTER_COVERAGE_RATIO || minimumCoverageRatio > 1) {
+    throw new Error(
+      `Stale event reconciliation cluster coverage guard must be between ${MINIMUM_STALE_CLUSTER_COVERAGE_RATIO} and 1.`
+    );
+  }
+}
+
+async function archiveStaleGeneratedClusters(
+  supabase: SupabaseClient,
+  staleIds: string[],
+  persistedAt: string,
+  batchSize: number
+) {
 
   for (const batch of chunkRows(staleIds, batchSize)) {
     const { error: updateError } = await supabase
       .from("event_clusters")
       .update({ status: "archived", updated_at: persistedAt })
-      .in("id", batch);
+      .in("id", batch)
+      .in("status", ["draft", "reviewed"]);
     if (updateError) {
       throw new Error(`Unable to archive stale event clusters: ${updateError.message}`);
     }

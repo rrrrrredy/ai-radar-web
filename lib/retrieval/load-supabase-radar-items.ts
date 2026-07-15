@@ -17,7 +17,7 @@ type SupabaseReadError = {
   hint?: string;
 };
 
-const retrievalLimit = 250;
+const retrievalLimit = 500;
 
 export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
   const appConfig = getAppConfig();
@@ -116,6 +116,7 @@ export async function loadSupabaseRadarItems(): Promise<SupabaseLoadAttempt> {
       loaded: {
         items,
         dataSource: "supabase_radar_items",
+        authoritativeSupabaseRead: true,
         freshness: freshnessFromItems(items),
         warnings:
           items.length < rows.length
@@ -197,11 +198,7 @@ function normalizeSupabaseRow(value: SupabaseRadarRow): RetrievalRadarItem | nul
 }
 
 function freshnessFromItems(items: RetrievalRadarItem[]): LoadedRadarItems["freshness"] {
-  const candidates = items.flatMap((item) => [
-    timestampCandidate(item.processed_at, "processed_at" as const),
-    timestampCandidate(item.collected_at, "collected_at" as const),
-    timestampCandidate(item.published_at, "published_at" as const)
-  ]);
+  const candidates = items.map((item) => timestampCandidate(item.published_at, "published_at" as const));
   const latest = candidates
     .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
     .sort((left, right) => Date.parse(right.value) - Date.parse(left.value))[0];

@@ -17,7 +17,7 @@ export function evidenceFreshnessStatus(
       ageDays: null,
       isStale: true,
       latestLabel: "待补证据",
-      warning: "当前公开证据没有可验证的新鲜度时间戳；请只把页面当作结构演示和历史证据检索。"
+      warning: "当前公开内容没有可验证的发布时间；请只把页面当作历史证据索引。"
     };
   }
 
@@ -30,7 +30,7 @@ export function evidenceFreshnessStatus(
     isStale,
     latestLabel,
     warning: isStale
-      ? `当前公开证据最新到 ${latestLabel}，距今约 ${ageDays} 天；本页不能代表今日实时 AI 行业覆盖。`
+      ? `当前公开内容发布时间最新到 ${latestLabel}，距今约 ${ageDays} 天；本页不能代表今日实时 AI 行业覆盖。`
       : null
   };
 }

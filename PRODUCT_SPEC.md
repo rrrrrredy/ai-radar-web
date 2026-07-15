@@ -1,73 +1,97 @@
-# Product Spec
+# AI Industry Radar Product Spec
 
-## Public Homepage
+## Product Job
 
-The homepage shows the current AI radar: today/top hotspot events, reader-facing category entry points, source-health summary, latest event clusters, notable entities, and links to daily or weekly reports. It should support Chinese, English, and bilingual viewing.
+AI Industry Radar helps AI industry practitioners answer five questions quickly:
 
-## Product Shell and Branding
+1. What changed?
+2. Which reports describe the same event?
+3. How strong and diverse is the evidence?
+4. What deserves attention now?
+5. What is missing, stale, or uncertain?
 
-The app shell includes consistent AI Industry Radar branding, the public maintainer name Song Luo, public contact links, and a reminder that source attribution, freshness, and uncertainty are part of the public-information product contract.
+The product is an event radar, not a raw RSS reader, generic landing page, model leaderboard, or admin dashboard presented as a public product.
 
-## Hotspot Ranking
+## Language Contract
 
-Rank items and clusters by credibility, novelty, source strength, entity importance, velocity, cross-source confirmation, and audience relevance. Repeated summaries should strengthen confidence only when they add evidence, not when they merely duplicate the same source.
+The public product is Chinese-first and has a complete English route tree. A top-right `中文 / EN` control switches between equivalent routes while preserving the current section. Source names, company/model names, article titles, and papers may remain in their original language for traceability.
 
-## Event Clusters
+## Homepage
 
-Cluster related raw items into events. Each cluster should include a title, bilingual summary, timeline, representative sources, linked entities, score history, confidence, and open questions.
+The first viewport shows real data and the beginning of `今日行业精选`:
 
-## Item Detail Page
+- public signal and event counts;
+- attempted, succeeded, failed, and manual source counts;
+- latest public content publication time;
+- daily/weekly report status;
+- top curated event cards.
 
-Each item page should show the original URL, source, publication time, retrieved time, summary, extracted entities, scores, related cluster, evidence notes, and language variants.
+The rest of the page shows industry pulse, category/source distributions, source health, failure families, coverage limits, and event-aware Ask/Write entry points.
 
-## Entity Pages
+## Event Radar
 
-Support entity pages for companies, people, models, products, papers, and projects. Entity pages should show aliases, canonical links, related items, related clusters, recent score movement, and notes.
+`/radar/` defaults to `行业精选` and provides:
 
-Static Cloudflare and GitHub Pages mirrors must include an entity index and static entity detail pages, not just homepage/radar/report pages. Static entity pages should answer which entities are worth tracking, how many public signals support them, which sources/categories appear, whether the entity is linked to reports, what evidence still needs review, and which public citations form the entity timeline.
+- `行业精选`
+- `全部事件`
+- `全部信号`
+- `最新时间线`
+- `待复核`
+- `来源健康`
 
-## Search and Filters
+Event cards include canonical title, Chinese/English summary, score and label, source count, source families, related-item count, first/latest publication time, citations, timeline, and entities when available.
 
-Users should filter by keyword, topic, source type, language, entity type, time range, confidence, score, and report inclusion status.
+`全部信号` contains every public-safe radar row, including low-event directory/homepage signals. Those rows remain auditable but do not enter events or curated selection.
 
-## Bilingual Mode
+## Event Matching
 
-Users can choose Chinese, English, or bilingual mode. Bilingual summaries should be generated from evidence and reviewed for meaning, not produced as unverified literal translation.
+Deterministic clustering combines normalized title similarity, strong shared entities, product/model/company identity, specific action keywords, category, publication window, source/domain evidence, and narrow concept aliases.
 
-## Public Product Boundary
+Over-merge safeguards must keep apart:
 
-The public product does not expose free-form generation assistants, Q&A, or writing/research assistant flows. Users should move through radar evidence, entity tracking, and reviewed reports. Public coverage summaries must come from public snapshot/public view fields and visible feed counts, not service-role operational tables. Public snapshots may include entity `name/type/confidence` for reader tracking, but not raw text, entity evidence text, internal pipeline conversion rates, or service-role operational table counts.
+- different companies or models sharing generic release language;
+- unrelated papers sharing generic AI/agent terms;
+- adjacent semantic versions or release candidates;
+- different partnership counterparts;
+- directories, homepages, docs indexes, and repository metadata without a concrete event.
 
-## Daily Report
+## Event Scoring
 
-Daily reports summarize the most important AI events for a selected date or last-24-hour window. Reports should include ranked events, why they matter, source citations, and watch items.
+Event score dimensions are AI relevance, source credibility, source diversity, freshness, novelty, importance, and multi-source coverage. Labels are `高优先级`, `关注`, `观察`, and `噪音/低相关`. Score reasons are reader-facing Chinese or English, never raw model rationale or operational logs.
 
-## Weekly Report
+Different source families increase evidence diversity but do not prove source independence. The UI must state that caveat next to multi-source evidence.
 
-Weekly reports synthesize trends across seven days, including model releases, agent products, infrastructure, papers, investments, regulation, and open-source movement.
+## Reports
 
-## Admin Dashboard
+Daily and weekly report candidates are event-aware and quality-gated.
 
-The admin dashboard gives authorized users operational control over sources, imports, scoring, ingestion, review queues, and system settings.
+- Daily: at least 5 usable events/items, 3 citations, 2 sources, and 2 categories when available.
+- Weekly: at least 20 usable events/items, 8 citations, 5 sources, and 3 categories when available.
 
-## Source Management
+Report cards show gate status, event/usable count, citations, source/category diversity, included events, caveats, and missing evidence. `needs_review` is an editorial status and is distinct from gate failure.
 
-Admins can add, pause, reject, tag, and weight sources. Each source should track category, language, region, topics, health status, risk notes, and last check time.
+When the daily gate fails, the product must display `今日数据不足，需补充信源或等待下一轮刷新` and must not present the draft as a complete report.
 
-## Manual Import
+## Ask and Write
 
-Editors can manually import public URLs or text excerpts with attribution. Manual imports should record who imported the item, when, why, and whether the input is public.
+`/ask/` queries current public event evidence. `/write/` creates evidence-led outlines and observations from current events. Cloudflare implementations run locally in the browser against the public snapshot and do not claim a live private chat or server action. Existing `/api/ask` and `/api/writing-assistant` response shapes remain unchanged in the dynamic app.
 
-## Scoring Rule Management
+## Source Health
 
-Admins can adjust scoring weights and record rationale. Scoring changes should be auditable and should not silently rewrite historical reports without a version note.
+Public source health aggregates succeeded, failed, timeout, HTTP 403, rate limit, no items, duplicate only, manual blocked, unsupported, and low-relevance exclusion. Raw stack traces, provider payloads, credentials, and private logs remain internal.
 
-## Ingestion Logs
+## Public Data Contract
 
-Each ingestion run should record start time, end time, status, source count, item count, errors, model usage, and retry metadata.
+Cloudflare reads one allowlisted snapshot. Production export must read the three `security_invoker` Supabase public views and fail closed if the source is unavailable, incomplete, stale, or below release thresholds.
 
-## User Roles
+Forbidden public fields include raw text, raw metadata, model metadata, evidence notes, private notes, admin/audit logs, service keys, raw API payloads, cookies, and wrong-domain model-radar relations.
 
-- `admin`: manage users, sources, scoring rules, system settings, and all content.
-- `editor`: manage sources, imports, annotations, reports, and review queues.
-- `viewer`: read public and permitted private dashboard content.
+## Operations
+
+Refresh is manual `workflow_dispatch` only. No schedule is enabled. Mock/live, persistence, clustering, reports, and Cloudflare deployment are independent explicit inputs. Writes require the temporary process gate plus the repository write gate and are never enabled in deployed environments.
+
+X and WeChat are manual/blocked sources. Source-health writes and automatic report publication are outside this release.
+
+## Non-Blocking Internal Surfaces
+
+Admin authentication, personal saved items, annotations, private sources, and full editorial workflows may continue in the dynamic app, but they are not prerequisites for the public Cloudflare product and must not block public release validation.

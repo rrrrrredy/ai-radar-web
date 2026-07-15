@@ -6,45 +6,47 @@ Updated: 2026-07-15
 
 - implementation: `lib/events/clustering.ts`;
 - command: `npm run events:cluster`;
-- artifact: `data/events/latest/event-layer.json`;
+- ignored artifact: `data/events/latest/event-layer.json`;
 - controlled persistence: `npm run events:cluster -- --persist` with temporary `ENABLE_SUPABASE_WRITES=true`;
-- public export: `scripts/export-public-snapshot.ts`.
+- public projection: `scripts/export-public-snapshot.ts`.
 
-Only public-safe `included` and `needs_review` items enter clustering. Raw text, provider/model metadata, private notes, credentials, and operational logs are not cluster fields.
+Only `included` and `needs_review` public-safe items enter the clustering candidate pool. Low-event signals remain in `全部信号` but are excluded before event scoring.
 
 ## Matching
 
-The deterministic score combines normalized title overlap, explicit and inferred entities, keywords, category, source/domain identity, and evidence time distance. A merge normally requires at least 0.58 similarity.
+The deterministic matcher combines normalized title overlap, strong shared entities, company/model/product identity, specific action keywords, category, publication-time distance, source/domain evidence, and narrow concept aliases. It does not require one LLM call per merge.
 
-Specific legal, funding, and acquisition actions can add corroboration weight only when both items share at least two canonical strong entities, occur within 72 hours, retain title overlap, and retain meaningful keyword overlap. A separate concept registry handles narrowly scoped aliases. The first rule maps `J-space`, `Jacobian lens`, and `global workspace` only when both Anthropic and Claude anchors are present and the evidence is within seven days.
+A narrow alias joins `J-space`, `Jacobian lens`, and `global workspace` only when Anthropic and Claude anchors are present and evidence is within seven days. This enables the verified Anthropic/MIT Technology Review pair without lowering the global merge threshold.
 
-## Over-Merge Controls
+## Over-Merge Safeguards
 
-- generic terms such as AI, model, agent, tool, and research are weak evidence;
+- generic AI/model/agent/tool/research terms are weak evidence;
 - conflicting strong entities are penalized;
-- different open-source projects and different SDK tracks do not merge;
-- conflicting release versions always remain separate, including adjacent versions in the same project and time window;
-- different partnership counterparts do not merge;
-- same-domain or same-category proximity cannot establish identity alone;
-- source homepage, directory, documentation-index, and repository-metadata shapes are blocked from public events;
-- low-score/noise clusters remain auditable but do not enter curated display.
+- different companies, models, SDKs, projects, and partnership counterparts do not merge;
+- exact GitHub tag identity prevents adjacent semantic versions and `rc` releases from merging;
+- unrelated papers do not merge on generic research language;
+- release-like wording fails closed for SDK/framework/runtime and arXiv records without stronger identity;
+- only valid `published_at` values create event timelines;
+- homepage, directory, docs-index, changelog-index, and repository-metadata signals do not become events.
 
-`scripts/event-clustering.test.ts` verifies that the two Apple/OpenAI lawsuit reports merge while adjacent stories stay separate. It also verifies the Anthropic/MIT concept-alias merge, rejects an unrelated Claude robotics story and another lab's global-workspace research, keeps adjacent llama.cpp and Ollama semantic versions separate, and keeps a `Research` directory page out of event evidence.
+Regression tests cover Apple/OpenAI and Anthropic/MIT positive merges plus unrelated Claude robotics, other-lab global-workspace research, adjacent llama.cpp/Ollama versions, release candidates, and directory pages as negative cases.
 
-## Current Results
+## Results
 
-| metric | value |
-| --- | ---: |
-| input public radar items | 250 |
-| event-eligible relationships | 201 |
-| current-run event clusters | 198 |
-| multi-item clusters | 3 |
-| average items per cluster | 1.02 |
-| curated events | 8 |
-| Cloudflare visible relationships/events | 201 / 198 |
-| same-family two-source public events | 1 |
-| cross-source-family public events | 1 |
+| metric | persisted layer | Cloudflare display |
+| --- | ---: | ---: |
+| input public signals | 261 | 261 in `全部信号` |
+| event relationships | 209 | 207 |
+| event clusters | 207 | 205 |
+| multi-item events | 2 | 2 |
+| average items/event | 1.01 | 1.01 |
+| curated events | 8 | 8 |
 
-The cross-family example is `A global workspace in language models`: source count 2, two citations, company/lab plus media/analysis families, timeline preserved, event score 89, label `高优先级`. This represents cross-family coverage and does not assert that the sources are independent. The Apple/OpenAI lawsuit remains a 77-point same-family example. Low-event directory, homepage, documentation-index, and repository-metadata signals are excluded before clustering rather than merely hidden after scoring.
+Deduplication examples:
 
-Persistence is controlled and non-destructive: clusters upsert by stable local ID and relationships by event/radar pair. The final write marked 77 stale generated clusters `archived` while retaining the rows for audit; 198 current clusters remain `reviewed`. No cluster row was deleted.
+- `Anthropic found a hidden space where Claude puzzles over concepts`: two signals, two families, score 89.
+- `The 6 wildest claims in Apple’s lawsuit against OpenAI`: two signals, one family, score 77.
+
+The current duplicate reduction is two readings: four related signals become two cards. This is intentionally reported as thin coverage rather than overstated product maturity.
+
+Persistence upserts stable cluster IDs and event/radar relationships. The final authoritative write persisted 207 clusters and 209 relationships and archived 0 stale clusters. Archival safeguards require authoritative Supabase input, a minimum feed size, adequate retained-cluster coverage, and an explicit reconciliation guard. Rows are never deleted by clustering.

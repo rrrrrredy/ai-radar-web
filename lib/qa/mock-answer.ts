@@ -67,7 +67,7 @@ function buildShortAnswer(items: RetrievalResult["rankedItems"][number]["item"][
 function factForItem(item: RetrievalResult["rankedItems"][number]["item"], isZh: boolean) {
   const summary = isZh ? item.summary_zh || item.summary_en : item.summary_en || item.summary_zh;
   const status = item.status === "needs_review" ? (isZh ? "待确认" : "needs review") : item.status;
-  const timestamp = item.published_at ?? item.collected_at;
+  const timestamp = item.published_at ?? (isZh ? "发布时间未提供" : "publication time unavailable");
 
   if (isZh) {
     return `「${item.title}」来自 ${item.source_name}，时间 ${timestamp}，状态 ${status}。${summary}`;
@@ -126,10 +126,10 @@ function freshnessNote(retrieval: RetrievalResult, isZh: boolean) {
   }
 
   if (isZh) {
-    return `最新可见雷达时间戳为 ${latest}（${retrieval.freshness.latestTimestampSource ?? "unknown"}）。`;
+    return `最新公开内容发布时间为 ${latest}（${retrieval.freshness.latestTimestampSource ?? "unknown"}）。`;
   }
 
-  return `Latest visible radar timestamp is ${latest} (${retrieval.freshness.latestTimestampSource ?? "unknown"}).`;
+  return `Latest public content publication timestamp is ${latest} (${retrieval.freshness.latestTimestampSource ?? "unknown"}).`;
 }
 
 function dataSourceLabel(dataSource: RetrievalResult["dataSource"], isZh: boolean) {

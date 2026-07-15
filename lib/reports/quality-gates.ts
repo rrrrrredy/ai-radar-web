@@ -54,6 +54,12 @@ export type ReportEvidenceFreshnessEvaluation = {
   windowEnd: string | null;
 };
 
+export type ReportCandidateQualityGateValidation = {
+  gate: ReportQualityGate | null;
+  passed: boolean;
+  reasons: string[];
+};
+
 export function reportQualityGateFromPreview(
   preview: ReportPreview,
   evaluatedAt: Date | string = new Date()
@@ -170,17 +176,143 @@ export function normalizeReportQualityGate(
       reportType,
       usableItemCount
     });
-    const reasons = stringArray(value.reasons);
-    const passed = typeof value.passed === "boolean" ? value.passed : evaluated.passed;
+    const storedReasons = stringArray(value.reasons);
+    const passed = value.passed === true && evaluated.passed;
+    const reasons = passed
+      ? []
+      : evaluated.passed
+        ? storedReasons.length > 0
+          ? storedReasons
+          : ["质量门禁缺少明确的 passed=true，按未通过处理。"]
+        : Array.from(new Set([...evaluated.reasons, ...storedReasons]));
 
     return {
       ...evaluated,
       passed,
-      reasons: passed ? [] : reasons.length > 0 ? reasons : evaluated.reasons
+      reasons
     };
   }
 
-  return evaluateReportQualityGate(fallback);
+  const evaluated = evaluateReportQualityGate(fallback);
+  if (!evaluated.passed) {
+    return evaluated;
+  }
+
+  return {
+    ...evaluated,
+    passed: false,
+    reasons: ["质量门禁元数据缺失，不能按通过处理。"]
+  };
+}
+
+export function validateReportCandidateQualityGate(
+  reportType: ReportPreviewType,
+  value: unknown,
+  evaluatedAt: Date | string = new Date()
+): ReportCandidateQualityGateValidation {
+  if (!isRecord(value)) {
+    return {
+      gate: null,
+      passed: false,
+      reasons: ["structured report draft metadata is missing or malformed"]
+    };
+  }
+
+  const qualityGate = isRecord(value.quality_gate) ? value.quality_gate : null;
+  const usableItemCount = strictNonNegativeInteger(value.usable_item_count);
+  const citationCount = strictNonNegativeInteger(value.citation_count);
+  const distinctSourceCount = strictNonNegativeInteger(value.distinct_source_count);
+  const categoryCount = strictNonNegativeInteger(value.category_count);
+  const citations = Array.isArray(value.citations) ? value.citations : null;
+  const timeWindow = isRecord(value.time_window) ? value.time_window : null;
+  const reasons: string[] = [];
+
+  if (value.report_type !== reportType) {
+    reasons.push(`report_type must match the ${reportType} candidate`);
+  }
+
+  if (value.quality_gate_passed !== true) {
+    reasons.push("quality_gate_passed must be explicitly true");
+  }
+
+  if (!qualityGate) {
+    reasons.push("quality_gate metadata is missing or malformed");
+  } else {
+    if (qualityGate.report_type !== reportType) {
+      reasons.push(`quality_gate.report_type must match the ${reportType} candidate`);
+    }
+
+    if (qualityGate.passed !== true) {
+      reasons.push("quality_gate.passed must be explicitly true");
+    }
+
+    if (qualityGate.category_gate_applicable !== true) {
+      reasons.push("quality_gate.category_gate_applicable must be true");
+    }
+
+    if (!thresholdsMatch(qualityGate.thresholds, reportQualityGateThresholds[reportType])) {
+      reasons.push("quality_gate.thresholds do not match the current report thresholds");
+    }
+  }
+
+  const draftCounts = [
+    ["usable_item_count", usableItemCount],
+    ["citation_count", citationCount],
+    ["distinct_source_count", distinctSourceCount],
+    ["category_count", categoryCount]
+  ] as const;
+
+  for (const [field, count] of draftCounts) {
+    if (count === null) {
+      reasons.push(`${field} must be a non-negative integer`);
+      continue;
+    }
+
+    if (qualityGate && strictNonNegativeInteger(qualityGate[field]) !== count) {
+      reasons.push(`quality_gate.${field} must match ${field}`);
+    }
+  }
+
+  if (!citations) {
+    reasons.push("citations must be an array");
+  } else if (citationCount !== null && citations.length !== citationCount) {
+    reasons.push("citation_count must match the citations array length");
+  }
+
+  const qualityGateReasons = strictStringArray(qualityGate?.reasons);
+  if (qualityGateReasons === null) {
+    reasons.push("quality_gate.reasons must be a string array");
+  } else if (qualityGateReasons.length > 0) {
+    reasons.push("quality_gate.reasons contains unresolved failures");
+  }
+
+  const draftQualityGateReasons = strictStringArray(value.quality_gate_reasons);
+  if (draftQualityGateReasons === null) {
+    reasons.push("quality_gate_reasons must be a string array");
+  } else if (draftQualityGateReasons.length > 0) {
+    reasons.push("quality_gate_reasons contains unresolved failures");
+  }
+
+  const gate = evaluateReportQualityGate({
+    categoryCount: categoryCount ?? 0,
+    categoryGateApplicable: true,
+    citationCount: citationCount ?? 0,
+    distinctSourceCount: distinctSourceCount ?? 0,
+    evaluatedAt,
+    evidenceTimestamps: storedCitationTimestamps(citations ?? []),
+    evidenceWindowEnd: typeof timeWindow?.end === "string" ? timeWindow.end : null,
+    freshnessGateApplicable: true,
+    reportType,
+    usableItemCount: usableItemCount ?? 0
+  });
+
+  reasons.push(...gate.reasons);
+
+  return {
+    gate,
+    passed: reasons.length === 0,
+    reasons: Array.from(new Set(reasons))
+  };
 }
 
 export function reportQualityGateFields(gate: ReportQualityGate) {
@@ -320,7 +452,7 @@ function uniqueCount(values: string[]) {
 }
 
 function citationEvidenceTimestamp(citation: { published_at?: string; collected_at: string }) {
-  return citation.published_at ?? citation.collected_at;
+  return citation.published_at ?? "";
 }
 
 function dedupeStrings(values: string[]) {
@@ -384,4 +516,44 @@ function stringArray(value: unknown) {
   }
 
   return Array.from(new Set(value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean)));
+}
+
+function strictNonNegativeInteger(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function strictStringArray(value: unknown) {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || item.trim().length === 0)) {
+    return null;
+  }
+
+  return Array.from(new Set(value.map((item) => item.trim())));
+}
+
+function storedCitationTimestamps(citations: unknown[]) {
+  return citations.flatMap((citation) => {
+    if (!isRecord(citation)) {
+      return [];
+    }
+
+    const timestamp =
+      typeof citation.published_at === "string" && citation.published_at.trim().length > 0
+        ? citation.published_at
+        : "";
+
+    return timestamp ? [timestamp] : [];
+  });
+}
+
+function thresholdsMatch(value: unknown, expected: ReportQualityGateThresholds) {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    strictNonNegativeInteger(value.usable_items) === expected.usable_items &&
+    strictNonNegativeInteger(value.citations) === expected.citations &&
+    strictNonNegativeInteger(value.distinct_sources) === expected.distinct_sources &&
+    strictNonNegativeInteger(value.categories) === expected.categories
+  );
 }

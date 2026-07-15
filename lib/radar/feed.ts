@@ -26,6 +26,7 @@ export type RadarFeed = {
   items: RetrievalRadarItem[];
   citations: RetrievalCitation[];
   data_source: RetrievalDataSource;
+  authoritative_supabase_read: boolean;
   freshness: LoadedRadarItems["freshness"];
   freshness_note: string;
   generated_at: string;
@@ -62,6 +63,7 @@ export function buildRadarFeed(loaded: LoadedRadarItems): RadarFeed {
     items,
     citations,
     data_source: loaded.dataSource,
+    authoritative_supabase_read: loaded.authoritativeSupabaseRead === true,
     freshness: loaded.freshness,
     freshness_note: freshnessNote(loaded),
     generated_at: generatedAt,
@@ -74,7 +76,7 @@ export function buildRadarFeed(loaded: LoadedRadarItems): RadarFeed {
 }
 
 export function itemEvidenceTimestamp(item: RetrievalRadarItem) {
-  return item.published_at ?? item.collected_at ?? item.processed_at;
+  return item.published_at ?? "";
 }
 
 function sortFeedItems(items: RetrievalRadarItem[]) {
@@ -175,7 +177,7 @@ function dataSourceCaveat(dataSource: RetrievalDataSource) {
 function freshnessNote(loaded: LoadedRadarItems) {
   const latest = loaded.freshness.latestTimestamp;
   if (!latest) {
-    return "No processed, collected, published, or file-modified freshness timestamp is available.";
+    return "No public content publication timestamp is available.";
   }
 
   const source = loaded.freshness.latestTimestampSource ?? "unknown timestamp";
@@ -184,7 +186,7 @@ function freshnessNote(loaded: LoadedRadarItems) {
       ? ` File modified at ${loaded.freshness.fileMtime}.`
       : "";
 
-  return `Latest visible radar timestamp is ${latest} (${source}).${fileMtime}`;
+  return `Latest public content publication timestamp is ${latest} (${source}).${fileMtime}`;
 }
 
 function latestTimestamp(values: Array<string | undefined>) {

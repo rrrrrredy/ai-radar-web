@@ -4,8 +4,10 @@ import { buildDeterministicReportDraft } from "@/lib/reports/generate-live-repor
 import {
   DAILY_REPORT_INSUFFICIENT_DATA_MESSAGE,
   evaluateReportQualityGate,
+  normalizeReportQualityGate,
   qualityGateCaveats,
-  reportQualityGateFromPreview
+  reportQualityGateFromPreview,
+  validateReportCandidateQualityGate
 } from "@/lib/reports/quality-gates";
 import type {
   ReportPreview,
@@ -24,8 +26,13 @@ function main() {
   testMissingAndFutureEvidenceFail();
   testCountReasonsAreChinese();
   testDailyFailureCopyAndResponseShape();
+  testNormalizedGateFailsClosed();
+  testCandidateGateRequiresExplicitPassFlags();
+  testCandidateGateEnforcesCurrentThresholds();
+  testCandidateGateRejectsMalformedLegacyMetadata();
+  testCandidateGateRejectsCollectionTimeAsPublication();
 
-  console.log("Report quality gate freshness tests passed.");
+  console.log("Report quality gate regression tests passed.");
 }
 
 function testFreshDailyWindowPasses() {
@@ -144,6 +151,111 @@ function testDailyFailureCopyAndResponseShape() {
   assert.equal("evidence_window_end" in gate, false);
 }
 
+function testNormalizedGateFailsClosed() {
+  const storedPassingGate = passingGate("daily", "2026-07-14T12:00:00.000Z");
+  const missingPassed: Record<string, unknown> = { ...storedPassingGate };
+  delete missingPassed.passed;
+  const fallback = {
+    ...passingMetrics("daily"),
+    freshnessGateApplicable: false
+  };
+  const missingFlag = normalizeReportQualityGate(missingPassed, fallback);
+  const missingGate = normalizeReportQualityGate(null, fallback);
+  const overstated = normalizeReportQualityGate(
+    {
+      ...storedPassingGate,
+      passed: true,
+      reasons: [],
+      usable_item_count: 1
+    },
+    fallback
+  );
+
+  assert.equal(missingFlag.passed, false);
+  assert.match(missingFlag.reasons.join("\n"), /passed=true/);
+  assert.equal(missingGate.passed, false);
+  assert.match(missingGate.reasons.join("\n"), /元数据缺失/);
+  assert.equal(overstated.passed, false);
+  assert.match(overstated.reasons.join("\n"), /低于日报最低要求 5 条/);
+}
+
+function testCandidateGateRequiresExplicitPassFlags() {
+  for (const reportType of ["daily", "weekly"] as const) {
+    const valid = passingCandidateDraft(reportType);
+    assert.equal(validateReportCandidateQualityGate(reportType, valid, evaluatedAt).passed, true);
+
+    const missingDraftFlag = passingCandidateDraft(reportType);
+    delete missingDraftFlag.quality_gate_passed;
+    const draftFlagValidation = validateReportCandidateQualityGate(reportType, missingDraftFlag, evaluatedAt);
+
+    const missingNestedFlag = passingCandidateDraft(reportType);
+    delete (missingNestedFlag.quality_gate as Record<string, unknown>).passed;
+    const nestedFlagValidation = validateReportCandidateQualityGate(reportType, missingNestedFlag, evaluatedAt);
+
+    const failedFlags = passingCandidateDraft(reportType);
+    failedFlags.quality_gate_passed = false;
+    (failedFlags.quality_gate as Record<string, unknown>).passed = false;
+    const failedFlagValidation = validateReportCandidateQualityGate(reportType, failedFlags, evaluatedAt);
+
+    assert.equal(draftFlagValidation.passed, false);
+    assert.match(draftFlagValidation.reasons.join("\n"), /quality_gate_passed must be explicitly true/);
+    assert.equal(nestedFlagValidation.passed, false);
+    assert.match(nestedFlagValidation.reasons.join("\n"), /quality_gate\.passed must be explicitly true/);
+    assert.equal(failedFlagValidation.passed, false);
+    assert.match(failedFlagValidation.reasons.join("\n"), /quality_gate_passed must be explicitly true/);
+    assert.match(failedFlagValidation.reasons.join("\n"), /quality_gate\.passed must be explicitly true/);
+  }
+}
+
+function testCandidateGateEnforcesCurrentThresholds() {
+  for (const reportType of ["daily", "weekly"] as const) {
+    const draft = passingCandidateDraft(reportType);
+    const qualityGate = draft.quality_gate as Record<string, unknown>;
+    draft.usable_item_count = 1;
+    draft.citation_count = 1;
+    draft.distinct_source_count = 1;
+    draft.category_count = 1;
+    draft.citations = [candidateCitation("only-citation")];
+    qualityGate.usable_item_count = 1;
+    qualityGate.citation_count = 1;
+    qualityGate.distinct_source_count = 1;
+    qualityGate.category_count = 1;
+    qualityGate.passed = true;
+    qualityGate.reasons = [];
+
+    const validation = validateReportCandidateQualityGate(reportType, draft, evaluatedAt);
+
+    assert.equal(validation.passed, false, `${reportType} candidates must meet the configured thresholds.`);
+    assert.match(validation.reasons.join("\n"), /低于.+最低要求/);
+  }
+}
+
+function testCandidateGateRejectsMalformedLegacyMetadata() {
+  const legacy = validateReportCandidateQualityGate("daily", {}, evaluatedAt);
+  const malformed = passingCandidateDraft("daily");
+  malformed.usable_item_count = "5";
+  const malformedValidation = validateReportCandidateQualityGate("daily", malformed, evaluatedAt);
+
+  assert.equal(legacy.passed, false);
+  assert.match(legacy.reasons.join("\n"), /quality_gate_passed must be explicitly true/);
+  assert.equal(malformedValidation.passed, false);
+  assert.match(malformedValidation.reasons.join("\n"), /usable_item_count must be a non-negative integer/);
+}
+
+function testCandidateGateRejectsCollectionTimeAsPublication() {
+  const draft = passingCandidateDraft("daily");
+  draft.citations = (draft.citations as Array<Record<string, unknown>>).map((citation) => {
+    const withoutPublicationTime = { ...citation };
+    delete withoutPublicationTime.published_at;
+    return withoutPublicationTime;
+  });
+
+  const validation = validateReportCandidateQualityGate("daily", draft, evaluatedAt);
+
+  assert.equal(validation.passed, false);
+  assert.match(validation.reasons.join("\n"), /发布时间|证据时间戳|publication|新鲜度|fresh/i);
+}
+
 function passingGate(reportType: ReportPreviewType, evidenceTimestamp: string) {
   return evaluateReportQualityGate({
     ...passingMetrics(reportType),
@@ -172,6 +284,45 @@ function passingMetrics(reportType: ReportPreviewType) {
         reportType,
         usableItemCount: 20
       };
+}
+
+function passingCandidateDraft(reportType: ReportPreviewType): Record<string, unknown> {
+  const metrics = passingMetrics(reportType);
+  const timestamp = "2026-07-14T12:00:00.000Z";
+  const gate = evaluateReportQualityGate({
+    ...metrics,
+    evaluatedAt,
+    evidenceTimestamps: [timestamp],
+    evidenceWindowEnd: timestamp,
+    freshnessGateApplicable: true
+  });
+
+  assert.equal(gate.passed, true);
+
+  return {
+    category_count: metrics.categoryCount,
+    citation_count: metrics.citationCount,
+    citations: Array.from({ length: metrics.citationCount }, (_, index) => candidateCitation(`citation-${index}`)),
+    distinct_source_count: metrics.distinctSourceCount,
+    quality_gate: gate,
+    quality_gate_passed: true,
+    quality_gate_reasons: [],
+    report_type: reportType,
+    time_window: {
+      end: timestamp,
+      start: reportType === "daily" ? "2026-07-13T12:00:00.000Z" : "2026-07-07T12:00:00.000Z"
+    },
+    usable_item_count: metrics.usableItemCount
+  };
+}
+
+function candidateCitation(id: string) {
+  return {
+    collected_at: "2026-07-14T12:00:00.000Z",
+    id,
+    published_at: "2026-07-14T12:00:00.000Z",
+    source_name: "测试来源"
+  };
 }
 
 function staleDailyPreview(): ReportPreview {

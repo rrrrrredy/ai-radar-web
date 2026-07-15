@@ -601,7 +601,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       cloudflareSite.includes("实体档案") &&
       cloudflareSite.includes("报告状态模型") &&
       cloudflareSite.includes("readerFacingCaveats") &&
-      cloudflareSite.includes("AI 行业雷达今日精选：展示本轮回顾") &&
+      cloudflareSite.includes("AI 行业雷达今日精选（含前序证据）") &&
       cloudflareSite.includes("path.join(entityDir, \"index.html\")") &&
       cloudflareSite.includes("../entities/${entityStaticSlug(trace.entity)}/") &&
       cloudflareSite.includes("fs.writeFile(path.join(outputDir, \"entities\", \"index.html\")") &&
@@ -614,17 +614,38 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   const supabasePublicContract = readSource("scripts/check-supabase-public-contract.ts");
   const supabaseLoader = readSource("lib/retrieval/load-supabase-radar-items.ts");
   const publicEntityMigration = readSource("supabase/migrations/202607010001_public_radar_items_entities.sql");
+  const publicViewSecurityMigration = readSource(
+    "supabase/migrations/20260715064603_harden_public_views_security_invoker.sql"
+  );
+  const privateGrantMigration = readSource(
+    "supabase/migrations/20260715065603_revoke_private_table_api_grants.sql"
+  );
   assertPublicSnapshotSourceContract(snapshotExporter, supabaseLoader);
   assertSupabasePublicContractCheckScript(supabasePublicContract);
   assertPublicRadarViewSqlContract(publicEntityMigration);
+  assertPublicViewSecurityMigration(publicViewSecurityMigration, privateGrantMigration);
 
   const snapshotPath = "dist/cloudflare-pages/data/radar-snapshot.json";
+  if (!fs.existsSync(path.join(process.cwd(), snapshotPath))) {
+    assert.notEqual(
+      process.env.SMOKE_REQUIRE_RELEASE_ARTIFACTS,
+      "true",
+      `${snapshotPath} must exist when release artifact validation is required.`
+    );
+    return;
+  }
+
   assert.equal(fs.existsSync(path.join(process.cwd(), snapshotPath)), true, `${snapshotPath} must exist after the release build.`);
   assertPublicSnapshotJsonContract(snapshotPath);
   assert.equal(
     fs.existsSync(path.join(process.cwd(), "dist/cloudflare-pages/favicon.svg")),
     true,
     "Cloudflare static output must include its referenced favicon."
+  );
+  assert.equal(
+    fs.existsSync(path.join(process.cwd(), "dist/cloudflare-pages/404.html")),
+    true,
+    "Cloudflare static output must include a real 404 page so unknown routes do not soft-200 the homepage."
   );
 
   for (const pagePath of [
@@ -663,6 +684,9 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
 }
 
 function assertBilingualStaticContract() {
+  const snapshot = JSON.parse(
+    fs.readFileSync(path.join(process.cwd(), "dist/cloudflare-pages/data/radar-snapshot.json"), "utf8")
+  ) as { radar_items: unknown[] };
   const routePairs = [
     ["dist/cloudflare-pages/index.html", "dist/cloudflare-pages/en/index.html"],
     ["dist/cloudflare-pages/radar/index.html", "dist/cloudflare-pages/en/radar/index.html"],
@@ -683,6 +707,11 @@ function assertBilingualStaticContract() {
   }
 
   const englishRadar = readSource("dist/cloudflare-pages/en/radar/index.html");
+  assert.equal(
+    (englishRadar.match(/class="radar-row"/g) ?? []).length,
+    snapshot.radar_items.length,
+    "English All signals must render every public-safe snapshot signal, including low-event audit rows."
+  );
   for (const label of ["Selected", "All events", "All signals", "Latest timeline", "Needs review", "Source health"]) {
     assert.equal(englishRadar.includes(`>${label}<`), true, `English radar must expose the ${label} tab.`);
   }
@@ -698,6 +727,11 @@ function assertBilingualStaticContract() {
   assert.equal(englishRadar.includes('value="regulation"') && englishRadar.includes('value="media_interview"'), true, "English radar must expose all public event categories, including regulation and media/interview.");
 
   const chineseRadar = readSource("dist/cloudflare-pages/radar/index.html");
+  assert.equal(
+    (chineseRadar.match(/class="radar-row"/g) ?? []).length,
+    snapshot.radar_items.length,
+    "Chinese 全部信号 must render every public-safe snapshot signal, including low-event audit rows."
+  );
   assert.equal(chineseRadar.includes("单源观察") && chineseRadar.includes("同家族多源复述") && chineseRadar.includes("跨家族多源报道"), true, "Chinese radar must distinguish cross-family coverage, same-family repetition, and single-source observations.");
   assert.equal(chineseRadar.includes('id="radar-result-count"') && chineseRadar.includes('id="radar-reset"') && chineseRadar.includes('value="regulation"') && chineseRadar.includes('>监管<'), true, "Chinese radar must expose complete localized filters with count/reset controls.");
   assert.equal(chineseRadar.includes('data-status="included"') && chineseRadar.includes('id="radar-freshness"') && chineseRadar.includes("条公开库 /") && chineseRadar.includes("条本站展示") && chineseRadar.includes("限流警告（可重叠）"), true, "Chinese radar must filter event status/freshness and explain count/failure semantics.");
@@ -819,6 +853,22 @@ function selectListFromRestPath(source: string, restPath: string) {
 }
 
 function assertPublicSnapshotSourceContract(snapshotExporter: string, supabaseLoader: string) {
+  assert.equal(
+      snapshotExporter.includes('CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE') &&
+      snapshotExporter.includes('assertStrictProductionSnapshot(snapshot)') &&
+      snapshotExporter.includes('snapshot.source.kind !== "supabase_public_views"') &&
+      snapshotExporter.includes('snapshot.source.data_source !== "public_evidence_store"') &&
+      snapshotExporter.includes('snapshot.source.local_data_used'),
+    true,
+    "Production Cloudflare snapshot export must fail closed when authoritative Supabase public data is unavailable."
+  );
+  assert.equal(
+    snapshotExporter.includes('snapshot.report_quality_summary.weekly.quality_gate_passed') &&
+      snapshotExporter.includes('CLOUDFLARE_SNAPSHOT_MAX_AGE_HOURS'),
+    true,
+    "Production Cloudflare snapshot export must enforce report quality and publication freshness."
+  );
+
   assert.deepEqual(
     exportedPublicEntityKeys(snapshotExporter),
     ["confidence", "name", "type"],
@@ -999,6 +1049,13 @@ function assertPublicSnapshotJsonContract(snapshotPath: string) {
   const radarItems = snapshot.radar_items;
   assert.equal(Array.isArray(radarItems), true, `${snapshotPath} must expose radar_items array.`);
   const publicRadarItems = radarItems as unknown[];
+  const counts = snapshot.counts;
+  assert.equal(isRecord(counts), true, `${snapshotPath}.counts must be an object.`);
+  assert.equal(
+    (counts as JsonRecord).public_radar_items,
+    publicRadarItems.length,
+    `${snapshotPath} must preserve every public-safe radar row for All signals.`
+  );
   const entityAllowedKeys = new Set(["confidence", "name", "type"]);
   const sourceFamilyAllowedValues = new Set(["公司/实验室", "分析/媒体", "其他公开来源", "开源项目", "研究订阅"]);
   const entityKeyViolations: string[] = [];
@@ -1055,6 +1112,37 @@ function assertPublicSnapshotJsonContract(snapshotPath: string) {
     corruptedIndustryTerms,
     [],
     `${snapshotPath} credential redaction must not corrupt ordinary AI terms such as token or token-wise.`
+  );
+}
+
+function assertPublicViewSecurityMigration(securitySql: string, privateGrantSql: string) {
+  assert.equal(
+    (securitySql.match(/with \(security_invoker = true\)/g) ?? []).length,
+    3,
+    "All three public Supabase views must run with caller privileges."
+  );
+  assert.equal(
+    securitySql.includes("with (security_invoker = false)"),
+    false,
+    "Release security migrations must not recreate a security-definer public view."
+  );
+  assert.equal(
+    securitySql.includes("public_report_draft") &&
+      securitySql.includes("sync_report_candidate_public_draft") &&
+      securitySql.includes("sync_report_public_draft"),
+    true,
+    "Report views must read trigger-maintained public projections instead of granting raw metadata."
+  );
+  assert.equal(
+    /grant select\s*\([^)]*\b(metadata|model_metadata|evidence_notes|raw_item_id)\b/is.test(securitySql),
+    false,
+    "Anonymous base-table grants must exclude raw and private columns."
+  );
+  assert.equal(
+    privateGrantSql.includes("revoke all on public.raw_items from public, anon, authenticated") &&
+      privateGrantSql.includes("alter function public.radar_set_updated_at() set search_path = pg_catalog"),
+    true,
+    "Private Data API tables and trigger search paths must be explicitly hardened."
   );
 }
 

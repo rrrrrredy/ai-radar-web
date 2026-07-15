@@ -122,7 +122,7 @@ export async function loadProductDataSummary(): Promise<ProductDataSummary> {
     },
     latest: {
       ingestion: coverage.latestIngestion,
-      radar: feed.freshness.latestTimestamp ?? feed.processed_at ?? null,
+      radar: feed.freshness.latestTimestamp ?? null,
       understanding: coverage.latestUnderstanding
     },
     freshnessNote: feed.freshness_note,

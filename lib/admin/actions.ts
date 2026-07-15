@@ -11,7 +11,6 @@ import {
   type ReportPublicationStatus,
   type ReviewTaskStatus,
   validateCreateAdminAuditEventInput,
-  validateCreateReportCandidateInput,
   validateCreateReviewTaskInput,
   validateCreateSourceChangeRequestInput,
   validatePublishReportCandidateInput,
@@ -20,6 +19,7 @@ import {
   validateUpdateSourceChangeRequestStatusInput
 } from "@/lib/admin/validation";
 import { requireUserRole } from "@/lib/auth/roles";
+import { validateReportCandidateQualityGate } from "@/lib/reports/quality-gates";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
 import { isEnabled } from "@/lib/utils";
@@ -248,52 +248,6 @@ export async function updateSourceChangeRequestStatus(
   });
 }
 
-export async function createReportCandidate(
-  input: unknown
-): Promise<AdminActionResult<{ id: string } & AuditInsertResult>> {
-  const validation = validateCreateReportCandidateInput(input);
-
-  return runAdminMutation(validation, "Report candidate could not be created.", async (supabase, context, value) => {
-    const { data, error } = await supabase
-      .from("report_candidates")
-      .insert({
-        confidence: value.confidence ?? null,
-        created_by: context.profileId,
-        metadata: {
-          created_from: "admin_review_action"
-        },
-        report_type: value.reportType,
-        source_item_ids: value.sourceItemIds,
-        status: "needs_review",
-        summary: value.summary,
-        time_window_end: value.timeWindowEnd ?? null,
-        time_window_start: value.timeWindowStart ?? null,
-        title: value.title
-      })
-      .select("id")
-      .single();
-
-    if (error || !hasTextId(data)) {
-      throw new SafeActionError("Report candidate could not be created.");
-    }
-
-    const auditEventId = await writeAdminAuditEvent(supabase, context, {
-      action: "report_candidate.created",
-      metadata: {
-        report_type: value.reportType
-      },
-      summary: `Created report candidate: ${value.title}`,
-      targetId: data.id,
-      targetType: "report_candidate"
-    });
-
-    return {
-      auditEventId,
-      id: data.id
-    };
-  });
-}
-
 export async function updateReportCandidateStatus(
   idOrInput: unknown,
   status?: unknown,
@@ -302,13 +256,22 @@ export async function updateReportCandidateStatus(
   const validation = validateUpdateReportCandidateStatusInput(idOrInput, status, reviewNote);
 
   return runAdminMutation(validation, "Report candidate status could not be updated.", async (supabase, context, value) => {
-    const existing = await readExistingRow(supabase, "report_candidates", value.id, "id, title, report_type, status, metadata");
+    const existing = await readExistingRow(
+      supabase,
+      "report_candidates",
+      value.id,
+      "id, title, report_type, source_item_ids, status, metadata"
+    );
     const currentStatus = text(existing.status);
     if (currentStatus !== "draft" && currentStatus !== "needs_review") {
       throw new SafeActionError("Only draft or needs-review report candidates can be approved, deferred, or rejected.");
     }
 
     const now = new Date().toISOString();
+    if (value.status === "approved") {
+      assertReportCandidatePublishable(existing, existing.metadata, "approval", now);
+    }
+
     const metadata = mergeMetadata(existing.metadata, {
       last_admin_action: `status:${value.status}`,
       review_note: value.reviewNote
@@ -380,7 +343,7 @@ export async function publishReportCandidate(
     const now = new Date().toISOString();
     const candidateMetadata = isRecord(existing.metadata) ? existing.metadata : {};
     const draft = reportDraftRecord(candidateMetadata);
-    assertReportCandidatePublishable(existing, draft);
+    assertReportCandidatePublishable(existing, candidateMetadata, "publication", now);
     const timeWindow = resolveReportTimeWindow(existing, draft, now);
     const title = text(existing.title) || "Untitled report";
     const summary = text(existing.summary) || title;
@@ -491,10 +454,6 @@ export async function submitCreateSourceChangeRequest(formData: FormData): Promi
 
 export async function submitUpdateSourceChangeRequestStatus(formData: FormData): Promise<void> {
   await updateSourceChangeRequestStatus(formData);
-}
-
-export async function submitCreateReportCandidate(formData: FormData): Promise<void> {
-  await createReportCandidate(formData);
 }
 
 export async function submitUpdateReportCandidateStatus(formData: FormData): Promise<void> {
@@ -807,42 +766,67 @@ function reportBody(draft: Record<string, unknown>, summary: string) {
   return text(draft.markdown) || text(draft.executive_summary) || text(draft.one_sentence_summary) || summary;
 }
 
-function assertReportCandidatePublishable(existing: Record<string, unknown>, draft: Record<string, unknown>) {
+function assertReportCandidatePublishable(
+  existing: Record<string, unknown>,
+  metadata: unknown,
+  operation: "approval" | "publication",
+  evaluatedAt: string
+) {
   const blockers: string[] = [];
+  const metadataRecord = isRecord(metadata) ? metadata : null;
+  const draftValue = metadataRecord?.report_draft;
+  const draft = isRecord(draftValue) ? draftValue : {};
   const qualityGate = isRecord(draft.quality_gate) ? draft.quality_gate : {};
   const sourceItemCount = stringArray(existing.source_item_ids).length;
-  const citationCount = positiveInteger(draft.citation_count) ?? (Array.isArray(draft.citations) ? draft.citations.length : 0);
-  const usableItemCount = positiveInteger(draft.usable_item_count);
-  const distinctSourceCount = positiveInteger(draft.distinct_source_count);
-  const missingEvidence = stringArray(draft.missing_evidence);
-  const qualityGatePassed = draft.quality_gate_passed !== false && qualityGate.passed !== false;
+  const citationCount = nonNegativeInteger(draft.citation_count);
+  const usableItemCount = nonNegativeInteger(draft.usable_item_count);
+  const distinctSourceCount = nonNegativeInteger(draft.distinct_source_count);
+  const missingEvidence = Array.isArray(draft.missing_evidence) ? stringArray(draft.missing_evidence) : null;
+
+  if (!isRecord(draftValue)) {
+    blockers.push("structured report draft metadata is missing or malformed");
+  }
 
   if (sourceItemCount === 0) {
     blockers.push("source items are missing");
   }
 
-  if (usableItemCount === undefined || usableItemCount === 0) {
-    blockers.push("usable item count is missing");
+  if (usableItemCount === null || usableItemCount === 0) {
+    blockers.push("usable item count is missing or malformed");
   }
 
-  if (citationCount === 0) {
-    blockers.push("citations are missing");
+  if (citationCount === null || citationCount === 0) {
+    blockers.push("citation count is missing or malformed");
   }
 
-  if (distinctSourceCount === undefined || distinctSourceCount === 0) {
-    blockers.push("distinct source count is missing");
+  if (!Array.isArray(draft.citations)) {
+    blockers.push("citations metadata is missing or malformed");
+  } else if (citationCount !== null && citationCount !== draft.citations.length) {
+    blockers.push("citation count does not match citations metadata");
   }
 
-  if (missingEvidence.length > 0) {
+  if (distinctSourceCount === null || distinctSourceCount === 0) {
+    blockers.push("distinct source count is missing or malformed");
+  }
+
+  if (missingEvidence === null) {
+    blockers.push("missing evidence metadata is missing or malformed");
+  } else if (missingEvidence.length > 0) {
     blockers.push("missing evidence remains unresolved");
   }
 
-  if (!qualityGatePassed) {
-    blockers.push("quality gate has not passed");
+  const reportType = text(existing.report_type);
+  if (reportType === "daily" || reportType === "weekly") {
+    const validation = validateReportCandidateQualityGate(reportType, draftValue, evaluatedAt);
+    if (!validation.passed) {
+      blockers.push(`quality gate validation failed: ${validation.reasons.join("; ")}`);
+    }
+  } else if (draft.quality_gate_passed !== true || qualityGate.passed !== true) {
+    blockers.push("quality gate must be explicitly passed");
   }
 
   if (blockers.length > 0) {
-    throw new SafeActionError(`Report candidate is not ready for publication: ${blockers.join("; ")}.`);
+    throw new SafeActionError(`Report candidate is not ready for ${operation}: ${Array.from(new Set(blockers)).join("; ")}.`);
   }
 }
 
@@ -854,13 +838,8 @@ function stringArray(value: unknown) {
   return Array.from(new Set(value.map(text).filter(Boolean))).slice(0, 48);
 }
 
-function positiveInteger(value: unknown) {
-  const numberValue = Number(value);
-  if (!Number.isFinite(numberValue) || numberValue <= 0) {
-    return undefined;
-  }
-
-  return Math.floor(numberValue);
+function nonNegativeInteger(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
 function isoDate(value: unknown) {

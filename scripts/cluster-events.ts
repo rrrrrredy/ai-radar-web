@@ -4,7 +4,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { buildEventLayer } from "@/lib/events/clustering";
-import { persistEventLayer, type EventLayerPersistenceResult } from "@/lib/events/persistence";
+import {
+  MINIMUM_STALE_CLUSTER_COVERAGE_RATIO,
+  MINIMUM_STALE_CLUSTER_INPUT_ITEMS,
+  persistEventLayer,
+  type EventLayerPersistenceResult,
+  type StaleClusterReconciliationGuard
+} from "@/lib/events/persistence";
 import { toClusterableRadarItem } from "@/lib/events/radar-item-adapter";
 import { loadRadarFeed } from "@/lib/radar/feed";
 import { getSupabaseServiceClientForWrite } from "@/lib/supabase/service";
@@ -16,11 +22,14 @@ async function main() {
   const persistenceClient = options.persist ? getSupabaseServiceClientForWrite() : null;
   const feed = await loadRadarFeed();
   const eventLayer = buildEventLayer(feed.items.map(toClusterableRadarItem));
+  const staleClusterReconciliation = buildStaleClusterReconciliationGuard(feed);
 
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
   await fs.writeFile(outputPath, `${JSON.stringify(eventLayer, null, 2)}\n`, "utf8");
 
-  const persistence = persistenceClient ? await persistEventLayer(persistenceClient, eventLayer) : null;
+  const persistence = persistenceClient
+    ? await persistEventLayer(persistenceClient, eventLayer, { staleClusterReconciliation })
+    : null;
 
   const mergedEvents = eventLayer.event_clusters.filter((event) => event.related_item_ids.length > 1);
   const averageItemsPerCluster =
@@ -35,7 +44,23 @@ async function main() {
   console.log(`Merged multi-item events: ${mergedEvents.length}`);
   console.log(`Average items per cluster: ${averageItemsPerCluster.toFixed(2)}`);
   console.log(`Output: ${path.relative(process.cwd(), outputPath)}`);
-  console.log(persistenceSummary(persistence));
+  console.log(persistenceSummary(persistence, Boolean(staleClusterReconciliation)));
+}
+
+function buildStaleClusterReconciliationGuard(
+  feed: Awaited<ReturnType<typeof loadRadarFeed>>
+): StaleClusterReconciliationGuard | undefined {
+  if (feed.data_source !== "supabase_radar_items" || !feed.authoritative_supabase_read) {
+    return undefined;
+  }
+
+  return {
+    directSupabaseRead: true,
+    dataSource: feed.data_source,
+    eligibleInputItemCount: feed.counts.included + feed.counts.needs_review,
+    minimumExistingClusterCoverageRatio: MINIMUM_STALE_CLUSTER_COVERAGE_RATIO,
+    minimumInputItemCount: MINIMUM_STALE_CLUSTER_INPUT_ITEMS
+  };
 }
 
 function parseOptions(args: string[]) {
@@ -49,12 +74,15 @@ function parseOptions(args: string[]) {
   };
 }
 
-function persistenceSummary(result: EventLayerPersistenceResult | null) {
+function persistenceSummary(result: EventLayerPersistenceResult | null, staleReconciliationEnabled: boolean) {
   if (!result) {
     return "Supabase persistence: not requested (local output only)";
   }
 
-  return `Supabase persistence: ${result.eventClustersUpserted} event clusters and ${result.eventClusterItemsUpserted} relationships upserted; ${result.eventClustersArchived} stale generated clusters archived`;
+  const reconciliationSummary = staleReconciliationEnabled
+    ? `${result.eventClustersArchived} stale generated clusters archived`
+    : "stale generated-cluster reconciliation skipped because the feed was not authoritative public/Supabase input";
+  return `Supabase persistence: ${result.eventClustersUpserted} event clusters and ${result.eventClusterItemsUpserted} relationships upserted; ${reconciliationSummary}`;
 }
 
 main().catch((error) => {

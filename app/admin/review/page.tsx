@@ -7,7 +7,6 @@ import { DataSourceChip } from "@/components/data-source-chip";
 import { EvidenceBadge } from "@/components/evidence-badge";
 import { StatusChip, type StatusTone } from "@/components/status-chip";
 import {
-  submitCreateReportCandidate,
   submitCreateReviewTask,
   submitCreateSourceChangeRequest,
   submitPublishReportCandidate,
@@ -203,7 +202,7 @@ export default async function AdminReviewPage() {
         className="grid gap-4 xl:grid-cols-[1fr_1fr]"
       >
         <CreateReviewTaskPanel />
-        <CreateReportCandidatePanel />
+        <ReportCandidateGenerationPanel />
       </section>
 
       <ReviewTable
@@ -401,65 +400,29 @@ function CreateReviewTaskPanel() {
   );
 }
 
-function CreateReportCandidatePanel() {
+function ReportCandidateGenerationPanel() {
   return (
     <section className="rounded-lg border border-radar-line bg-white p-4 shadow-soft">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-radar-ink">Create report candidate</h2>
+          <h2 className="text-lg font-semibold text-radar-ink">Generate report candidates</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-radar-muted">
-            Adds a needs-review report candidate without publishing a report.
+            Daily and weekly candidates must come from the event-aware report pipeline so every candidate carries citations, evidence counts, freshness, and a verifiable quality gate.
           </p>
         </div>
-        <StatusChip label="No publish side effect" tone="caution" />
+        <StatusChip label="Structured draft required" tone="evidence" />
       </div>
-      <form action={submitCreateReportCandidate} className="mt-4 grid gap-3">
-        <div className="grid gap-3 md:grid-cols-3">
-          <label className={fieldClassName}>
-            <span className={labelClassName}>Type</span>
-            <select className={inputClassName} name="reportType" required>
-              <option value="topic">Topic</option>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="observation">Observation</option>
-            </select>
-          </label>
-          <label className={fieldClassName}>
-            <span className={labelClassName}>Window start</span>
-            <input className={inputClassName} name="timeWindowStart" type="datetime-local" />
-          </label>
-          <label className={fieldClassName}>
-            <span className={labelClassName}>Window end</span>
-            <input className={inputClassName} name="timeWindowEnd" type="datetime-local" />
-          </label>
-        </div>
-        <label className={fieldClassName}>
-          <span className={labelClassName}>Title</span>
-          <input className={inputClassName} maxLength={180} name="title" required />
-        </label>
-        <label className={fieldClassName}>
-          <span className={labelClassName}>Summary</span>
-          <textarea className={textareaClassName} maxLength={1200} name="summary" required rows={4} />
-        </label>
-        <label className={fieldClassName}>
-          <span className={labelClassName}>Source item UUIDs</span>
-          <textarea
-            className={textareaClassName}
-            maxLength={2000}
-            name="sourceItemIds"
-            placeholder="optional comma-separated UUIDs"
-            rows={2}
-          />
-        </label>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs leading-5 text-radar-muted">
-            Approval and rejection remain separate audited actions.
-          </p>
-          <button className={buttonClassName("evidence")} type="submit">
-            Create candidate
-          </button>
-        </div>
-      </form>
+      <div className="mt-4 rounded-md border border-radar-line bg-radar-panel p-3 text-sm leading-6 text-radar-muted">
+        Run the manual refresh workflow with report generation enabled, or use the controlled daily and weekly candidate writer commands. This screen reviews persisted candidates; it does not create evidence-free placeholders.
+      </div>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <Link className={buttonClassName("evidence")} href="/admin/ingestion">
+          Open ingestion controls
+        </Link>
+        <Link className={buttonClassName("neutral")} href="/reports">
+          Open public report desk
+        </Link>
+      </div>
     </section>
   );
 }

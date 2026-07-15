@@ -46,7 +46,7 @@ export default async function EntitiesPage() {
           </h2>
           <dl className="mt-3 space-y-3 text-sm">
             <RailRow label="数据来源" value={dataSourceLabel(feed.data_source)} />
-            <RailRow label="最新证据" value={formatTimestamp(feed.freshness.latestTimestamp ?? feed.processed_at)} />
+            <RailRow label="最新内容发布时间" value={formatTimestamp(feed.freshness.latestTimestamp)} />
             <RailRow label="实体合并" value="按标准化名称和类型聚合" />
             <RailRow label="跟踪判断" value="按信号数、来源覆盖、置信度和复核状态派生" />
           </dl>
@@ -118,7 +118,7 @@ function EntityCard({ entity }: { entity: EntitySummary }) {
         最高分信号：{entity.topItem.title}
       </p>
       <dl className="mt-4 grid gap-3 text-sm">
-        <RailRow label="最新证据" value={formatTimestamp(entity.latestTimestamp)} />
+        <RailRow label="最新内容发布时间" value={formatTimestamp(entity.latestTimestamp)} />
         <RailRow
           label="状态"
           value={`已纳入 ${entity.statusCounts.included} / 待复核 ${entity.statusCounts.needs_review}`}

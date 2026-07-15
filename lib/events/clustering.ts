@@ -222,6 +222,7 @@ export function buildEventLayer(items: ClusterableRadarItem[]): PublicEventLayer
   const publicItems = items
     .filter((item) => item.status === "included" || item.status === "needs_review")
     .filter((item) => !signalQuality(item).isLowEventSignal)
+    .filter(hasPublicPublishedTimestamp)
     .sort(compareClusterInputItems);
   const clusters = clusterItems(publicItems).map(materializeCluster).sort(compareEvents);
   const eventClusterItems = clusters.flatMap((cluster) =>
@@ -408,7 +409,7 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
     sourceFamilyForEvent(item) === "开源项目" &&
     cluster.items.some((clusterItem) => sourceFamilyForEvent(clusterItem) === "开源项目") &&
     !sourceNameOverlap;
-  const versionConflict = cluster.items.some((clusterItem) => hasVersionConflict(clusterItem.title, item.title));
+  const versionConflict = cluster.items.some((clusterItem) => hasVersionConflict(clusterItem, item));
   const partnerConflict = cluster.items.some((clusterItem) => hasPartnerConflict(clusterItem, item));
   const strongEntityConflict =
     cluster.strongEntities.size > 0 &&
@@ -794,7 +795,64 @@ function dominantCategory(items: ClusterableRadarItem[]) {
     }
   }
 
-  return [...counts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? "other";
+  const rankedCategories = [...counts.entries()].sort(
+    (left, right) => right[1] - left[1] || left[0].localeCompare(right[0])
+  );
+  const category = rankedCategories[0]?.[0] ?? "other";
+  if (category !== "model_release") {
+    return category;
+  }
+
+  if (items.every(isResearchPaperItem)) {
+    return "research";
+  }
+
+  if (items.some(isObviousToolRepositoryRelease)) {
+    return "open_source";
+  }
+
+  if (hasModelReleaseEvidence(items)) {
+    return "model_release";
+  }
+
+  if (items.every((item) => safeDomain(item.url) === "github.com")) {
+    return "open_source";
+  }
+
+  return rankedCategories.find(([candidate]) => candidate !== "model_release")?.[0] ?? "product_update";
+}
+
+function isResearchPaperItem(item: ClusterableRadarItem) {
+  const domain = safeDomain(item.url);
+  return domain === "arxiv.org" || domain === "rss.arxiv.org" || /\barxiv\b/i.test(`${item.source_id ?? ""} ${item.source_name}`);
+}
+
+function isObviousToolRepositoryRelease(item: ClusterableRadarItem) {
+  const identityText = `${item.source_id ?? ""} ${item.source_name} ${item.title} ${item.url}`;
+  const hasToolIdentity =
+    /\b(?:sdk|software development kit|client librar(?:y|ies)|framework|runtime|inference engine|bindings?|python package)\b|transformers|llama\.cpp|openai[-/ ]python|semantic[-/ ]kernel/i.test(
+      identityText
+    );
+  return hasToolIdentity && (safeDomain(item.url) === "github.com" || /\bsdk\b|framework|runtime/i.test(identityText));
+}
+
+function hasModelReleaseEvidence(items: ClusterableRadarItem[]) {
+  const titleText = items.map((item) => item.title).join(" ");
+  const eventText = items
+    .map((item) => `${item.title} ${item.summary_zh ?? ""} ${item.summary_en ?? ""} ${item.tags.join(" ")}`)
+    .join(" ");
+  const hasReleaseAction = /\b(?:releas\w*|launch\w*|introduc\w*|announc\w*|unveil\w*|debut\w*|publish\w*)\b|发布|推出|上线|公布|开源/i.test(
+    titleText
+  );
+  const hasModelObject = /\b(?:(?:foundation|language|reasoning|multimodal|vision|audio|world)\s+)?models?\b|\b(?:model\s+weights?|weights?|checkpoints?)\b|模型|权重|检查点/i.test(
+    eventText
+  );
+  const hasNamedModel = /\b(?:gpt|deepseek|claude|gemini|llama|qwen|mistral|gemma|phi|kimi|glm|ernie)(?:[- ]?(?:\d[a-z0-9._-]*|[a-z]\d[a-z0-9._-]*))\b/i.test(
+    titleText
+  );
+  const hasModelEntity = items.some((item) => item.entities?.some((entity) => entity.type === "model"));
+
+  return hasNamedModel || (hasReleaseAction && hasModelObject) || (hasReleaseAction && hasModelEntity);
 }
 
 function itemKeywords(item: ClusterableRadarItem) {
@@ -876,10 +934,53 @@ function titleFingerprint(title: string) {
     .join(" ");
 }
 
-function hasVersionConflict(leftTitle: string, rightTitle: string) {
-  const leftVersion = releaseVersion(leftTitle);
-  const rightVersion = releaseVersion(rightTitle);
+function hasVersionConflict(left: ClusterableRadarItem, right: ClusterableRadarItem) {
+  const leftCanonicalRelease = githubReleaseIdentity(left.url);
+  const rightCanonicalRelease = githubReleaseIdentity(right.url);
+
+  if (leftCanonicalRelease && rightCanonicalRelease && leftCanonicalRelease.repository === rightCanonicalRelease.repository) {
+    return leftCanonicalRelease.tag !== rightCanonicalRelease.tag;
+  }
+
+  const leftVersion = comparableReleaseVersion(left, leftCanonicalRelease);
+  const rightVersion = comparableReleaseVersion(right, rightCanonicalRelease);
   return Boolean(leftVersion && rightVersion && leftVersion !== rightVersion);
+}
+
+function comparableReleaseVersion(
+  item: ClusterableRadarItem,
+  canonicalRelease = githubReleaseIdentity(item.url)
+) {
+  if (canonicalRelease) {
+    return releaseVersion(canonicalRelease.tag) ?? canonicalRelease.tag.toLowerCase().replace(/^v(?=\d)/, "");
+  }
+  return releaseVersion(item.title);
+}
+
+function githubReleaseIdentity(rawUrl: string) {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.hostname.replace(/^www\./, "").toLowerCase() !== "github.com") {
+      return null;
+    }
+
+    const match = parsed.pathname.match(/^\/([^/]+)\/([^/]+)\/releases\/tag\/(.+?)\/?$/i);
+    if (!match) {
+      return null;
+    }
+
+    const tag = decodeURIComponent(match[3]).replace(/\/+$/, "");
+    if (!tag) {
+      return null;
+    }
+
+    return {
+      repository: `${match[1]}/${match[2]}`.toLowerCase(),
+      tag
+    };
+  } catch {
+    return null;
+  }
 }
 
 function releaseVersion(title: string) {
@@ -933,7 +1034,20 @@ function timeWindowScore(left: ClusterableRadarItem, right: ClusterableRadarItem
 }
 
 function itemTimestamp(item: ClusterableRadarItem) {
-  return item.published_at ?? item.collected_at ?? item.processed_at;
+  const timestamp = publicPublishedTimestamp(item);
+  if (!timestamp) {
+    throw new Error(`Event item ${item.id} requires a valid public published_at timestamp.`);
+  }
+  return timestamp;
+}
+
+function hasPublicPublishedTimestamp(item: ClusterableRadarItem) {
+  return publicPublishedTimestamp(item) !== null;
+}
+
+function publicPublishedTimestamp(item: ClusterableRadarItem) {
+  const timestamp = item.published_at?.trim();
+  return timestamp && Number.isFinite(Date.parse(timestamp)) ? timestamp : null;
 }
 
 function stableEventId(seed: string, itemIds: string[]) {

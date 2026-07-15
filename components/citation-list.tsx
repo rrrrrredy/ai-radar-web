@@ -48,9 +48,9 @@ export function CitationList({
                   label="来源"
                 />
                 <EvidenceBadge
-                  detail={formatTimestamp(citation.published_at ?? citation.collected_at)}
+                  detail={formatTimestamp(citation.published_at ?? "")}
                   kind="freshness"
-                  label={citation.published_at ? "发布时间" : "采集时间"}
+                  label="发布时间"
                 />
                 <StatusChip
                   label={`状态: ${statusLabel(citation.status)}`}

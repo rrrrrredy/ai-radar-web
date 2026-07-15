@@ -215,6 +215,56 @@ assert.deepEqual(
 );
 assert.equal(ollamaReleaseLayer.event_count, 2, "different Ollama semantic versions must remain separate events within seven days");
 
+const ollamaHiddenSuffixItems = [
+  radarItem({
+    categories: ["open_source"],
+    entities: [{ confidence: 0.98, name: "Ollama", type: "project" as const }],
+    id: "ollama-v0.30.0-rc22",
+    published_at: "2026-07-14T02:00:00Z",
+    source_name: "GitHub Releases",
+    title: "Ollama v0.30.0 release",
+    url: "https://github.com/ollama/ollama/releases/tag/v0.30.0-rc22"
+  }),
+  radarItem({
+    categories: ["open_source"],
+    entities: [{ confidence: 0.98, name: "Ollama", type: "project" as const }],
+    id: "ollama-v0.30.0-rc23",
+    published_at: "2026-07-14T03:00:00Z",
+    source_name: "GitHub Releases",
+    title: "Ollama v0.30.0 release",
+    url: "https://github.com/ollama/ollama/releases/tag/v0.30.0-rc23"
+  }),
+  radarItem({
+    categories: ["open_source"],
+    entities: [{ confidence: 0.98, name: "Ollama", type: "project" as const }],
+    id: "ollama-v0.30.0-rc23-coverage",
+    published_at: "2026-07-14T04:00:00Z",
+    source_name: "Example AI Media",
+    title: "Ollama 0.30.0-rc23 release",
+    url: "https://example.com/ollama-0-30-0-rc23"
+  })
+];
+const ollamaHiddenSuffixLayer = buildEventLayer(ollamaHiddenSuffixItems);
+const ollamaRc22Event = ollamaHiddenSuffixLayer.event_clusters.find((event) =>
+  event.related_item_ids.includes("ollama-v0.30.0-rc22")
+);
+const ollamaRc23Event = ollamaHiddenSuffixLayer.event_clusters.find((event) =>
+  event.related_item_ids.includes("ollama-v0.30.0-rc23")
+);
+assert.ok(ollamaRc22Event, "expected a standalone Ollama rc22 event");
+assert.deepEqual(ollamaRc22Event.related_item_ids, ["ollama-v0.30.0-rc22"]);
+assert.ok(ollamaRc23Event, "expected an Ollama rc23 event");
+assert.deepEqual(
+  new Set(ollamaRc23Event.related_item_ids),
+  new Set(["ollama-v0.30.0-rc23", "ollama-v0.30.0-rc23-coverage"]),
+  "the canonical rc23 tag should merge with exact cross-source coverage even when the GitHub title hides the suffix"
+);
+assert.equal(
+  ollamaHiddenSuffixLayer.event_count,
+  2,
+  "distinct canonical GitHub tags must not merge when their release titles are identical"
+);
+
 const semanticKernelTracks = [
   radarItem({
     categories: ["open_source"],
@@ -234,6 +284,97 @@ const semanticKernelTracks = [
   })
 ];
 assert.equal(buildEventLayer(semanticKernelTracks).event_count, 2, "different release tracks in one repository must remain separate events");
+
+const falseModelReleaseCases: Array<[ClusterableRadarItem, string]> = [
+  [
+    radarItem({
+      categories: ["model_release"],
+      entities: [company("OpenAI"), { confidence: 0.98, name: "GPT-5.6", type: "model" as const }],
+      id: "openai-python-sdk-v2.45.0",
+      source_id: "openai-python",
+      source_name: "OpenAI Python SDK",
+      summary_en: "The SDK release adds GPT-5.6 API fields and restores beta resource accessors.",
+      title: "OpenAI Python SDK v2.45.0 release",
+      url: "https://github.com/openai/openai-python/releases/tag/v2.45.0"
+    }),
+    "open_source"
+  ],
+  [
+    radarItem({
+      categories: ["model_release"],
+      entities: [{ confidence: 0.98, name: "Hugging Face Transformers", type: "project" as const }],
+      id: "transformers-v5.13.0",
+      source_id: "huggingface-transformers",
+      source_name: "Hugging Face Transformers",
+      summary_en: "This framework release adds support for several existing model architectures.",
+      title: "Hugging Face Transformers v5.13.0 release",
+      url: "https://github.com/huggingface/transformers/releases/tag/v5.13.0"
+    }),
+    "open_source"
+  ],
+  [
+    radarItem({
+      categories: ["model_release"],
+      entities: [{ confidence: 0.98, name: "llama.cpp", type: "project" as const }],
+      id: "llama-cpp-b9297-category",
+      source_id: "llama-cpp",
+      source_name: "llama.cpp",
+      summary_en: "The runtime release adds support for model tensor formats and new platform binaries.",
+      title: "llama.cpp b9297 release",
+      url: "https://github.com/ggml-org/llama.cpp/releases/tag/b9297"
+    }),
+    "open_source"
+  ],
+  [
+    radarItem({
+      categories: ["model_release"],
+      id: "gem-4d-paper-category",
+      source_id: "arxiv-cs-cv",
+      source_name: "arXiv cs.CV",
+      summary_en: "A research paper describing geometry-enhanced video world models for robot manipulation.",
+      title: "GEM-4D: Geometry-Enhanced Video World Models for Robot Manipulation",
+      url: "https://arxiv.org/abs/2605.22882"
+    }),
+    "research"
+  ]
+];
+for (const [item, expectedCategory] of falseModelReleaseCases) {
+  assert.equal(
+    buildEventLayer([item]).event_clusters[0]?.category,
+    expectedCategory,
+    `${item.source_name} must not inherit a false model_release category`
+  );
+}
+
+const actualModelReleaseCases = [
+  radarItem({
+    categories: ["model_release"],
+    entities: [company("OpenAI"), { confidence: 0.99, name: "GPT-5.6", type: "model" as const }],
+    id: "gpt-5.6-release-category",
+    source_name: "OpenAI",
+    source_tier: "official",
+    summary_en: "OpenAI released GPT-5.6 as a new reasoning model.",
+    title: "OpenAI launches GPT-5.6 reasoning model",
+    url: "https://openai.com/index/gpt-5-6"
+  }),
+  radarItem({
+    categories: ["model_release"],
+    entities: [company("DeepSeek"), { confidence: 0.99, name: "DeepSeek-V4", type: "model" as const }],
+    id: "deepseek-v4-release-category",
+    source_name: "DeepSeek",
+    source_tier: "official",
+    summary_en: "DeepSeek published the DeepSeek-V4 model weights and checkpoints.",
+    title: "DeepSeek releases DeepSeek-V4 model weights",
+    url: "https://github.com/deepseek-ai/DeepSeek-V4"
+  })
+];
+for (const item of actualModelReleaseCases) {
+  assert.equal(
+    buildEventLayer([item]).event_clusters[0]?.category,
+    "model_release",
+    `${item.title} should retain real model_release classification`
+  );
+}
 
 const historicalItem = radarItem({
   categories: ["model_release"],
@@ -335,6 +476,60 @@ assert.equal(
   conceptLayer.event_cluster_items.some((item) => item.radar_item_id === "anthropic-research-landing-page"),
   false,
   "directory and landing-page signals must remain outside the public event evidence layer"
+);
+
+const publicationTimeItems = [
+  radarItem({
+    categories: ["model_release"],
+    collected_at: "2026-07-14T12:00:00Z",
+    entities: [company("OpenAI"), { confidence: 0.99, name: "GPT-5.7", type: "model" as const }],
+    id: "gpt-5.7-official-time",
+    processed_at: "2026-07-14T12:05:00Z",
+    published_at: "2026-07-01T08:00:00Z",
+    source_name: "OpenAI",
+    source_tier: "official",
+    title: "OpenAI launches GPT-5.7 reasoning model",
+    url: "https://openai.com/index/gpt-5-7"
+  }),
+  radarItem({
+    categories: ["model_release"],
+    collected_at: "2026-07-03T09:00:00Z",
+    entities: [company("OpenAI"), { confidence: 0.99, name: "GPT-5.7", type: "model" as const }],
+    id: "gpt-5.7-coverage-time",
+    processed_at: "2026-07-03T09:05:00Z",
+    published_at: "2026-07-02T08:00:00Z",
+    source_name: "Example AI Media",
+    title: "OpenAI launches GPT-5.7 reasoning model",
+    url: "https://example.com/openai-gpt-5-7"
+  }),
+  radarItem({
+    categories: ["model_release"],
+    collected_at: "2026-07-15T09:00:00Z",
+    entities: [company("OpenAI"), { confidence: 0.99, name: "GPT-5.7", type: "model" as const }],
+    id: "gpt-5.7-missing-publication-time",
+    processed_at: "2026-07-15T09:05:00Z",
+    published_at: undefined,
+    source_name: "Undated Feed",
+    title: "OpenAI launches GPT-5.7 reasoning model",
+    url: "https://example.org/undated-openai-gpt-5-7"
+  })
+];
+const publicationTimeLayer = buildEventLayer(publicationTimeItems);
+const publicationTimeEvent = publicationTimeLayer.event_clusters.find((event) =>
+  event.related_item_ids.includes("gpt-5.7-official-time")
+);
+assert.ok(publicationTimeEvent, "expected a GPT-5.7 event with public publication times");
+assert.equal(publicationTimeEvent.first_seen_at, "2026-07-01T08:00:00Z");
+assert.equal(publicationTimeEvent.latest_seen_at, "2026-07-02T08:00:00Z");
+assert.deepEqual(
+  publicationTimeEvent.timeline.map((entry) => entry.timestamp),
+  ["2026-07-01T08:00:00Z", "2026-07-02T08:00:00Z"],
+  "event time fields and timeline ordering must use published_at rather than collection or processing time"
+);
+assert.equal(
+  publicationTimeLayer.event_cluster_items.some((item) => item.radar_item_id === "gpt-5.7-missing-publication-time"),
+  false,
+  "signals without a valid public published_at must fail closed instead of borrowing internal collection time"
 );
 
 console.log("Event clustering tests passed.");

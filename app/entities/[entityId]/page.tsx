@@ -88,7 +88,7 @@ export default async function EntityDetailPage({
           <dl className="mt-3 space-y-3 text-sm">
             <RailRow label="实体 ID" value={entityRouteId(entity)} />
             <RailRow label="平均置信" value={formatScore(averageConfidence)} />
-            <RailRow label="最新证据" value={formatTimestamp(graph.latestTimestamp)} />
+            <RailRow label="最新内容发布时间" value={formatTimestamp(graph.latestTimestamp)} />
             <RailRow label="时间跨度" value={timeSpanLabel(graph)} />
             <RailRow label="公开边界" value="只使用 public radar fields" />
           </dl>

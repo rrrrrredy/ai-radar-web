@@ -46,6 +46,7 @@ export type RetrievalRadarItem = {
 export type LoadedRadarItems = {
   items: RetrievalRadarItem[];
   dataSource: RetrievalDataSource;
+  authoritativeSupabaseRead?: boolean;
   freshness: {
     latestTimestamp?: string;
     latestTimestampSource?: "processed_at" | "collected_at" | "published_at" | "file_mtime";

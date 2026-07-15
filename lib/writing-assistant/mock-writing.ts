@@ -21,8 +21,8 @@ export function generateMockWritingOutput(
       why_it_matters: item.why_it_matters || (isZh ? "该条目在当前雷达评分中具备一定写作价值。" : "The item has writing value under the current radar scoring."),
       evidence: [
         isZh
-          ? `来源 ${item.source_name}，状态 ${item.status}，时间 ${item.published_at ?? item.collected_at}。`
-          : `Source ${item.source_name}, status ${item.status}, timestamp ${item.published_at ?? item.collected_at}.`,
+          ? `来源 ${item.source_name}，状态 ${item.status}，发布时间 ${item.published_at ?? "未提供"}。`
+          : `Source ${item.source_name}, status ${item.status}, publication time ${item.published_at ?? "unavailable"}.`,
         ...item.evidence_notes.slice(0, 2)
       ],
       caveats: caveatsForItem(item, retrieval.dataSource, isZh),

@@ -108,8 +108,8 @@ function filterItems(
       return false;
     }
 
-    const timestamp = Date.parse(item.published_at ?? item.collected_at ?? item.processed_at);
-    if (Number.isFinite(timestamp) && (timestamp < startMs || timestamp > endMs)) {
+    const timestamp = Date.parse(item.published_at ?? "");
+    if (!Number.isFinite(timestamp) || timestamp < startMs || timestamp > endMs) {
       return false;
     }
 

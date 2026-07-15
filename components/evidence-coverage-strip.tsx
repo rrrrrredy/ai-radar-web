@@ -40,7 +40,7 @@ export function EvidenceCoverageStrip({
         <EvidenceBadge detail={String(itemCount)} kind="evidence" label={itemLabel} />
         <EvidenceBadge detail={String(citations.length)} kind="citation" label="引用" />
         <EvidenceBadge detail={String(sourceCount)} kind="freshness" label="来源" />
-        <EvidenceBadge detail={formatTimestamp(latestEvidenceTime)} kind="freshness" label="最新证据" />
+        <EvidenceBadge detail={formatTimestamp(latestEvidenceTime)} kind="freshness" label="最新内容发布时间" />
         <EvidenceBadge
           detail={String(needsReviewCount)}
           kind={needsReviewCount > 0 ? "needs_review" : "evidence"}
@@ -58,8 +58,8 @@ export function EvidenceCoverageStrip({
 
 function latestCitationTimestamp(citations: RetrievalCitation[]) {
   return citations
-    .map((citation) => citation.published_at ?? citation.collected_at)
-    .filter((value): value is string => Number.isFinite(Date.parse(value)))
+    .map((citation) => citation.published_at)
+    .filter((value): value is string => typeof value === "string" && Number.isFinite(Date.parse(value)))
     .sort((left, right) => Date.parse(right) - Date.parse(left))[0];
 }
 

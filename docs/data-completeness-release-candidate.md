@@ -1,6 +1,6 @@
 # Data Completeness Release Candidate
 
-Generated: 2026-07-15T04:31:30.535Z
+Generated: 2026-07-15T06:16:52.185Z
 
 ## Gate Summary
 
@@ -12,15 +12,15 @@ Generated: 2026-07-15T04:31:30.535Z
 - Failed sources in latest run: 0
 - Blocked/manual sources: 226
 - Sources with public visible items: 64
-- Raw items: 280
-- Radar items: 276
-- Public radar items: 254
+- Raw items: 287
+- Radar items: 283
+- Public radar items: 261
 
 ## Conversion Rates
 
 - Source to raw coverage: 91.2%
 - Raw to radar conversion: 98.6%
-- Radar to public visibility: 92.0%
+- Radar to public visibility: 92.2%
 - Public visible sources / total configured sources: 20.2%
 
 ## Pipeline Counts
@@ -28,11 +28,11 @@ Generated: 2026-07-15T04:31:30.535Z
 - Sources with at least one raw item: 83
 - Sources with at least one radar item: 83
 - Sources with at least one public radar item: 64
-- Raw items with radar items: 276
-- Included / needs_review / excluded / failed radar items: 253 / 4 / 19 / 0
-- Report candidates: 30
-- Latest ingestion timestamp: 2026-07-15T04:22:11.077+00:00
-- Latest understanding timestamp: 2026-07-15T04:27:56.55+00:00
+- Raw items with radar items: 283
+- Included / needs_review / excluded / failed radar items: 260 / 4 / 19 / 0
+- Report candidates: 34
+- Latest ingestion timestamp: 2026-07-15T06:00:25.944+00:00
+- Latest understanding timestamp: 2026-07-15T06:06:41.986+00:00
 
 ## Persistence Audit
 
@@ -66,13 +66,14 @@ Generated: 2026-07-15T04:31:30.535Z
 ### Failure Families
 
 - low_relevance_excluded: 19
+- rate_limit: 1
 
 ## GitHub Rate Limit
 
-- GitHub token present: unknown
-- Minimum remaining observed: unavailable
-- Latest reset at: unavailable
-- Sources observed: 0
+- GitHub token present: no
+- Minimum remaining observed: 12
+- Latest reset at: 2026-07-15T06:33:37.000Z
+- Sources observed: 1
 
 ## Safety
 
@@ -361,13 +362,13 @@ Generated: 2026-07-15T04:31:30.535Z
 | openai-cookbook | OpenAI Cookbook | github_open_source | T1 | active | api | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:02:44.324+00:00 | 2026-07-14T07:05:52.327+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | openai-python | OpenAI Python SDK | github_open_source | T1 | active | api | yes | no | no | 9 | 9 | 9 | 2026-07-14T07:19:34.971+00:00 | 2026-07-14T07:20:44.097+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | anthropic-news | Anthropic News | official_company | T1 | active | sitemap | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:08:36.007+00:00 | 2026-07-14T07:08:43.759+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| anthropic-research | Anthropic Research | official_company | T1 | active | sitemap | yes | yes | yes | 11 | 11 | 11 | 2026-07-15T04:22:10.763+00:00 | 2026-07-15T04:27:24.341+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| anthropic-research | Anthropic Research | official_company | T1 | active | sitemap | yes | no | no | 11 | 11 | 11 | 2026-07-15T04:22:10.763+00:00 | 2026-07-15T04:27:24.341+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | anthropic-sdk-python | Anthropic Python SDK | github_open_source | T1 | active | api | yes | no | no | 8 | 8 | 8 | 2026-07-14T07:08:36.091+00:00 | 2026-07-14T07:12:07.757+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | google-deepmind-blog | Google DeepMind Blog | official_company | T1 | active | rss | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:18:51.059+00:00 | 2026-07-14T07:22:18.342+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | google-gemini-blog | Google Gemini Blog | official_company | T1 | active | rss | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:24:48.803+00:00 | 2026-07-14T07:24:59.214+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | google-ai-developers | Google AI for Developers | official_company | T1 | active | html | yes | no | no | 6 | 4 | 4 | 2026-07-14T07:27:05.002+00:00 | 2026-07-14T07:27:35.309+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | meta-ai-blog | Meta AI Blog | official_company | T1 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:19:35.012+00:00 | 2026-07-14T07:21:34.527+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| meta-llama-stack | Meta Llama Stack | github_open_source | T1 | active | api | yes | no | no | 9 | 9 | 9 | 2026-07-14T07:19:35.03+00:00 | 2026-07-14T07:23:32.496+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
+| meta-llama-stack | OGX | github_open_source | T1 | active | api | yes | yes | yes | 16 | 16 | 16 | 2026-07-15T06:00:23.412+00:00 | 2026-07-15T06:06:00.708+00:00 | GITHUB_TOKEN present: no; GitHub API requests are unauthenticated and may hit public rate limits. | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
 | microsoft-foundry-blog | Microsoft Foundry Blog | official_company | T1 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:35:53.205+00:00 | 2026-07-14T07:36:03.906+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | microsoft-autogen | Microsoft AutoGen | github_open_source | T1 | active | api | yes | no | no | 3 | 3 | 3 | 2026-07-14T07:30:58.286+00:00 | 2026-07-14T07:32:19.635+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | microsoft-semantic-kernel | Microsoft Semantic Kernel | github_open_source | T1 | active | api | yes | no | no | 6 | 6 | 6 | 2026-07-14T07:30:58.351+00:00 | 2026-07-14T07:34:44.08+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |

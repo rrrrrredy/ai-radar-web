@@ -284,7 +284,7 @@ function tokenize(value: string) {
 }
 
 function itemTimestamp(item: ClusterableRadarItem) {
-  return Date.parse(item.published_at ?? item.collected_at ?? item.processed_at);
+  return Date.parse(item.published_at ?? "");
 }
 
 function safeDomain(rawUrl: string) {

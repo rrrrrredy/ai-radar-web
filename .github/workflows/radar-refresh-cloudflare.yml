@@ -301,8 +301,15 @@ jobs:
         id: cloudflare_build
         env:
           CLOUDFLARE_SNAPSHOT_READ_SUPABASE: "true"
+          CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE: "true"
           ENABLE_SUPABASE_WRITES: "false"
         run: npm run cloudflare:build
+
+      - name: Validate built Cloudflare artifact
+        env:
+          ENABLE_SUPABASE_WRITES: "false"
+          SMOKE_REQUIRE_RELEASE_ARTIFACTS: "true"
+        run: npx tsx scripts/smoke-test.ts
 
       - name: Deploy Cloudflare Pages
         id: cloudflare_deploy

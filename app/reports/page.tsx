@@ -458,7 +458,7 @@ function ReportEventContext({
               <p className="mt-2 text-sm leading-6 text-radar-muted">{event.summary_zh}</p>
               <dl className="mt-4 space-y-2 text-sm">
                 <RailRow label="来源家族" value={event.source_families.join("、") || "待补"} />
-                <RailRow label="最新证据" value={formatEventTime(event.latest_seen_at)} />
+                <RailRow label="最新内容发布时间" value={formatEventTime(event.latest_seen_at)} />
                 <RailRow label="评分依据" value={event.score_reason} />
               </dl>
               <div className="mt-4 flex flex-wrap gap-3 text-sm font-semibold">

@@ -76,7 +76,7 @@ function searchableText(item: RetrievalRadarItem) {
 }
 
 function freshnessBoost(item: RetrievalRadarItem, endMs: number) {
-  const timestamp = Date.parse(item.published_at ?? item.collected_at ?? item.processed_at);
+  const timestamp = Date.parse(item.published_at ?? "");
   if (!Number.isFinite(timestamp)) {
     return 0;
   }

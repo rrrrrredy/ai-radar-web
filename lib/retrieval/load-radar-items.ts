@@ -379,18 +379,14 @@ function mapMockRadarItem(item: RadarItem): RetrievalRadarItem {
 }
 
 function freshnessFromItems(items: RetrievalRadarItem[], fileMtime?: string): LoadedRadarItems["freshness"] {
-  const candidates = items.flatMap((item) => [
-    timestampCandidate(item.processed_at, "processed_at" as const),
-    timestampCandidate(item.collected_at, "collected_at" as const),
-    timestampCandidate(item.published_at, "published_at" as const)
-  ]);
+  const candidates = items.map((item) => timestampCandidate(item.published_at, "published_at" as const));
   const latest = candidates
     .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
     .sort((left, right) => Date.parse(right.value) - Date.parse(left.value))[0];
 
   return {
-    latestTimestamp: latest?.value ?? fileMtime,
-    latestTimestampSource: latest?.source ?? (fileMtime ? "file_mtime" : undefined),
+    latestTimestamp: latest?.value,
+    latestTimestampSource: latest?.source,
     fileMtime,
     itemCount: items.length
   };

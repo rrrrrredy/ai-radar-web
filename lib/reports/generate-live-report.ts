@@ -248,7 +248,7 @@ export function formatMarkdownReport(report: GeneratedReportDraft): string {
   const evidenceFreshness = evaluateReportEvidenceFreshness(
     report.report_type,
     report.time_window.end,
-    report.citations.map((citation) => citation.published_at ?? citation.collected_at),
+    report.citations.map((citation) => citation.published_at ?? ""),
     report.generated_at
   );
   const lines = [
