@@ -62,7 +62,7 @@ Both quality gates pass. `needs_review` is the editorial state and is not a gate
 
 All 261 public-safe radar rows are present under `全部信号`; event-quality filtering applies only to event construction and curation.
 
-The event layer maps 205 signals into 203 public events. The remaining 56 signal-only audit rows are disclosed on the homepage and radar page instead of being silently omitted or promoted into weak events. `待复核` contains only events backed by `needs_review` signals. Browser-local Ask/Write understands explicit 24-hour and seven-day windows, anchors them to snapshot freshness, displays evidence dates, and returns an honest empty state when no event matches.
+The event layer maps 205 signals into 203 public events. The remaining 56 signal-only audit rows are disclosed on the homepage and radar page instead of being silently omitted or promoted into weak events. `待复核` contains only events backed by `needs_review` signals. Browser-local Ask/Write understands explicit 24-hour and seven-day windows, anchors them to snapshot freshness, displays evidence dates, and returns an honest empty state when no event matches. An explicit `高优先级` / `high priority` query is a strict label filter; lower-priority events are never substituted when the requested window has no match.
 
 ## Release Hardening
 
@@ -73,6 +73,7 @@ The event layer maps 205 signals into 203 public events. The remaining 56 signal
 - Event freshness scoring uses the latest public evidence timestamp rather than the build clock, so identical evidence produces identical scores and curation.
 - Strict production export requires authoritative completeness counts plus a fully accounted broad source-health run; the workflow supplies read credentials while keeping Supabase writes disabled.
 - Public HTML and snapshot JSON omit the Vercel reference namespace; Vercel remains an operational verification target only.
+- `/version.json` records a full Git commit SHA, its provenance source, and local-worktree cleanliness so an immutable Cloudflare deployment can be traced to the reviewed commit.
 - Chrome desktop/mobile interaction and visual QA passed 28/28 checks with no relevant console errors.
 
 ## Security and Operations

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -3158,15 +3159,65 @@ function curatedWindowIsCurrent(snapshot: Snapshot) {
 }
 
 function publicVersion(snapshot: Snapshot) {
+  const provenance = resolveBuildProvenance();
   return {
     product: "AI Industry Radar",
     release: "final-release-candidate-event-radar",
-    commit_sha: process.env.CF_PAGES_COMMIT_SHA ?? process.env.GITHUB_SHA ?? "local-build",
+    commit_sha: provenance.commitSha,
+    commit_source: provenance.commitSource,
+    working_tree_clean: provenance.workingTreeClean,
     generated_at: snapshot.generated_at,
     latest_evidence_at: snapshot.freshness.latest_timestamp,
     public_radar_items: snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items,
     event_count: snapshot.event_count,
     source: snapshot.source.data_source
+  };
+}
+
+function resolveBuildProvenance() {
+  const environmentCommit = [
+    { source: "cloudflare", value: process.env.CF_PAGES_COMMIT_SHA?.trim() ?? "" },
+    { source: "github", value: process.env.GITHUB_SHA?.trim() ?? "" }
+  ].find((candidate) => /^[0-9a-f]{40}$/i.test(candidate.value));
+
+  let gitSha = "";
+  let workingTreeClean: boolean | null = null;
+  try {
+    gitSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    const status = execFileSync("git", ["status", "--porcelain", "--untracked-files=normal"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    workingTreeClean = status.length === 0;
+  } catch {
+    gitSha = "";
+  }
+
+  if (environmentCommit) {
+    return {
+      commitSha: environmentCommit.value,
+      commitSource: environmentCommit.source,
+      workingTreeClean
+    };
+  }
+
+  if (/^[0-9a-f]{40}$/i.test(gitSha)) {
+    return {
+      commitSha: gitSha,
+      commitSource: "git_worktree",
+      workingTreeClean
+    };
+  }
+
+  return {
+    commitSha: "unavailable",
+    commitSource: "unavailable",
+    workingTreeClean
   };
 }
 
@@ -3577,6 +3628,7 @@ function localEvidenceToolScript(
     const crossFamily = /cross[- ]family|multiple source families|independent source famil|跨(来源)?家族|独立来源家族/.test(q);
     const sameFamily = /same source family|one source family|同(来源)?家族|同家族.*复述/.test(q);
     const selectedOnly = /selected events?|today['’]s selection|industry selection|行业精选|今日精选|本轮精选|精选事件/.test(q);
+    const highPriority = /high[- ]priority|highest[- ]priority|高优先级/.test(q);
     const timeWindowHours = /(?:past|last|within)\s*24\s*(?:hours?|hrs?|h)\b|\b24h\b|过去\s*24\s*小时|近\s*24\s*小时|今天发生|今日发生|\btoday\b/.test(q)
       ? 24
       : /(?:past|last|within)\s*(?:7\s*days?|one\s*week)|\bthis week\b|过去一周|近一周|本周/.test(q)
@@ -3585,6 +3637,7 @@ function localEvidenceToolScript(
     return {
       agent: /agent|智能体|开发工具|developer tool|coding tool|工具链/.test(q),
       crossFamily,
+      highPriority,
       important: /rank|ranking|priority|important|selected events|top events|deeper analysis|worth a deeper|排序|重要|高优先级|精选|深度分析|行业观察|周报|提纲/.test(q),
       modelRelease: /model releases?|models? (?:were )?released|released models?|模型发布|发布(?:了|的)?(?:新)?模型|新模型发布/.test(q),
       multiSource: !crossFamily && !sameFamily && /multi[- ]source|multiple sources|多源/.test(q),
@@ -3619,6 +3672,7 @@ function localEvidenceToolScript(
     if (intent.sameFamily && !(sourceCount > 1 && familyCount === 1)) return false;
     if (intent.multiSource && sourceCount <= 1) return false;
     if (intent.singleSource && sourceCount !== 1) return false;
+    if (intent.highPriority && event.event_score_label !== "高优先级") return false;
     if (intent.modelRelease && category !== "model_release") return false;
     if (intent.agent && !/\bagents?\b|智能体|developer tool|coding tool|\bsdk\b|\bcli\b|开发工具|工具链/i.test(titleAndEntities)) return false;
     return true;
@@ -3640,7 +3694,7 @@ function localEvidenceToolScript(
 
     let relevance = 0;
     let tokenMatches = 0;
-    const structuredIntent = intent.crossFamily || intent.sameFamily || intent.multiSource || intent.singleSource || intent.modelRelease || intent.agent || intent.selectedOnly || intent.important || intent.timeWindowHours;
+    const structuredIntent = intent.crossFamily || intent.sameFamily || intent.multiSource || intent.singleSource || intent.highPriority || intent.modelRelease || intent.agent || intent.selectedOnly || intent.important || intent.timeWindowHours;
     const title = eventTitle(snapshot, event).toLowerCase();
     let titleMatched = false;
     if ((title.length >= 6 && q.includes(title)) || (q.length >= 6 && title.includes(q))) {
@@ -3755,6 +3809,22 @@ function localEvidenceToolScript(
       '<h4>引用</h4><div class="local-citations">' + citations + '</div>';
   }
 
+  function renderNoMatch(intent) {
+    if (intent.highPriority && intent.timeWindowHours) {
+      return language === "en"
+        ? '<p class="empty">No high-priority event was found in the requested time window. Lower-priority events were not substituted.</p>'
+        : '<p class="empty">指定时间窗口内没有高优先级事件；系统未用“关注”或“观察”事件替代。</p>';
+    }
+    if (intent.highPriority) {
+      return language === "en"
+        ? '<p class="empty">No high-priority event was found in the public snapshot. Lower-priority events were not substituted.</p>'
+        : '<p class="empty">公开快照中没有高优先级事件；系统未用“关注”或“观察”事件替代。</p>';
+    }
+    return language === "en"
+      ? '<p class="empty">No matching event was found in the public snapshot.</p>'
+      : '<p class="empty">没有从公开快照中找到匹配事件。</p>';
+  }
+
   function renderWriteResult(snapshot, query, events, intent) {
     if (intent.paragraph) return renderWriteParagraph(snapshot, query, events);
     const freshness = snapshot.freshness && snapshot.freshness.latest_timestamp ? snapshot.freshness.latest_timestamp : (language === "en" ? "unavailable" : "待补证据");
@@ -3804,7 +3874,7 @@ function localEvidenceToolScript(
       }
       const events = pickEvents(snapshot, query);
       result.innerHTML = events.length === 0
-        ? (language === "en" ? '<p class="empty">No matching event was found in the public snapshot.</p>' : '<p class="empty">没有从公开快照中找到匹配事件。</p>')
+        ? renderNoMatch(intent)
         : (toolMode === "write" ? renderWriteResult(snapshot, query, events, intent) : renderAskResult(snapshot, query, events));
     } catch {
       result.innerHTML = language === "en" ? '<p class="empty">The public snapshot could not be loaded. Try again later or open the JSON data directly.</p>' : '<p class="empty">公开快照读取失败，请稍后重试或直接打开数据文件。</p>';

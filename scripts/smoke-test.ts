@@ -602,6 +602,8 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       cloudflareSite.includes("报告状态模型") &&
       cloudflareSite.includes("readerFacingCaveats") &&
       cloudflareSite.includes("AI 行业雷达今日精选（含前序证据）") &&
+      cloudflareSite.includes("resolveBuildProvenance") &&
+      cloudflareSite.includes('commitSource: "git_worktree"') &&
       cloudflareSite.includes("path.join(entityDir, \"index.html\")") &&
       cloudflareSite.includes("../entities/${entityStaticSlug(trace.entity)}/") &&
       cloudflareSite.includes("fs.writeFile(path.join(outputDir, \"entities\", \"index.html\")") &&
@@ -612,6 +614,9 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   assert.equal(
     cloudflareSite.includes("timeWindowHours") &&
       cloudflareSite.includes("eventWithinIntentWindow") &&
+      cloudflareSite.includes('intent.highPriority && event.event_score_label !== "高优先级"') &&
+      cloudflareSite.includes("Lower-priority events were not substituted") &&
+      cloudflareSite.includes("系统未用“关注”或“观察”事件替代") &&
       cloudflareSite.includes("function eventDate(event)") &&
       cloudflareSite.includes('[event.canonical_title || "", ...(event.related_entities || [])]') &&
       cloudflareSite.includes("仅信号审计行") &&
@@ -702,6 +707,9 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   assert.equal(fs.existsSync(versionPath), true, "Cloudflare version marker must exist.");
   const version = JSON.parse(fs.readFileSync(versionPath, "utf8")) as JsonRecord;
   assert.equal(version.product, "AI Industry Radar", "Cloudflare version marker must identify the correct product.");
+  assert.match(String(version.commit_sha ?? ""), /^[0-9a-f]{40}$/i, "Cloudflare version marker must contain a full Git commit SHA.");
+  assert.notEqual(version.commit_source, "unavailable", "Cloudflare version marker must identify its Git provenance source.");
+  assert.equal(typeof version.working_tree_clean, "boolean", "Cloudflare version marker must disclose whether a local build used a clean worktree.");
 
   for (const forbiddenDir of ["dist/cloudflare-pages/clusters", "dist/github-pages"]) {
     assert.equal(fs.existsSync(path.join(process.cwd(), forbiddenDir)), false, `${forbiddenDir} must not remain in static output.`);
