@@ -88,7 +88,7 @@ export function WriteRadarClient({
           </div>
           <h1 className="mt-4 text-3xl font-semibold text-radar-ink">事件写作</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-            从行业精选、多源确认和弱信号生成编辑选题候选，并在工作流中保留局限、反方观点、缺失证据和引用。
+            从行业精选、多源报道和弱信号生成编辑选题候选，并在工作流中保留局限、反方观点、缺失证据和引用。
           </p>
         </div>
 

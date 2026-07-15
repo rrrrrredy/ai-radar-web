@@ -1,6 +1,6 @@
 # Manual Refresh and Cloudflare Workflow
 
-Updated: 2026-07-14
+Updated: 2026-07-15
 
 ## Trigger and Inputs
 
@@ -43,6 +43,8 @@ Required configuration is read from GitHub secrets/variables without printing va
 - no service-role credential in the public build;
 - no private/raw fields in the summary artifact;
 - deployed environments keep `ENABLE_SUPABASE_WRITES=false`.
+
+The authoritative release build sets `CLOUDFLARE_SNAPSHOT_READ_SUPABASE=true` only for the build process. The resulting JSON contains allowlisted public evidence, current event rows, report gates, aggregate health, and the public-safe names/reasons of failed sources. It contains no source error payloads or private logs.
 
 ## Operator Command
 

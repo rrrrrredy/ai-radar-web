@@ -35,6 +35,13 @@ export type PublicSourceHealthScope = {
   attempted_sources: number;
 };
 
+export type PublicSourceFailureDetail = {
+  source_slug: string;
+  source_name: string;
+  source_family: string;
+  reason: string;
+};
+
 export type PublicDataCompletenessSummary = {
   generatedAt: string;
   sourcesTotal: number;
@@ -63,6 +70,7 @@ export type PublicDataCompletenessSummary = {
   sourceFamilyHealth: PublicSourceFamilyHealth[];
   sourceHealthScope: PublicSourceHealthScope;
   failedSourceReasons: Record<string, number>;
+  failedSourceDetails: PublicSourceFailureDetail[];
   skippedSourceReasons: Record<string, number>;
   rates: PublicCoverageRates;
   warnings: string[];

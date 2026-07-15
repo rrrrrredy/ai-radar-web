@@ -128,7 +128,7 @@ test("persistence performs idempotent upserts without destructive operations", a
     const first = await persistEventLayer(fake.client, layer, { batchSize: 50, persistedAt });
     const second = await persistEventLayer(fake.client, layer, { batchSize: 50, persistedAt });
 
-    assert.deepEqual(first, { eventClusterItemsUpserted: 1, eventClustersUpserted: 1 });
+    assert.deepEqual(first, { eventClusterItemsUpserted: 1, eventClustersArchived: 1, eventClustersUpserted: 1 });
     assert.deepEqual(second, first);
     assert.equal(fake.upserts.length, 4);
     assert.deepEqual(
@@ -140,6 +140,9 @@ test("persistence performs idempotent upserts without destructive operations", a
         ["event_cluster_items", "event_cluster_id,radar_item_id"]
       ]
     );
+    assert.equal(fake.updates.length, 2);
+    assert.deepEqual(fake.updates[0]?.ids, ["event-database-stale"]);
+    assert.equal(fake.updates[0]?.values.status, "archived");
     assert.equal(fake.destructiveCalls, 0);
   } finally {
     if (previousWriteGate === undefined) {
@@ -163,6 +166,7 @@ test("migration is additive and provides conflict keys for both tables", async (
 
 function createFakeSupabase() {
   const upserts: Array<{ onConflict: string; rows: Array<Record<string, unknown>>; table: string }> = [];
+  const updates: Array<{ ids: string[]; table: string; values: Record<string, unknown> }> = [];
   let destructiveCalls = 0;
 
   const client = {
@@ -194,6 +198,37 @@ function createFakeSupabase() {
               }
 
               return Promise.resolve({ data: [], error: null });
+            },
+            like(column: string, pattern: string) {
+              assert.equal(table, "event_clusters");
+              assert.equal(column, "local_id");
+              assert.equal(pattern, "event_%");
+              return {
+                in(statusColumn: string, statuses: string[]) {
+                  assert.equal(statusColumn, "status");
+                  assert.deepEqual(statuses, ["draft", "reviewed"]);
+                  return {
+                    limit() {
+                      return Promise.resolve({
+                        data: [
+                          { id: eventDatabaseId, local_id: event.event_cluster_id },
+                          { id: "event-database-stale", local_id: "event_stale" }
+                        ],
+                        error: null
+                      });
+                    }
+                  };
+                }
+              };
+            }
+          };
+        },
+        update(values: Record<string, unknown>) {
+          return {
+            in(column: string, ids: string[]) {
+              assert.equal(column, "id");
+              updates.push({ ids, table, values });
+              return Promise.resolve({ data: null, error: null });
             }
           };
         },
@@ -210,6 +245,7 @@ function createFakeSupabase() {
     get destructiveCalls() {
       return destructiveCalls;
     },
+    updates,
     upserts
   };
 }

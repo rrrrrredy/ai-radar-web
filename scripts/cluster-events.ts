@@ -54,7 +54,7 @@ function persistenceSummary(result: EventLayerPersistenceResult | null) {
     return "Supabase persistence: not requested (local output only)";
   }
 
-  return `Supabase persistence: ${result.eventClustersUpserted} event clusters, ${result.eventClusterItemsUpserted} relationships upserted`;
+  return `Supabase persistence: ${result.eventClustersUpserted} event clusters and ${result.eventClusterItemsUpserted} relationships upserted; ${result.eventClustersArchived} stale generated clusters archived`;
 }
 
 main().catch((error) => {

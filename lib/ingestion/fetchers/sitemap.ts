@@ -162,9 +162,9 @@ export function parseSitemapArticle(
   const publishedAt = normalizedDate(
     metaContent(html, "property", "article:published_time") ||
       metaContent(html, "name", "datePublished") ||
-      jsonLdValue(html, "datePublished") ||
-      timeDateTime(html) ||
-      sitemapLastmod
+      embeddedJsonValue(html, "datePublished") ||
+      embeddedJsonValue(html, "publishedOn") ||
+      timeDateTime(html)
   );
 
   return {
@@ -301,8 +301,13 @@ function sameHostCanonical(html: string, fallbackUrl: string) {
   }
 }
 
-function jsonLdValue(html: string, key: string) {
-  return decodeEntities(html.match(new RegExp(`"${escapeRegExp(key)}"\\s*:\\s*"([^"]+)"`, "i"))?.[1] ?? "");
+function embeddedJsonValue(html: string, key: string) {
+  const normalizedJsonQuotes = decodeEntities(html).replace(/\\+"/g, '"');
+  return decodeEntities(
+    normalizedJsonQuotes.match(
+      new RegExp(`"${escapeRegExp(key)}"\\s*:\\s*"([^"]+)"`, "i")
+    )?.[1] ?? ""
+  );
 }
 
 function timeDateTime(html: string) {

@@ -48,4 +48,25 @@ assert.equal(article.summary, "Anthropic introduces a new education product.");
 assert.match(article.rawText ?? "", /classroom planning tools/);
 assert.ok(Number(article.metadata?.article_excerpt_chars) > 200);
 
+const escapedPublishedOnArticle = parseSitemapArticle(
+  String.raw`
+    <html><head>
+      <meta property="og:title" content="Claude Code Security" />
+      <script>self.__next_f.push([1,"{\"publishedOn\":\"2025-06-20T22:30:00.000Z\"}"])</script>
+    </head><body></body></html>
+  `,
+  "https://www.anthropic.com/news/claude-code-security",
+  "2026-07-15T10:00:00Z"
+);
+
+assert.equal(escapedPublishedOnArticle.publishedAt, "2025-06-20T22:30:00.000Z");
+
+const lastmodOnlyArticle = parseSitemapArticle(
+  `<html><head><title>Lastmod only</title></head><body></body></html>`,
+  "https://www.anthropic.com/news/lastmod-only",
+  "2026-07-15T10:00:00Z"
+);
+
+assert.equal(lastmodOnlyArticle.publishedAt, undefined);
+
 console.log("Sitemap fetcher tests passed");

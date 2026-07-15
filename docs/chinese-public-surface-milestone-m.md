@@ -31,15 +31,15 @@ English pages are not label-only shells. They render the same public snapshot, e
 
 | metric | value |
 | --- | ---: |
-| public radar items | 249 |
-| public-safe snapshot items | 199 |
-| public display events | 165 |
-| public event relationships | 197 |
+| public radar items | 254 |
+| public-safe snapshot items | 204 |
+| public display events | 198 |
+| public event relationships | 201 |
 | curated events | 8 |
 | same-family two-source display events | 1 |
 | cross-source-family display events | 1 |
 
-Latest daily and weekly candidates remain `needs_review` and both pass baseline source-stage and event-projection quality gates. The public surface now shows one company/lab plus media/analysis confirmation event and still distinguishes it from same-family repetition.
+Latest daily and weekly candidates remain `needs_review` and both pass the source-stage gate. The event-aware daily projection fails with 3 usable events against a minimum of 5 and displays `今日数据不足，需补充信源或等待下一轮刷新`; the weekly projection passes with 26 events. The public surface shows one company/lab plus media/analysis coverage event, labels source independence as unverified, and still distinguishes it from same-family repetition.
 
 ## Browser Verification
 

@@ -158,21 +158,62 @@ const releaseItems = ["b9994", "b9993", "b9992"].map((version, index) => radarIt
   title: `llama.cpp 发布 ${version} 版本`,
   url: `https://github.com/ggerganov/llama.cpp/releases/tag/${version}`
 }));
-const vllmRelease = radarItem({
+const llamaReleaseLayer = buildEventLayer(releaseItems);
+assert.equal(llamaReleaseLayer.event_count, releaseItems.length, "adjacent llama.cpp releases must remain separate events");
+for (const releaseItem of releaseItems) {
+  const releaseEvent = llamaReleaseLayer.event_clusters.find((event) => event.related_item_ids.includes(releaseItem.id));
+  assert.ok(releaseEvent, `expected a standalone event for ${releaseItem.id}`);
+  assert.deepEqual(releaseEvent.related_item_ids, [releaseItem.id], "a release event must not absorb a different llama.cpp version");
+  assert.equal(releaseEvent.timeline.length, 1);
+}
+
+const ollamaPreviousRelease = radarItem({
   categories: ["open_source"],
-  entities: [{ confidence: 0.98, name: "vLLM", type: "project" as const }],
-  id: "vllm-v0.25.0",
+  entities: [{ confidence: 0.98, name: "Ollama", type: "project" as const }],
+  id: "ollama-v0.12.10",
+  published_at: "2026-07-13T20:00:00Z",
+  source_name: "GitHub Releases",
+  title: "Ollama v0.12.10 release",
+  url: "https://github.com/ollama/ollama/releases/tag/v0.12.10"
+});
+const ollamaCurrentRelease = radarItem({
+  categories: ["open_source"],
+  entities: [{ confidence: 0.98, name: "Ollama", type: "project" as const }],
+  id: "ollama-v0.12.11-github",
   published_at: "2026-07-14T01:00:00Z",
   source_name: "GitHub Releases",
-  title: "vLLM 发布 v0.25.0 版本",
-  url: "https://github.com/vllm-project/vllm/releases/tag/v0.25.0"
+  title: "Ollama v0.12.11 release",
+  url: "https://github.com/ollama/ollama/releases/tag/v0.12.11"
 });
-const releaseLayer = buildEventLayer([...releaseItems, vllmRelease]);
-const llamaReleaseSeries = releaseLayer.event_clusters.find((event) => event.related_item_ids.includes("llama-b9994"));
-assert.ok(llamaReleaseSeries, "expected a llama.cpp release series");
-assert.deepEqual(new Set(llamaReleaseSeries.related_item_ids), new Set(releaseItems.map((item) => item.id)));
-assert.equal(llamaReleaseSeries.timeline.length, 3, "consecutive releases from the same project should become one version timeline");
-assert.equal(releaseLayer.event_count, 2, "a different project release must remain a separate event");
+const ollamaCurrentCoverage = radarItem({
+  categories: ["open_source"],
+  entities: [{ confidence: 0.98, name: "Ollama", type: "project" as const }],
+  id: "ollama-0.12.11-coverage",
+  published_at: "2026-07-14T02:00:00Z",
+  source_name: "Example AI Media",
+  title: "Ollama 0.12.11 release",
+  url: "https://example.com/ollama-0-12-11-release"
+});
+const ollamaReleaseLayer = buildEventLayer([
+  ollamaPreviousRelease,
+  ollamaCurrentRelease,
+  ollamaCurrentCoverage
+]);
+const ollamaPreviousEvent = ollamaReleaseLayer.event_clusters.find((event) =>
+  event.related_item_ids.includes(ollamaPreviousRelease.id)
+);
+const ollamaCurrentEvent = ollamaReleaseLayer.event_clusters.find((event) =>
+  event.related_item_ids.includes(ollamaCurrentRelease.id)
+);
+assert.ok(ollamaPreviousEvent, "expected a standalone Ollama v0.12.10 event");
+assert.deepEqual(ollamaPreviousEvent.related_item_ids, [ollamaPreviousRelease.id]);
+assert.ok(ollamaCurrentEvent, "expected an Ollama v0.12.11 event");
+assert.deepEqual(
+  new Set(ollamaCurrentEvent.related_item_ids),
+  new Set([ollamaCurrentRelease.id, ollamaCurrentCoverage.id]),
+  "same-release multi-source coverage should merge despite an optional v prefix"
+);
+assert.equal(ollamaReleaseLayer.event_count, 2, "different Ollama semantic versions must remain separate events within seven days");
 
 const semanticKernelTracks = [
   radarItem({
@@ -283,7 +324,12 @@ assert.deepEqual(
   new Set([anthropicWorkspace.id, mitJacobianLens.id]),
   "specific concept aliases should merge the official J-space item with the Jacobian-lens coverage only"
 );
-assert.equal(workspaceEvent.source_families.length, 2, "the merged event should preserve cross-family confirmation");
+assert.equal(workspaceEvent.source_families.length, 2, "the merged event should preserve cross-family coverage");
+assert.equal(
+  workspaceEvent.caveats.some((caveat) => caveat.includes("尚未建立来源独立性关系")),
+  true,
+  "cross-family coverage must disclose that source independence is unverified"
+);
 assert.equal(conceptLayer.event_count, 3, "robotics and another lab's global-workspace research must remain separate");
 assert.equal(
   conceptLayer.event_cluster_items.some((item) => item.radar_item_id === "anthropic-research-landing-page"),

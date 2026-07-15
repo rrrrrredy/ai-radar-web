@@ -520,7 +520,7 @@ function assertTrustedPublishingSurfaces() {
       cloudflareSite.includes("证据草稿") &&
       cloudflareSite.includes("读者判断摘要") &&
       cloudflareSite.includes("正式报告用于读取结论") &&
-      cloudflareSite.includes("Top 3 快照") &&
+      cloudflareSite.includes("本轮 Top 3") &&
       cloudflareSite.includes("为什么重要") &&
       cloudflareSite.includes("primaryEventEntity") &&
       cloudflareSite.includes("eventEvidenceProfile") &&
@@ -601,7 +601,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       cloudflareSite.includes("实体档案") &&
       cloudflareSite.includes("报告状态模型") &&
       cloudflareSite.includes("readerFacingCaveats") &&
-      cloudflareSite.includes("AI 行业雷达公共情报快照") &&
+      cloudflareSite.includes("AI 行业雷达今日精选：展示本轮回顾") &&
       cloudflareSite.includes("path.join(entityDir, \"index.html\")") &&
       cloudflareSite.includes("../entities/${entityStaticSlug(trace.entity)}/") &&
       cloudflareSite.includes("fs.writeFile(path.join(outputDir, \"entities\", \"index.html\")") &&
@@ -693,12 +693,12 @@ function assertBilingualStaticContract() {
   assert.equal(englishRadar.includes('id="radar-freshness"') && englishRadar.includes('data-freshness="'), true, "English radar must expose and apply the freshness filter.");
   assert.equal(englishRadar.includes("public store / ") && englishRadar.includes(" displayed") && englishRadar.includes("Rate-limit warnings (may overlap)"), true, "English radar must distinguish store/display counts and overlapping rate-limit warnings.");
   assert.equal(englishRadar.includes('>苹果<'), false, "English radar must not render Chinese entity aliases when an English alias is available.");
-  assert.equal(englishRadar.includes("Single-source observation") && englishRadar.includes("Multiple reports, one family") && englishRadar.includes("Cross-family corroboration"), true, "English radar must distinguish cross-family corroboration, same-family repetition, and single-source observations.");
+  assert.equal(englishRadar.includes("Single-source observation") && englishRadar.includes("Multiple reports, one family") && englishRadar.includes("Cross-family coverage"), true, "English radar must distinguish cross-family coverage, same-family repetition, and single-source observations.");
   assert.equal(englishRadar.includes('value="cross"') && englishRadar.includes('value="same"') && englishRadar.includes('id="radar-result-count"') && englishRadar.includes('id="radar-reset"'), true, "English radar must expose evidence-state filters, live result counts, and reset.");
   assert.equal(englishRadar.includes('value="regulation"') && englishRadar.includes('value="media_interview"'), true, "English radar must expose all public event categories, including regulation and media/interview.");
 
   const chineseRadar = readSource("dist/cloudflare-pages/radar/index.html");
-  assert.equal(chineseRadar.includes("单源观察") && chineseRadar.includes("同家族多源复述") && chineseRadar.includes("跨家族确认"), true, "Chinese radar must distinguish cross-family corroboration, same-family repetition, and single-source observations.");
+  assert.equal(chineseRadar.includes("单源观察") && chineseRadar.includes("同家族多源复述") && chineseRadar.includes("跨家族多源报道"), true, "Chinese radar must distinguish cross-family coverage, same-family repetition, and single-source observations.");
   assert.equal(chineseRadar.includes('id="radar-result-count"') && chineseRadar.includes('id="radar-reset"') && chineseRadar.includes('value="regulation"') && chineseRadar.includes('>监管<'), true, "Chinese radar must expose complete localized filters with count/reset controls.");
   assert.equal(chineseRadar.includes('data-status="included"') && chineseRadar.includes('id="radar-freshness"') && chineseRadar.includes("条公开库 /") && chineseRadar.includes("条本站展示") && chineseRadar.includes("限流警告（可重叠）"), true, "Chinese radar must filter event status/freshness and explain count/failure semantics.");
 
@@ -710,10 +710,10 @@ function assertBilingualStaticContract() {
 
   const englishReports = readSource("dist/cloudflare-pages/en/reports/index.html");
   assert.equal(englishReports.includes("Event-aware reports") && englishReports.includes("Baseline evidence gate"), true, "English reports must expose event and quality-gate context.");
-  assert.equal(englishReports.includes("Baseline evidence gate") && englishReports.includes("Multiple reports / cross-family / all events") && englishReports.includes("Release readiness"), true, "English reports must separate baseline evidence volume from event corroboration and release readiness.");
+  assert.equal(englishReports.includes("Baseline evidence gate") && englishReports.includes("Multiple reports / cross-family coverage / all events") && englishReports.includes("Release readiness"), true, "English reports must separate baseline evidence volume from event coverage and release readiness.");
   assert.equal(englishReports.includes("Evidence draft, not release-ready"), true, "English reports must lead with the non-publication state when independent corroboration is insufficient.");
   const chineseReports = readSource("dist/cloudflare-pages/reports/index.html");
-  assert.equal(chineseReports.includes("来源家族确认与可信度") && chineseReports.includes("跨家族确认事件") && chineseReports.includes("同家族多源复述事件"), true, "Chinese report body and Markdown must use source-family-aware confirmation language.");
+  assert.equal(chineseReports.includes("来源家族覆盖与可信度") && chineseReports.includes("跨家族多源报道事件") && chineseReports.includes("同家族多源复述事件"), true, "Chinese report body and Markdown must use source-family-aware coverage language.");
   assert.equal(chineseReports.includes("多源确认与可信度") || chineseReports.includes("个多源确认事件"), false, "Chinese reports must not present same-family repetition as independent multi-source confirmation.");
 
   const publicSnapshot = JSON.parse(readSource("dist/cloudflare-pages/data/radar-snapshot.json")) as {
@@ -1000,6 +1000,7 @@ function assertPublicSnapshotJsonContract(snapshotPath: string) {
   assert.equal(Array.isArray(radarItems), true, `${snapshotPath} must expose radar_items array.`);
   const publicRadarItems = radarItems as unknown[];
   const entityAllowedKeys = new Set(["confidence", "name", "type"]);
+  const sourceFamilyAllowedValues = new Set(["公司/实验室", "分析/媒体", "其他公开来源", "开源项目", "研究订阅"]);
   const entityKeyViolations: string[] = [];
   const entityShapeViolations: string[] = [];
   const corruptedIndustryTerms: string[] = [];
@@ -1007,6 +1008,14 @@ function assertPublicSnapshotJsonContract(snapshotPath: string) {
   publicRadarItems.forEach((item, itemIndex) => {
     assert.equal(isRecord(item), true, `${snapshotPath}.radar_items[${itemIndex}] must be an object.`);
     const radarItem = item as JsonRecord;
+    assert.equal(
+      sourceFamilyAllowedValues.has(String(radarItem.source_family ?? "")),
+      true,
+      `${snapshotPath}.radar_items[${itemIndex}].source_family must use the canonical public classifier.`
+    );
+    if (/\b(?:theverge\.com|arstechnica\.com|technologyreview\.com)\b/i.test(String(radarItem.url ?? ""))) {
+      assert.equal(radarItem.source_family, "分析/媒体", `${snapshotPath}.radar_items[${itemIndex}] media domains must remain in the media family.`);
+    }
     const renderedText = JSON.stringify(radarItem);
     if (/\b(?:MANA secret|Visual secret Pruning|secret-wise expert weighting)\b/i.test(renderedText)) {
       corruptedIndustryTerms.push(`${snapshotPath}.radar_items[${itemIndex}]`);

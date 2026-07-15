@@ -14,6 +14,7 @@ import {
 import {
   buildEventLayer,
   filterPublicDisplayEventLayer,
+  sourceFamilyForEvent,
   type PublicEventLayer,
   type PublicEventCluster,
   type PublicEventClusterItem,
@@ -62,6 +63,7 @@ export type PublicRadarSnapshotItem = {
   title: string;
   url: string;
   source_name: string;
+  source_family?: string;
   status: UnderstandingStatus;
   language: RetrievalLanguage;
   published_at?: string;
@@ -245,6 +247,12 @@ export type PublicMirrorSnapshot = {
     manual_blocked: number;
     unsupported_source: number;
     low_relevance_excluded: number;
+  }>;
+  source_health_failures: Array<{
+    source_slug: string;
+    source_name: string;
+    source_family: string;
+    reason: string;
   }>;
   failure_family_summary: Record<string, number>;
   report_quality_summary: {
@@ -1176,6 +1184,7 @@ function buildSnapshot(input: {
     radar_items: items,
     reports,
     source_health_by_family: input.publicCoverage.sourceFamilyHealth,
+    source_health_failures: input.publicCoverage.failedSourceDetails,
     source_health_scope: {
       attempted_sources: input.publicCoverage.sourceHealthScope.attempted_sources,
       finished_at: input.publicCoverage.sourceHealthScope.finished_at,
@@ -1336,7 +1345,7 @@ function eventAwareReport(
     caveats: publicSafeNotes(dedupe([
       evidenceBoundary,
       "这是事件感知的公开报告视图；原始信号仍可在“全部信号”中审计。",
-      crossFamilyEvents.length === 0 ? "当前没有跨来源家族确认事件，报告判断中需要保留不确定性。" : "",
+      crossFamilyEvents.length === 0 ? "当前没有跨来源家族多源报道事件，报告判断中需要保留不确定性。" : "",
       ...report.caveats
     ])),
     citation_count: citations.length,
@@ -1344,7 +1353,7 @@ function eventAwareReport(
     distinct_source_count: sourceNames.length,
     executive_summary: summary,
     missing_evidence: publicSafeNotes(dedupe([
-      crossFamilyEvents.length < 3 ? "跨来源家族确认事件数量仍偏少，需要补充官方博客、研究源、开源 release 与媒体/分析源的交叉证据。" : "",
+      crossFamilyEvents.length < 3 ? "跨来源家族多源报道事件数量仍偏少，需要补充官方博客、研究源、开源 release 与媒体/分析源，并核实来源独立性。" : "",
       "X 和 WeChat 未自动抓取；相关信号只能通过人工或合规来源补充。",
       evidenceBoundary,
       ...report.missing_evidence
@@ -1362,14 +1371,14 @@ function eventAwareReport(
       },
       {
         bullets: [
-          ...crossFamilyEvents.slice(0, 3).map((event) => `跨家族确认：${event.canonical_title}，${event.source_count} 个来源，覆盖 ${event.source_families.join("、")}。`),
+          ...crossFamilyEvents.slice(0, 3).map((event) => `跨家族多源报道：${event.canonical_title}，${event.source_count} 个来源，覆盖 ${event.source_families.join("、")}；来源独立性未验证。`),
           ...sameFamilyEvents.slice(0, 3).map((event) => `同家族多源复述：${event.canonical_title}，${event.source_count} 个来源，均属于 ${event.source_families.join("、")}。`),
           ...(multiReportEvents.length === 0 ? ["本轮公开快照中没有多条报道事件，重点事件仍需要等待下一轮刷新或人工补证。"] : [])
         ],
         caveats: [],
         citations: [],
-        summary: `本轮报告候选中有 ${crossFamilyEvents.length} 个跨家族确认事件、${sameFamilyEvents.length} 个同家族多源复述事件；其余事件主要作为单源待跟踪信号处理。`,
-        title: "来源家族确认与可信度"
+        summary: `本轮报告候选中有 ${crossFamilyEvents.length} 个跨家族多源报道事件、${sameFamilyEvents.length} 个同家族多源复述事件；跨家族覆盖不代表来源独立，其余事件主要作为单源待跟踪信号处理。`,
+        title: "来源家族覆盖与可信度"
       },
       {
         bullets: [
@@ -2107,6 +2116,12 @@ function sanitizePublicSnapshot(snapshot: PublicMirrorSnapshot): PublicMirrorSna
     },
     source_health_scope: publicSourceHealthScope(snapshot.source_health_scope),
     source_health_by_family: publicSourceFamilyHealth(snapshot.source_health_by_family),
+    source_health_failures: (snapshot.source_health_failures ?? []).map((failure) => ({
+      reason: text(failure.reason, 80),
+      source_family: text(failure.source_family, 80),
+      source_name: publicSafeNote(failure.source_name),
+      source_slug: text(failure.source_slug, 160)
+    })).filter((failure) => failure.source_slug && failure.source_name),
     failure_family_summary: numericRecord(snapshot.failure_family_summary),
     report_quality_summary: {
       daily: publicSafeReportQuality(reportQualitySummary(reports, "daily", eventLayer.curated_events)),
@@ -2223,11 +2238,21 @@ function publicSafeRadarItem(item: PublicRadarSnapshotItem): PublicRadarSnapshot
     overall: 0
   };
 
+  const sourceName = publicSafeNote(item.source_name) || "Unknown source";
+  const sourceTier = text(item.source_tier, 20) || "unreviewed";
+  const url = publicHttpUrl(item.url);
+
   return {
     id: text(item.id, 160),
     title: publicSafeNote(item.title),
-    url: publicHttpUrl(item.url),
-    source_name: publicSafeNote(item.source_name) || "Unknown source",
+    url,
+    source_name: sourceName,
+    source_family: sourceFamilyForEvent({
+      source_id: "",
+      source_name: sourceName,
+      source_tier: sourceTier,
+      url
+    }),
     status: normalizeStatus(item.status),
     language: normalizeLanguage(item.language),
     published_at: optionalText(item.published_at),
@@ -2237,7 +2262,7 @@ function publicSafeRadarItem(item: PublicRadarSnapshotItem): PublicRadarSnapshot
     summary_en: item.summary_en ? publicSafeNote(item.summary_en) : undefined,
     categories: categories(item.categories),
     tags: publicSafeNotes(stringArray(item.tags, 12, 80)),
-    source_tier: text(item.source_tier, 20) || "unreviewed",
+    source_tier: sourceTier,
     confidence: score(item.confidence),
     scores: {
       ai_relevance: score(scores.ai_relevance),

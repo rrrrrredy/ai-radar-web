@@ -1,6 +1,6 @@
 # Data Completeness Release Candidate
 
-Generated: 2026-07-15T02:40:16.769Z
+Generated: 2026-07-15T04:31:30.535Z
 
 ## Gate Summary
 
@@ -12,15 +12,15 @@ Generated: 2026-07-15T02:40:16.769Z
 - Failed sources in latest run: 0
 - Blocked/manual sources: 226
 - Sources with public visible items: 64
-- Raw items: 275
-- Radar items: 271
-- Public radar items: 249
+- Raw items: 280
+- Radar items: 276
+- Public radar items: 254
 
 ## Conversion Rates
 
 - Source to raw coverage: 91.2%
-- Raw to radar conversion: 98.5%
-- Radar to public visibility: 91.9%
+- Raw to radar conversion: 98.6%
+- Radar to public visibility: 92.0%
 - Public visible sources / total configured sources: 20.2%
 
 ## Pipeline Counts
@@ -28,11 +28,11 @@ Generated: 2026-07-15T02:40:16.769Z
 - Sources with at least one raw item: 83
 - Sources with at least one radar item: 83
 - Sources with at least one public radar item: 64
-- Raw items with radar items: 271
-- Included / needs_review / excluded / failed radar items: 248 / 4 / 19 / 0
+- Raw items with radar items: 276
+- Included / needs_review / excluded / failed radar items: 253 / 4 / 19 / 0
 - Report candidates: 30
-- Latest ingestion timestamp: 2026-07-15T02:19:01.959+00:00
-- Latest understanding timestamp: 2026-07-15T02:21:41.713+00:00
+- Latest ingestion timestamp: 2026-07-15T04:22:11.077+00:00
+- Latest understanding timestamp: 2026-07-15T04:27:56.55+00:00
 
 ## Persistence Audit
 
@@ -361,7 +361,7 @@ Generated: 2026-07-15T02:40:16.769Z
 | openai-cookbook | OpenAI Cookbook | github_open_source | T1 | active | api | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:02:44.324+00:00 | 2026-07-14T07:05:52.327+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | openai-python | OpenAI Python SDK | github_open_source | T1 | active | api | yes | no | no | 9 | 9 | 9 | 2026-07-14T07:19:34.971+00:00 | 2026-07-14T07:20:44.097+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | anthropic-news | Anthropic News | official_company | T1 | active | sitemap | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:08:36.007+00:00 | 2026-07-14T07:08:43.759+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| anthropic-research | Anthropic Research | official_company | T1 | active | sitemap | yes | yes | yes | 6 | 6 | 6 | 2026-07-15T02:19:01.828+00:00 | 2026-07-15T02:21:09.705+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| anthropic-research | Anthropic Research | official_company | T1 | active | sitemap | yes | yes | yes | 11 | 11 | 11 | 2026-07-15T04:22:10.763+00:00 | 2026-07-15T04:27:24.341+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
 | anthropic-sdk-python | Anthropic Python SDK | github_open_source | T1 | active | api | yes | no | no | 8 | 8 | 8 | 2026-07-14T07:08:36.091+00:00 | 2026-07-14T07:12:07.757+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | google-deepmind-blog | Google DeepMind Blog | official_company | T1 | active | rss | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:18:51.059+00:00 | 2026-07-14T07:22:18.342+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | google-gemini-blog | Google Gemini Blog | official_company | T1 | active | rss | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:24:48.803+00:00 | 2026-07-14T07:24:59.214+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |

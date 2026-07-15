@@ -19,7 +19,7 @@ export default async function AskPage({
   const periodLabel = freshness.isStale ? "最近可见窗口" : "过去 24 小时";
   const curatedLabel = freshness.isStale ? "行业精选快照" : "今日行业精选";
   const suggestedQuestions = [
-    `${windowLabel}有哪些多源确认的模型发布？`,
+    `${windowLabel}有哪些跨来源家族报道的模型发布？`,
     `${periodLabel} Agent / 开发工具 有哪些重要变化？`,
     "哪些事件只有单一来源，可信度较低？",
     freshness.isStale ? "哪些来源在本轮刷新失败或没有新内容？" : "哪些来源今天失败或没有新内容？",

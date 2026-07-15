@@ -173,6 +173,7 @@ function emptySummary(input: {
     excluded: null,
     failureFamilies: {},
     failedRadarItems: null,
+    failedSourceDetails: [],
     failedSourceReasons: {},
     failedSources: 0,
     fetchedSources: 0,

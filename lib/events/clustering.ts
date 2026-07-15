@@ -409,7 +409,6 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
     cluster.items.some((clusterItem) => sourceFamilyForEvent(clusterItem) === "开源项目") &&
     !sourceNameOverlap;
   const versionConflict = cluster.items.some((clusterItem) => hasVersionConflict(clusterItem.title, item.title));
-  const releaseSeriesMatch = cluster.items.some((clusterItem) => isSameReleaseSeries(clusterItem, item));
   const partnerConflict = cluster.items.some((clusterItem) => hasPartnerConflict(clusterItem, item));
   const strongEntityConflict =
     cluster.strongEntities.size > 0 &&
@@ -430,15 +429,15 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
     sharedStrongEntityCount >= 2 &&
     timeScore >= 0.35;
 
-  if (openSourceProjectConflict && !releaseSeriesMatch && (versionConflict || isReleaseVersionTitle(item.title) || cluster.items.some((clusterItem) => isReleaseVersionTitle(clusterItem.title)))) {
+  if (versionConflict) {
+    return 0;
+  }
+
+  if (openSourceProjectConflict && (isReleaseVersionTitle(item.title) || cluster.items.some((clusterItem) => isReleaseVersionTitle(clusterItem.title)))) {
     return 0;
   }
 
   if (partnerConflict) {
-    return 0;
-  }
-
-  if (versionConflict && !releaseSeriesMatch) {
     return 0;
   }
 
@@ -456,10 +455,6 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
 
   if (corroboratedConceptMatch) {
     score = Math.max(score, 0.72);
-  }
-
-  if (releaseSeriesMatch) {
-    score = Math.max(score, 0.66);
   }
 
   if (strongEntityConflict && titleOverlap < 0.72) {
@@ -540,11 +535,11 @@ function compareEvents(left: PublicEventCluster, right: PublicEventCluster) {
 }
 
 function compareCuratedEvents(left: PublicEventCluster, right: PublicEventCluster) {
-  const editorialDelta = editorialPriority(right) - editorialPriority(left);
-  if (editorialDelta !== 0) return editorialDelta;
-
   const scoreDelta = right.event_score - left.event_score;
   if (scoreDelta !== 0) return scoreDelta;
+
+  const editorialDelta = editorialPriority(right) - editorialPriority(left);
+  if (editorialDelta !== 0) return editorialDelta;
 
   const multiSourceDelta = Number(right.source_count > 1) - Number(left.source_count > 1);
   if (multiSourceDelta !== 0) return multiSourceDelta;
@@ -708,7 +703,7 @@ function scoreReason(score: number, sourceCount: number, sourceFamilies: string[
   const pieces = [
     `综合分 ${score}`,
     sourceCount > 1 && sourceFamilies.length > 1
-      ? `${sourceCount} 个来源、${sourceFamilies.length} 个来源家族交叉确认`
+      ? `${sourceCount} 个来源、${sourceFamilies.length} 个来源家族提供多源报道，来源独立性未验证`
       : sourceCount > 1
         ? `${sourceCount} 个来源报道，但集中在同一来源家族`
         : "单一来源，需继续观察",
@@ -775,6 +770,7 @@ function eventCaveats(items: ClusterableRadarItem[], sourceFamilies: string[]) {
   return [
     items.length === 1 ? "目前只有单条公开信号，可信度需要后续来源补强。" : "",
     sourceFamilies.length === 1 ? "来源家族仍然集中，需关注是否有独立来源确认。" : "",
+    sourceFamilies.length > 1 ? "来源家族不同，但可能转述同一原始声明；尚未建立来源独立性关系。" : "",
     items.some((item) => item.status === "needs_review") ? "包含待复核信号，报告中应保留不确定性。" : ""
   ].filter(Boolean);
 }
@@ -887,65 +883,8 @@ function hasVersionConflict(leftTitle: string, rightTitle: string) {
 }
 
 function releaseVersion(title: string) {
-  return title.match(/\b(?:(?:python|dotnet|java|js|node|go|rust)-|v)?\d+(?:\.\d+){1,3}(?:[-_][\w.-]+)?\b|\bb\d{4,}\b/i)?.[0]?.toLowerCase() ?? null;
-}
-
-function isSameReleaseSeries(left: ClusterableRadarItem, right: ClusterableRadarItem) {
-  if (!hasVersionConflict(left.title, right.title)) return false;
-  const leftTrack = releaseTrack(left.title);
-  const rightTrack = releaseTrack(right.title);
-  if (leftTrack && rightTrack && leftTrack !== rightTrack) return false;
-
-  const leftTime = Date.parse(itemTimestamp(left));
-  const rightTime = Date.parse(itemTimestamp(right));
-  if (!Number.isFinite(leftTime) || !Number.isFinite(rightTime) || Math.abs(leftTime - rightTime) > 7 * 24 * 60 * 60 * 1000) {
-    return false;
-  }
-
-  const leftProject = releaseProjectKey(left.url);
-  const rightProject = releaseProjectKey(right.url);
-  if (leftProject && rightProject && leftProject === rightProject) return true;
-
-  if (sourceFamilyForEvent(left) !== "开源项目" || sourceFamilyForEvent(right) !== "开源项目") return false;
-  const leftSubject = releaseSubject(left.title);
-  const rightSubject = releaseSubject(right.title);
-  if (!leftSubject || leftSubject !== rightSubject) return false;
-
-  return canonicalStrongEntityOverlap(new Set(strongItemEntities(left)), new Set(strongItemEntities(right))) > 0;
-}
-
-function releaseTrack(title: string) {
-  const version = releaseVersion(title);
-  const prefix = version?.match(/^([a-z]+)-?/i)?.[1]?.toLowerCase() ?? null;
-  return prefix && prefix !== "v" && prefix !== "b" ? prefix : null;
-}
-
-function releaseProjectKey(rawUrl: string) {
-  try {
-    const parsed = new URL(rawUrl);
-    const host = parsed.hostname.replace(/^www\./, "").toLowerCase();
-    const segments = parsed.pathname.split("/").filter(Boolean).map((segment) => segment.toLowerCase());
-    if (host === "api.github.com" && segments[0] === "repos" && segments.length >= 3) {
-      return `github:${segments[1]}/${segments[2]}`;
-    }
-    if (host.endsWith("github.com") && segments.length >= 2) {
-      return `github:${segments[0]}/${segments[1]}`;
-    }
-    if (host.endsWith("huggingface.co") && segments.length >= 2) {
-      return `huggingface:${segments[0]}/${segments[1]}`;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function releaseSubject(title: string) {
-  return normalizeText(
-    title
-      .replace(/\b(?:(?:python|dotnet|java|js|node|go|rust)-|v)?\d+(?:\.\d+){1,3}(?:[-_][\w.-]+)?\b|\bb\d{4,}\b/gi, " ")
-      .replace(/\b(?:release|released|version|changelog|update)\b|发布|版本|更新|上线/gi, " ")
-  ).trim();
+  const version = title.match(/\b(?:(?:python|dotnet|java|js|node|go|rust)-|v)?\d+(?:\.\d+){1,3}(?:[-_][\w.-]+)?\b|\bb\d{4,}\b/i)?.[0]?.toLowerCase();
+  return version?.replace(/^v(?=\d)/, "") ?? null;
 }
 
 function isReleaseVersionTitle(title: string) {

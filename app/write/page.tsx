@@ -19,7 +19,7 @@ export default async function WritePage({
   const periodLabel = freshness.isStale ? "这批可见窗口" : "本周";
   const suggestedPrompts = [
     `基于${curatedLabel}写一段 AI 行业观察`,
-    `把${periodLabel}多源确认事件整理成周报提纲`,
+    `把${periodLabel}跨来源家族报道事件整理成周报提纲`,
     "找出适合写成深度分析的 3 个事件",
     "列出证据不足但值得继续跟踪的弱信号",
     ...summary.curatedEvents.slice(0, 2).map((event) => `基于“${event.canonical_title}”写一个带证据边界的观察角度。`)

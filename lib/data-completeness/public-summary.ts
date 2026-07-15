@@ -149,6 +149,26 @@ export async function loadPublicDataCompletenessSummary(): Promise<PublicDataCom
     );
     const skippedSources = sourceResults.filter((result) => result.status === "skipped").length;
     const failedResults = sourceResults.filter((result) => result.status === "failed");
+    const sourceBySlug = new Map(sources.map((source) => [source.id, source]));
+    const failedSourceDetails = uniqueSourceResults(sourceHealthRows)
+      .filter((result) => result.status === "failed")
+      .map((result) => {
+        const slug = text(result.source_id);
+        const source = sourceBySlug.get(slug);
+        return {
+          reason: categorizeFailureFamily({
+            errorMessage: result.error_message,
+            itemCount: result.item_count,
+            metadata: result.metadata,
+            status: result.status,
+            warnings: result.warnings
+          }) ?? "failed",
+          source_family: source ? sourceFamily(source) : "other",
+          source_name: source?.name ?? slug,
+          source_slug: slug
+        };
+      })
+      .sort((left, right) => left.source_family.localeCompare(right.source_family) || left.source_name.localeCompare(right.source_name));
     const failedSourceReasons = countReasons(failedResults.map((result) => sourceFailureReason(result)));
     const skippedSourceReasons = countReasons(
       sourceResults.filter((result) => result.status === "skipped").map((result) => sourceSkipReason(result))
@@ -169,6 +189,7 @@ export async function loadPublicDataCompletenessSummary(): Promise<PublicDataCom
       ...base,
       attemptedSources: attemptedSources.size,
       failedSourceReasons,
+      failedSourceDetails,
       failedSources: failedResults.length,
       fetchedSources: fetchedSources.size,
       included: statusCounts.included,
@@ -221,6 +242,7 @@ function emptySummary(input: {
     failureFamilies: {},
     failedRadarItems: null,
     failedSourceReasons: {},
+    failedSourceDetails: [],
     failedSources: 0,
     fetchedSources: 0,
     included: null,

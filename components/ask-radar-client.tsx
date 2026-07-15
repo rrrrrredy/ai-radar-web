@@ -82,7 +82,7 @@ export function AskRadarClient({
           </div>
           <h1 className="mt-4 text-3xl font-semibold text-radar-ink">事件提问</h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
-            基于当前 AI 行业雷达事件提问。示例问题围绕行业精选、多源确认、弱信号和来源健康，回答会保留来源、时间窗口、不确定性和引用。
+            基于当前 AI 行业雷达事件提问。示例问题围绕行业精选、多源报道、弱信号和来源健康，回答会保留来源、时间窗口、不确定性和引用。
           </p>
         </div>
 

@@ -52,6 +52,7 @@ export type EventClusterItemUpsertRow = Record<string, unknown> & {
 };
 
 export type EventLayerPersistenceResult = {
+  eventClustersArchived: number;
   eventClusterItemsUpserted: number;
   eventClustersUpserted: number;
 };
@@ -185,11 +186,51 @@ export async function persistEventLayer(
     "event_cluster_id,radar_item_id",
     batchSize
   );
+  const eventClustersArchived = await archiveStaleGeneratedClusters(
+    supabase,
+    new Set(eventLocalIds),
+    requiredTimestamp(options.persistedAt ?? new Date().toISOString(), "event persistence timestamp"),
+    batchSize
+  );
 
   return {
+    eventClustersArchived,
     eventClusterItemsUpserted: itemRows.length,
     eventClustersUpserted: clusterRows.length
   };
+}
+
+async function archiveStaleGeneratedClusters(
+  supabase: SupabaseClient,
+  currentLocalIds: ReadonlySet<string>,
+  persistedAt: string,
+  batchSize: number
+) {
+  const { data, error } = await supabase
+    .from("event_clusters")
+    .select("id, local_id")
+    .like("local_id", "event_%")
+    .in("status", ["draft", "reviewed"])
+    .limit(10_000);
+  if (error) {
+    throw new Error(`Unable to load generated event clusters for reconciliation: ${error.message}`);
+  }
+
+  const staleIds = ((data ?? []) as IdRow[])
+    .filter((row) => row.local_id && !currentLocalIds.has(row.local_id))
+    .map((row) => row.id);
+
+  for (const batch of chunkRows(staleIds, batchSize)) {
+    const { error: updateError } = await supabase
+      .from("event_clusters")
+      .update({ status: "archived", updated_at: persistedAt })
+      .in("id", batch);
+    if (updateError) {
+      throw new Error(`Unable to archive stale event clusters: ${updateError.message}`);
+    }
+  }
+
+  return staleIds.length;
 }
 
 async function loadRadarItemDatabaseIds(
