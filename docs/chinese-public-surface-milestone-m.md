@@ -15,7 +15,7 @@ Cloudflare Pages is Chinese by default and provides a complete English route tre
 | `/ask/` | `/en/ask/` |
 | `/write/` | `/en/write/` |
 
-English pages render the same event cards, all-signal rows, source health, report gates, citations, filters, timelines, and browser-local Ask/Write tools. Original source, company, model, article, and paper names remain unchanged where translation would reduce traceability.
+English pages render the same event cards, all-signal rows, source health, report gates, citations, filters, timelines, report coverage caveats, and browser-local Ask/Write tools. Report cards explicitly disclose the public signal-to-event projection in both languages. Original source, company, model, article, and paper names remain unchanged where translation would reduce traceability.
 
 ## Information Architecture
 

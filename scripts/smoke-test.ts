@@ -803,6 +803,11 @@ function assertBilingualStaticContract() {
   assert.equal(englishAsk.includes("Query public events") && englishAsk.includes("../../data/radar-snapshot.json"), true, "English Ask must query the public event snapshot locally.");
   assert.equal(englishWrite.includes("Generate an evidence-led outline") && englishWrite.includes("../../data/radar-snapshot.json"), true, "English Write must generate from the public event snapshot locally.");
   assert.equal(englishAsk.includes("filter((entry) => entry.score !== null)") && englishAsk.includes("multiple source families") && englishAsk.includes("No matching event"), true, "English Ask must apply bilingual intent matching and a real no-match threshold.");
+  assert.match(
+    englishReports,
+    /Public event projection maps \d+ of \d+ public signals to \d+ reportable events; signal-only rows remain under All signals\./,
+    "English report cards must disclose the same signal-to-event projection boundary as the Chinese report view."
+  );
   const publicStyles = readSource("dist/cloudflare-pages/assets/styles.css");
   assert.equal(publicStyles.includes(":focus-visible") && publicStyles.includes("outline: 3px solid"), true, "Static public controls and links must expose a visible keyboard focus state.");
 }

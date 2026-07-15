@@ -1382,9 +1382,32 @@ function renderReportEn(report: SnapshotReport, snapshot: Snapshot) {
     <dl class="inline-defs">${rail("Baseline evidence gate", qualityLabelEn(report))}${rail("Cross-family coverage / same-family multi / single", `${crossFamilyEvents} / ${Math.max(0, corroboratedEvents - crossFamilyEvents)} / ${Math.max(0, fallbackEvents.length - corroboratedEvents)}`)}${rail("Publication readiness", report.status !== "needs_review" ? "Editorial status controls publication" : "Needs review: source independence is not modeled")}${rail("Usable items", report.usable_item_count)}${rail("Citations", report.citation_count)}${rail("Distinct sources", report.distinct_source_count)}${rail("Categories", report.category_count)}${rail("Missing evidence", report.missing_evidence.length)}${rail("Window", `${formatDateEn(report.time_window.start)} to ${formatDateEn(report.time_window.end)}`)}</dl>
     ${fallbackEvents.length > 0 ? `<h3>Top events included</h3><div class="event-mini-list">${fallbackEvents.map((event) => renderEventMiniEn(event, snapshot)).join("")}</div>` : ""}
     ${gateReasons.length > 0 ? `<h3>Why the gate did not pass</h3>${noteListEn(gateReasons)}` : ""}
-    <h3>Caveats</h3>${noteListEn(["This is a public evidence candidate, not an editorially published report.", "Original citations should be checked before using any claim externally.", ...(report.missing_evidence.length > 0 ? ["One or more evidence gaps remain unresolved."] : [])])}
+    <h3>Caveats</h3>${noteListEn(reportCaveatsEn(report, snapshot))}
     ${report.citations.length > 0 ? `<div class="citation-grid">${report.citations.slice(0, 12).map((citation) => `<a class="citation" href="${escapeAttr(citation.url)}"><span>${escapeHtml(citation.source_name)}</span><strong>${escapeHtml(citation.title)}</strong><small>${escapeHtml(formatDateEn(citation.published_at))}</small></a>`).join("")}</div>` : ""}
   </article>`;
+}
+
+function reportCaveatsEn(report: SnapshotReport, snapshot: Snapshot) {
+  const coverage = eventSignalCoverage(snapshot);
+  const signalCount = snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items;
+  const sourceIds = new Set(report.source_item_ids);
+  const reportEvents = snapshot.event_clusters.filter((event) => event.related_item_ids.some((id) => sourceIds.has(id)));
+  const crossFamilyEvents = reportEvents.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
+
+  return uniqueStrings([
+    `The latest public content is dated ${formatDateEn(snapshot.freshness.latest_timestamp)}; this snapshot is not complete real-time web coverage.`,
+    `Report evidence is restricted to the declared window from ${formatDateEn(report.time_window.start)} to ${formatDateEn(report.time_window.end)}.`,
+    "This is an event-aware public report view; original signals remain auditable under All signals.",
+    crossFamilyEvents > 0
+      ? "Cross-family coverage is visible, but source independence has not been established."
+      : "No event in this candidate has cross-family multi-source coverage, so the conclusions must retain uncertainty.",
+    "Retrieval uses the public evidence store and exposes only public, structured citation fields.",
+    `${snapshot.counts.needs_review} radar signals still need human review before they can support high-confidence synthesis.`,
+    "This is an evidence candidate, not an editorially published report; check original citations before external use.",
+    "X and WeChat are not crawled automatically; related signals require manual or compliant-source collection.",
+    `Public event projection maps ${coverage.mapped} of ${signalCount} public signals to ${snapshot.event_count} reportable events; signal-only rows remain under All signals.`,
+    ...(report.missing_evidence.length > 0 ? ["One or more evidence gaps remain unresolved."] : [])
+  ]);
 }
 
 function reportCoveragePanelEn(snapshot: Snapshot, reports: SnapshotReport[]) {
