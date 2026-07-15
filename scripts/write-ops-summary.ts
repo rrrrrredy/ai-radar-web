@@ -317,7 +317,15 @@ function parseArgs(args: string[]): CliOptions {
 }
 
 async function loadCounts(): Promise<OpsCounts> {
-  const coverage = await loadPublicDataCompletenessSummary();
+  const firstRead = await loadPublicDataCompletenessSummary();
+  const coverage = coverageCountsAreConsistent(firstRead)
+    ? firstRead
+    : await loadPublicDataCompletenessSummary();
+
+  if (!coverageCountsAreConsistent(coverage)) {
+    throw new Error("Coverage counts remain internally inconsistent after one retry.");
+  }
+
   return {
     excluded: coverage.excluded,
     failed: coverage.failedRadarItems,
@@ -328,6 +336,23 @@ async function loadCounts(): Promise<OpsCounts> {
     raw_items: coverage.rawItems,
     report_candidates: coverage.reportCandidates
   };
+}
+
+function coverageCountsAreConsistent(
+  coverage: Awaited<ReturnType<typeof loadPublicDataCompletenessSummary>>
+) {
+  const publicCount = coverage.publicRadarItems;
+  const radarCount = coverage.radarItems;
+  if (publicCount !== null && publicCount > 0 && (radarCount === null || radarCount < publicCount)) {
+    return false;
+  }
+
+  const statusCounts = [coverage.included, coverage.needsReview, coverage.excluded, coverage.failedRadarItems];
+  if (radarCount !== null && statusCounts.every((count): count is number => count !== null)) {
+    return statusCounts.reduce((sum, count) => sum + count, 0) === radarCount;
+  }
+
+  return true;
 }
 
 async function latestReportCandidate(reportType: ReportPreviewType): Promise<ReportCandidateSummary> {

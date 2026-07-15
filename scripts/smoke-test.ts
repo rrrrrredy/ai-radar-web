@@ -1269,6 +1269,14 @@ function assertTrustedPublishingRegressionGuards() {
     "Cloudflare reports page must not let a newer evidence draft hide a formal reviewed/published report."
   );
 
+  const opsSummaryWriter = readSource("scripts/write-ops-summary.ts");
+  assert.equal(
+    opsSummaryWriter.includes("coverageCountsAreConsistent") &&
+      opsSummaryWriter.includes("internally inconsistent after one retry"),
+    true,
+    "The safe operations summary must reject transiently inconsistent radar/public counts after one retry."
+  );
+
   const publicSnapshotExport = readSource("scripts/export-public-snapshot.ts");
   assert.equal(
     publicSnapshotExport.includes("publicSafeRadarItem") &&
