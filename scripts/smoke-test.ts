@@ -549,6 +549,9 @@ function assertTrustedPublishingSurfaces() {
       !cloudflareSite.includes("可能影响模型选型、API 成本、能力评估或基准对比。") &&
       !cloudflareSite.includes("等待第二来源、官方更新或社区复现实证后再扩大解读。") &&
       cloudflareSite.includes("报告关联实体") &&
+      cloudflareSite.includes("source_health_by_family") &&
+      cloudflareSite.includes("最近一次广泛刷新按来源家族汇总") &&
+      cloudflareSite.includes("Latest broad refresh by source family") &&
       cloudflareSite.includes("reportSectionTraceability"),
     true,
     "Cloudflare static site must separate formal reports from evidence drafts and show reader decision guidance plus report-to-entity traceability."
@@ -618,6 +621,11 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   const snapshotPath = "dist/cloudflare-pages/data/radar-snapshot.json";
   assert.equal(fs.existsSync(path.join(process.cwd(), snapshotPath)), true, `${snapshotPath} must exist after the release build.`);
   assertPublicSnapshotJsonContract(snapshotPath);
+  assert.equal(
+    fs.existsSync(path.join(process.cwd(), "dist/cloudflare-pages/favicon.svg")),
+    true,
+    "Cloudflare static output must include its referenced favicon."
+  );
 
   for (const pagePath of [
     "dist/cloudflare-pages/index.html",
@@ -629,6 +637,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   ]) {
     assert.equal(fs.existsSync(path.join(process.cwd(), pagePath)), true, `${pagePath} must exist after the release build.`);
     const page = readSource(pagePath);
+    assert.equal(page.includes('rel="icon"'), true, `${pagePath} must reference the shared favicon.`);
     assert.equal(page.includes("activation_"), false, `${pagePath} must not expose refresh run ids.`);
     assert.equal(
       page.toLowerCase().includes("live deepseek activation"),
@@ -993,10 +1002,15 @@ function assertPublicSnapshotJsonContract(snapshotPath: string) {
   const entityAllowedKeys = new Set(["confidence", "name", "type"]);
   const entityKeyViolations: string[] = [];
   const entityShapeViolations: string[] = [];
+  const corruptedIndustryTerms: string[] = [];
 
   publicRadarItems.forEach((item, itemIndex) => {
     assert.equal(isRecord(item), true, `${snapshotPath}.radar_items[${itemIndex}] must be an object.`);
     const radarItem = item as JsonRecord;
+    const renderedText = JSON.stringify(radarItem);
+    if (/\b(?:MANA secret|Visual secret Pruning|secret-wise expert weighting)\b/i.test(renderedText)) {
+      corruptedIndustryTerms.push(`${snapshotPath}.radar_items[${itemIndex}]`);
+    }
     const entities = radarItem.entities;
     assert.equal(Array.isArray(entities), true, `${snapshotPath}.radar_items[${itemIndex}].entities must be an array.`);
     const publicEntities = entities as unknown[];
@@ -1028,6 +1042,11 @@ function assertPublicSnapshotJsonContract(snapshotPath: string) {
 
   assert.deepEqual(entityKeyViolations, [], `${snapshotPath} public entities must expose only name/type/confidence.`);
   assert.deepEqual(entityShapeViolations, [], `${snapshotPath} public entities must use the expected public shape.`);
+  assert.deepEqual(
+    corruptedIndustryTerms,
+    [],
+    `${snapshotPath} credential redaction must not corrupt ordinary AI terms such as token or token-wise.`
+  );
 }
 
 function assertPublicWarningsAreReaderSafe(values: unknown[], label: string) {
@@ -1254,6 +1273,8 @@ function assertTrustedPublishingRegressionGuards() {
   assert.equal(
     publicSnapshotExport.includes("publicSafeRadarItem") &&
       publicSnapshotExport.includes("function publicSafeReport") &&
+      publicSnapshotExport.includes("source_health_by_family") &&
+      publicSnapshotExport.includes("aggregateSourceFamilyHealth") &&
       publicSnapshotExport.includes("function publicSourceWarnings") &&
       publicSnapshotExport.includes("warnings: publicSourceWarnings(snapshot)") &&
       !/function publicSafeReport[\s\S]*?\{\s*\.\.\.report,/.test(publicSnapshotExport) &&

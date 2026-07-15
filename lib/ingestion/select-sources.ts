@@ -74,7 +74,7 @@ function mergeSource(existing: CleanedSource, incoming: CleanedSource) {
     existing.description = incoming.description;
   }
 
-  for (const field of ["url", "rss_url", "github_url", "youtube_url", "podcast_url", "x_handle"] as const) {
+  for (const field of ["url", "rss_url", "sitemap_url", "github_url", "youtube_url", "podcast_url", "x_handle"] as const) {
     if (!existing[field] && incoming[field]) {
       existing[field] = incoming[field];
     }
@@ -237,7 +237,7 @@ function diversifySources(sources: SelectedSource[], limit: number) {
   return selected;
 }
 
-export function sourceFamily(source: Pick<SelectedSource, "category" | "type" | "crawl_method">) {
+export function sourceFamily(source: { category?: string | null; type?: string | null; crawl_method?: string | null }) {
   if (source.category === "github" || source.type === "github" || source.crawl_method === "api") {
     return "github_open_source";
   }
@@ -246,7 +246,7 @@ export function sourceFamily(source: Pick<SelectedSource, "category" | "type" | 
     return "arxiv_research";
   }
 
-  if (["official_company", "official_blog", "research_lab", "huggingface"].includes(source.category)) {
+  if (["official_company", "official_blog", "research_lab", "huggingface"].includes(source.category ?? "")) {
     return "official_company";
   }
 
@@ -284,14 +284,16 @@ function methodRank(method: SelectedSource["crawl_method"]) {
   switch (method) {
     case "rss":
       return 0;
-    case "api":
+    case "sitemap":
       return 1;
-    case "html":
+    case "api":
       return 2;
-    case "podcast_feed":
+    case "html":
       return 3;
-    case "youtube_feed":
+    case "podcast_feed":
       return 4;
+    case "youtube_feed":
+      return 5;
   }
 }
 

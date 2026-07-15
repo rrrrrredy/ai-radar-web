@@ -7,6 +7,34 @@ export type PublicCoverageRates = {
   sourcePublicVisibility: number | null;
 };
 
+export type PublicSourceHealthCounts = {
+  succeeded: number;
+  failed: number;
+  timeout: number;
+  "403": number;
+  rate_limit: number;
+  no_items: number;
+  duplicate_only: number;
+  manual_blocked: number;
+  unsupported_source: number;
+  low_relevance_excluded: number;
+};
+
+export type PublicSourceFamilyHealth = PublicSourceHealthCounts & {
+  family: string;
+  configured: number;
+  automated_eligible: number;
+  attempted: number;
+  skipped: number;
+};
+
+export type PublicSourceHealthScope = {
+  run_id: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  attempted_sources: number;
+};
+
 export type PublicDataCompletenessSummary = {
   generatedAt: string;
   sourcesTotal: number;
@@ -32,6 +60,8 @@ export type PublicDataCompletenessSummary = {
   latestIngestion: string | null;
   latestUnderstanding: string | null;
   failureFamilies: FailureFamilyCounts;
+  sourceFamilyHealth: PublicSourceFamilyHealth[];
+  sourceHealthScope: PublicSourceHealthScope;
   failedSourceReasons: Record<string, number>;
   skippedSourceReasons: Record<string, number>;
   rates: PublicCoverageRates;

@@ -21,6 +21,10 @@
       "type": ["string", "null"],
       "format": "uri"
     },
+    "sitemap_url": {
+      "type": ["string", "null"],
+      "format": "uri"
+    },
     "x_handle": {
       "type": ["string", "null"]
     },
@@ -108,7 +112,7 @@
     },
     "crawl_method": {
       "type": "string",
-      "enum": ["rss", "html", "api", "manual", "x_api_future", "podcast_feed", "youtube_feed", "no_crawl", "unknown"]
+      "enum": ["rss", "html", "sitemap", "api", "manual", "x_api_future", "podcast_feed", "youtube_feed", "no_crawl", "unknown"]
     },
     "risk_flags": {
       "type": "array",

@@ -12,6 +12,7 @@ import { fetchGithubSource } from "@/lib/ingestion/fetchers/github";
 import { fetchHtmlSource } from "@/lib/ingestion/fetchers/html";
 import { fetchPodcastSource } from "@/lib/ingestion/fetchers/podcast";
 import { fetchRssSource } from "@/lib/ingestion/fetchers/rss";
+import { fetchSitemapSource } from "@/lib/ingestion/fetchers/sitemap";
 import { fetchYoutubeSource } from "@/lib/ingestion/fetchers/youtube";
 import { IngestionLogger } from "@/lib/ingestion/logger";
 import { normalizeFetchedItem } from "@/lib/ingestion/normalize";
@@ -124,6 +125,8 @@ async function fetchSource(source: SelectedSource, context: FetcherContext): Pro
       return fetchRssSource(source, context);
     case "html":
       return fetchHtmlSource(source, context);
+    case "sitemap":
+      return fetchSitemapSource(source, context);
     case "api":
       return fetchGithubSource(source, context);
     case "podcast_feed":

@@ -8,6 +8,7 @@ export type EventScoreLabel = "高优先级" | "关注" | "观察" | "噪音/低
 
 export type ClusterableRadarItem = {
   id: string;
+  source_id?: string;
   title: string;
   url: string;
   source_name: string;
@@ -202,15 +203,25 @@ const eventActionPatterns = [
   ["acquisition", /\b(?:acquire|acquires|acquired|acquisition|buyout|merger)\b|收购|并购/i]
 ] as const;
 
+const eventConceptPatterns = [
+  {
+    anchors: [/\banthropic\b/i, /\bclaude\b/i],
+    aliases: [/\bj[ -]?space\b/i, /\bjacobian lens\b/i, /\bglobal workspace\b/i],
+    name: "anthropic-claude-j-space"
+  }
+] as const;
+
 const itemKeywordCache = new WeakMap<ClusterableRadarItem, string[]>();
 const itemEntityCache = new WeakMap<ClusterableRadarItem, string[]>();
 const itemStrongEntityCache = new WeakMap<ClusterableRadarItem, string[]>();
+const itemEventConceptCache = new WeakMap<ClusterableRadarItem, string[]>();
 const signalQualityCache = new WeakMap<ClusterableRadarItem, PublicSignalQuality>();
 const normalizedTextCache = new Map<string, string>();
 
 export function buildEventLayer(items: ClusterableRadarItem[]): PublicEventLayer {
   const publicItems = items
     .filter((item) => item.status === "included" || item.status === "needs_review")
+    .filter((item) => !signalQuality(item).isLowEventSignal)
     .sort(compareClusterInputItems);
   const clusters = clusterItems(publicItems).map(materializeCluster).sort(compareEvents);
   const eventClusterItems = clusters.flatMap((cluster) =>
@@ -272,11 +283,43 @@ function compareClusterInputItems(left: ClusterableRadarItem, right: Clusterable
   return left.id.localeCompare(right.id);
 }
 
-export function sourceFamilyForEvent(item: Pick<ClusterableRadarItem, "source_name" | "url" | "source_tier">) {
-  const text = `${item.source_name} ${safeDomain(item.url)} ${item.source_tier}`.toLowerCase();
-  if (text.includes("arxiv") || text.includes("paper") || text.includes("research")) return "研究订阅";
-  if (text.includes("github") || text.includes("release") || text.includes("hugging face") || text.includes("huggingface")) return "开源项目";
-  if (["openai", "anthropic", "google", "deepmind", "meta", "llama", "deepseek", "qwen", "microsoft", "nvidia"].some((term) => text.includes(term))) return "公司/实验室";
+export function sourceFamilyForEvent(
+  item: Pick<ClusterableRadarItem, "source_id" | "source_name" | "url" | "source_tier">
+) {
+  const domain = safeDomain(item.url);
+  const sourceId = item.source_id ?? "";
+  const text = `${sourceId} ${item.source_name} ${domain} ${item.source_tier}`.toLowerCase();
+
+  if (domain === "arxiv.org" || domain === "rss.arxiv.org" || /\barxiv\b|paper feed|journal/.test(text)) {
+    return "研究订阅";
+  }
+
+  if (domain === "github.com" || /github|sdk releases?|repository releases?/.test(text)) {
+    return "开源项目";
+  }
+
+  if (
+    [
+      "anthropic.com",
+      "ai.google.dev",
+      "ai.meta.com",
+      "blog.google",
+      "blogs.nvidia.com",
+      "claude.com",
+      "deepmind.google",
+      "developer.nvidia.com",
+      "huggingface.co",
+      "microsoft.com",
+      "openai.com",
+      "techcommunity.microsoft.com"
+    ].some((officialDomain) => domain === officialDomain || domain.endsWith(`.${officialDomain}`)) ||
+    ["openai", "anthropic", "google deepmind", "google gemini", "meta ai", "microsoft foundry", "nvidia"].some((term) => text.includes(term))
+  ) {
+    return "公司/实验室";
+  }
+
+  if (text.includes("research") || text.includes("paper")) return "研究订阅";
+  if (text.includes("hugging face") || text.includes("huggingface")) return "开源项目";
   if ([
     "lex",
     "every",
@@ -375,12 +418,17 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
   const weakGenericOnly = entityOverlap > 0 && intersectionValues(cluster.entities, itemEntitySet).every((entity) => genericEntityTerms.has(entity));
   const sharedStrongEntityCount = canonicalStrongEntityOverlap(cluster.strongEntities, strongItemEntitySet);
   const specificEventActionMatch = cluster.items.some((clusterItem) => sharesSpecificEventAction(clusterItem.title, item.title));
+  const specificEventConceptMatch = cluster.items.some((clusterItem) => sharesSpecificEventConcept(clusterItem, item));
   const corroboratedActionMatch =
     specificEventActionMatch &&
     sharedStrongEntityCount >= 2 &&
     timeScore >= 0.7 &&
     titleOverlap >= 0.04 &&
     keywordOverlap >= 0.12;
+  const corroboratedConceptMatch =
+    specificEventConceptMatch &&
+    sharedStrongEntityCount >= 2 &&
+    timeScore >= 0.35;
 
   if (openSourceProjectConflict && !releaseSeriesMatch && (versionConflict || isReleaseVersionTitle(item.title) || cluster.items.some((clusterItem) => isReleaseVersionTitle(clusterItem.title)))) {
     return 0;
@@ -404,6 +452,10 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
 
   if (corroboratedActionMatch) {
     score += 0.28;
+  }
+
+  if (corroboratedConceptMatch) {
+    score = Math.max(score, 0.72);
   }
 
   if (releaseSeriesMatch) {
@@ -787,6 +839,29 @@ function strongItemEntities(item: ClusterableRadarItem) {
   return entities;
 }
 
+function itemEventConcepts(item: ClusterableRadarItem) {
+  const cached = itemEventConceptCache.get(item);
+  if (cached) {
+    return cached;
+  }
+
+  const text = [
+    item.title,
+    item.summary_zh ?? "",
+    item.summary_en ?? "",
+    item.tags.join(" "),
+    ...(item.entities ?? []).map((entity) => entity.name)
+  ].join(" ");
+  const concepts = eventConceptPatterns
+    .filter((concept) =>
+      concept.anchors.every((pattern) => pattern.test(text)) &&
+      concept.aliases.some((pattern) => pattern.test(text))
+    )
+    .map((concept) => concept.name);
+  itemEventConceptCache.set(item, concepts);
+  return concepts;
+}
+
 function titleSimilarity(left: string, right: string) {
   const leftFingerprint = titleFingerprint(left);
   const rightFingerprint = titleFingerprint(right);
@@ -991,6 +1066,11 @@ function canonicalEventEntity(value: string) {
 function sharesSpecificEventAction(leftTitle: string, rightTitle: string) {
   const leftActions = new Set(eventActionPatterns.filter(([, pattern]) => pattern.test(leftTitle)).map(([name]) => name));
   return eventActionPatterns.some(([name, pattern]) => leftActions.has(name) && pattern.test(rightTitle));
+}
+
+function sharesSpecificEventConcept(left: ClusterableRadarItem, right: ClusterableRadarItem) {
+  const leftConcepts = new Set(itemEventConcepts(left));
+  return itemEventConcepts(right).some((concept) => leftConcepts.has(concept));
 }
 
 function safeDomain(rawUrl: string) {

@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { buildEventLayer } from "@/lib/events/clustering";
 import { persistEventLayer, type EventLayerPersistenceResult } from "@/lib/events/persistence";
+import { toClusterableRadarItem } from "@/lib/events/radar-item-adapter";
 import { loadRadarFeed } from "@/lib/radar/feed";
 import { getSupabaseServiceClientForWrite } from "@/lib/supabase/service";
 
@@ -14,36 +15,7 @@ async function main() {
   const options = parseOptions(process.argv.slice(2));
   const persistenceClient = options.persist ? getSupabaseServiceClientForWrite() : null;
   const feed = await loadRadarFeed();
-  const eventLayer = buildEventLayer(
-    feed.items.map((item) => ({
-      categories: item.categories,
-      collected_at: item.collected_at,
-      confidence: item.confidence,
-      entities: item.entities,
-      evidence_notes: item.evidence_notes,
-      id: item.id,
-      language: item.language,
-      processed_at: item.processed_at,
-      published_at: item.published_at,
-      scores: {
-        ai_relevance: item.ai_relevance_score,
-        credibility: item.credibility_score,
-        freshness: item.freshness_score,
-        importance: item.importance_score,
-        novelty: item.novelty_score,
-        overall: item.overall_score
-      },
-      source_name: item.source_name,
-      source_tier: item.source_tier,
-      status: item.status,
-      summary_en: item.summary_en,
-      summary_zh: item.summary_zh,
-      tags: item.tags,
-      title: item.title,
-      url: item.url,
-      why_it_matters: item.why_it_matters
-    }))
-  );
+  const eventLayer = buildEventLayer(feed.items.map(toClusterableRadarItem));
 
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
   await fs.writeFile(outputPath, `${JSON.stringify(eventLayer, null, 2)}\n`, "utf8");

@@ -1,4 +1,4 @@
-export type CrawlMethod = "rss" | "html" | "api" | "podcast_feed" | "youtube_feed";
+export type CrawlMethod = "rss" | "html" | "sitemap" | "api" | "podcast_feed" | "youtube_feed";
 export type CrawlMethodFilter = CrawlMethod | "all";
 export type SourceStatus = "active" | "trial" | "needs_public_url" | "deferred" | "rejected";
 export type SourceLanguage = "zh" | "en" | "mixed" | "unknown" | "bilingual";
@@ -16,6 +16,7 @@ export type CleanedSource = {
   description: string;
   url: string | null;
   rss_url: string | null;
+  sitemap_url?: string | null;
   x_handle: string | null;
   github_url: string | null;
   youtube_url: string | null;

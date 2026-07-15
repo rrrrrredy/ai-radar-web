@@ -92,6 +92,8 @@ function summaryFromSnapshot(
     rawItems,
     rawItemsWithRadarItems: null,
     reportCandidates: integer(counts?.report_candidates ?? counts?.saved_report_candidates),
+    sourceFamilyHealth: sourceFamilyHealth(snapshot.source_health_by_family),
+    sourceHealthScope: sourceHealthScope(snapshot.source_health_scope),
     skippedSourceReasons: numericRecord(coverage?.skipped_source_reasons),
     skippedSources: integer(coverage?.skipped_sources) ?? 0,
     sourcesTotal,
@@ -186,6 +188,13 @@ function emptySummary(input: {
     reportCandidates: null,
     skippedSourceReasons: {},
     skippedSources: 0,
+    sourceFamilyHealth: [],
+    sourceHealthScope: {
+      attempted_sources: 0,
+      finished_at: null,
+      run_id: null,
+      started_at: null
+    },
     sourcesWithPublicItems: null,
     sourcesWithRadarItems: null,
     sourcesWithRawItems: null,
@@ -263,6 +272,43 @@ function numericRecord(value: unknown) {
       .map(([key, rawValue]) => [key, integer(rawValue) ?? 0] as const)
       .filter(([key, count]) => key && count > 0)
   );
+}
+
+function sourceFamilyHealth(value: unknown): PublicDataCompletenessSummary["sourceFamilyHealth"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(record)
+    .filter((row): row is JsonRecord => Boolean(row))
+    .map((row) => ({
+      "403": integer(row["403"]) ?? 0,
+      attempted: integer(row.attempted) ?? 0,
+      automated_eligible: integer(row.automated_eligible) ?? 0,
+      configured: integer(row.configured) ?? 0,
+      duplicate_only: integer(row.duplicate_only) ?? 0,
+      failed: integer(row.failed) ?? 0,
+      family: text(row.family) || "other",
+      low_relevance_excluded: integer(row.low_relevance_excluded) ?? 0,
+      manual_blocked: integer(row.manual_blocked) ?? 0,
+      no_items: integer(row.no_items) ?? 0,
+      rate_limit: integer(row.rate_limit) ?? 0,
+      skipped: integer(row.skipped) ?? 0,
+      succeeded: integer(row.succeeded) ?? 0,
+      timeout: integer(row.timeout) ?? 0,
+      unsupported_source: integer(row.unsupported_source) ?? 0
+    }));
+}
+
+function sourceHealthScope(value: unknown): PublicDataCompletenessSummary["sourceHealthScope"] {
+  const row = record(value);
+  return {
+    attempted_sources: integer(row?.attempted_sources) ?? 0,
+    finished_at: optionalText(row?.finished_at),
+    run_id: optionalText(row?.run_id),
+    started_at: optionalText(row?.started_at)
+  };
 }
 
 function publicWarnings(values: string[]) {

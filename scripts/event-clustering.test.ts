@@ -112,6 +112,42 @@ assert.equal(layer.event_count, 3, "unrelated product and legal events must rema
 
 assert.equal(sourceFamilyForEvent(arsAppleLawsuit), "分析/媒体");
 assert.equal(sourceFamilyForEvent(vergeAppleLawsuit), "分析/媒体");
+assert.equal(
+  sourceFamilyForEvent({
+    source_id: "anthropic-research",
+    source_name: "Anthropic Research",
+    source_tier: "T1",
+    url: "https://www.anthropic.com/research/tracing-thoughts"
+  }),
+  "公司/实验室"
+);
+assert.equal(
+  sourceFamilyForEvent({
+    source_id: "arxiv-cs-ai",
+    source_name: "arXiv cs.AI",
+    source_tier: "T1",
+    url: "https://arxiv.org/abs/2607.12345"
+  }),
+  "研究订阅"
+);
+assert.equal(
+  sourceFamilyForEvent({
+    source_id: "huggingface-blog",
+    source_name: "Hugging Face Blog",
+    source_tier: "T1",
+    url: "https://huggingface.co/blog/example-release"
+  }),
+  "公司/实验室"
+);
+assert.equal(
+  sourceFamilyForEvent({
+    source_id: "huggingface-transformers",
+    source_name: "Hugging Face Transformers",
+    source_tier: "T1",
+    url: "https://github.com/huggingface/transformers/releases/tag/v5.13.0"
+  }),
+  "开源项目"
+);
 
 const releaseItems = ["b9994", "b9993", "b9992"].map((version, index) => radarItem({
   categories: ["open_source"],
@@ -173,6 +209,86 @@ assert.equal(
   freshnessLayer.curated_events.some((event) => event.related_item_ids.includes(historicalItem.id)),
   false,
   "events older than 30 days relative to the latest evidence must not enter the curated view"
+);
+
+const anthropicWorkspace = radarItem({
+  categories: ["research"],
+  entities: [
+    company("Anthropic"),
+    { confidence: 0.98, name: "Claude", type: "model" as const },
+    { confidence: 0.94, name: "J-space", type: "other" as const }
+  ],
+  id: "anthropic-global-workspace",
+  published_at: "2026-07-06T09:00:00Z",
+  source_name: "Anthropic Research",
+  source_tier: "T1",
+  summary_en: "Anthropic reports that Claude uses an emergent global workspace called J-space.",
+  title: "A global workspace in language models",
+  url: "https://www.anthropic.com/research/global-workspace"
+});
+const mitJacobianLens = radarItem({
+  categories: ["research"],
+  entities: [
+    company("Anthropic"),
+    { confidence: 0.98, name: "Claude", type: "model" as const },
+    { confidence: 0.94, name: "Jacobian lens", type: "other" as const }
+  ],
+  id: "mit-claude-jacobian-lens",
+  published_at: "2026-07-09T06:30:00Z",
+  source_name: "MIT Technology Review AI",
+  summary_en: "MIT Technology Review explains the Jacobian lens finding inside Claude.",
+  title: "Anthropic found a hidden space where Claude puzzles over concepts",
+  url: "https://www.technologyreview.com/2026/07/09/anthropic-hidden-space"
+});
+const anthropicRobotics = radarItem({
+  categories: ["research"],
+  entities: [company("Anthropic"), { confidence: 0.98, name: "Claude", type: "model" as const }],
+  id: "anthropic-robotics",
+  published_at: "2026-07-05T08:00:00Z",
+  source_name: "Anthropic Research",
+  summary_en: "Anthropic evaluates Claude on robotics tasks.",
+  title: "How Claude performs on robotics tasks",
+  url: "https://www.anthropic.com/research/claude-plays-robotics"
+});
+const deepmindWorkspace = radarItem({
+  categories: ["research"],
+  entities: [company("Google DeepMind"), { confidence: 0.98, name: "Gemini", type: "model" as const }],
+  id: "deepmind-global-workspace",
+  published_at: "2026-07-08T08:00:00Z",
+  source_name: "Google DeepMind Blog",
+  summary_en: "DeepMind studies a global workspace hypothesis in Gemini.",
+  title: "A global workspace hypothesis for Gemini",
+  url: "https://deepmind.google/blog/global-workspace-gemini"
+});
+const conceptLayer = buildEventLayer([
+  anthropicWorkspace,
+  mitJacobianLens,
+  anthropicRobotics,
+  deepmindWorkspace,
+  radarItem({
+    categories: ["research"],
+    entities: [company("Anthropic"), { confidence: 0.98, name: "Claude", type: "model" as const }],
+    id: "anthropic-research-landing-page",
+    published_at: "2026-07-10T08:00:00Z",
+    source_name: "Anthropic Research",
+    summary_en: "Anthropic research page with links to papers, articles, and research updates.",
+    title: "Research",
+    url: "https://www.anthropic.com/research"
+  })
+]);
+const workspaceEvent = conceptLayer.event_clusters.find((event) => event.related_item_ids.includes(anthropicWorkspace.id));
+assert.ok(workspaceEvent, "expected an Anthropic J-space event");
+assert.deepEqual(
+  new Set(workspaceEvent.related_item_ids),
+  new Set([anthropicWorkspace.id, mitJacobianLens.id]),
+  "specific concept aliases should merge the official J-space item with the Jacobian-lens coverage only"
+);
+assert.equal(workspaceEvent.source_families.length, 2, "the merged event should preserve cross-family confirmation");
+assert.equal(conceptLayer.event_count, 3, "robotics and another lab's global-workspace research must remain separate");
+assert.equal(
+  conceptLayer.event_cluster_items.some((item) => item.radar_item_id === "anthropic-research-landing-page"),
+  false,
+  "directory and landing-page signals must remain outside the public event evidence layer"
 );
 
 console.log("Event clustering tests passed.");

@@ -1,4 +1,4 @@
-import { readCleanedSources } from "@/lib/ingestion/select-sources";
+import { readCleanedSources, sourceFamily } from "@/lib/ingestion/select-sources";
 import {
   categorizeFailureFamily,
   compactFailureFamilyCounts,
@@ -7,7 +7,11 @@ import {
 } from "@/lib/ops/failure-families";
 import { isSourceHealthEligible } from "@/lib/ingestion/source-health";
 import { getSupabaseServiceClient, getSupabaseServiceStatus } from "@/lib/supabase/service";
-import type { PublicDataCompletenessSummary } from "@/lib/data-completeness/types";
+import type {
+  PublicDataCompletenessSummary,
+  PublicSourceFamilyHealth,
+  PublicSourceHealthCounts
+} from "@/lib/data-completeness/types";
 import type { UnderstandingStatus } from "@/lib/understanding/types";
 
 export type { PublicCoverageRates, PublicDataCompletenessSummary } from "@/lib/data-completeness/types";
@@ -73,6 +77,7 @@ export async function loadPublicDataCompletenessSummary(): Promise<PublicDataCom
     automatedEligibleSources,
     blockedManualSources,
     generatedAt: new Date().toISOString(),
+    sourceFamilyHealth: baseSourceFamilyHealth(sources),
     sourcesTotal: sources.length
   });
 
@@ -129,6 +134,10 @@ export async function loadPublicDataCompletenessSummary(): Promise<PublicDataCom
       return counts;
     }, { ...emptyStatusCounts });
     const latestIngestionRows = selectLatestIngestionRunRows((ingestionRuns.data ?? []) as IngestionRunRow[]);
+    const sourceHealthRows = selectSourceHealthRunRows(
+      (ingestionRuns.data ?? []) as IngestionRunRow[],
+      automatedEligibleSources
+    );
     const latestUnderstandingRow = (latestUnderstanding.data ?? [])[0] as UnderstandingRunRow | undefined;
     const sourceResults = latestIngestionRows.flatMap((row) => row.metadata?.source_results ?? []);
     const attemptedSources = new Set(sourceResults.map((result) => result.source_id).filter(isNonEmptyString));
@@ -145,6 +154,12 @@ export async function loadPublicDataCompletenessSummary(): Promise<PublicDataCom
       sourceResults.filter((result) => result.status === "skipped").map((result) => sourceSkipReason(result))
     );
     const failureFamilies = buildFailureFamilies(sourceResults, radarRows.rows);
+    const sourceFamilyHealth = buildSourceFamilyHealth({
+      radarRows: radarRows.rows,
+      runRows: sourceHealthRows,
+      sourceIdToSlug,
+      sources
+    });
     const latestIngestionTimestamp = latestTimestamp(
       latestIngestionRows.map((row) => latestRunTimestamp(row, "finished_at"))
     );
@@ -163,6 +178,8 @@ export async function loadPublicDataCompletenessSummary(): Promise<PublicDataCom
       needsReview: statusCounts.needs_review,
       excluded: statusCounts.excluded,
       failureFamilies,
+      sourceFamilyHealth,
+      sourceHealthScope: sourceHealthScope(sourceHealthRows),
       failedRadarItems: statusCounts.failed,
       publicRadarItems: publicRows.rows.length,
       radarItems: radarRows.rows.length,
@@ -194,6 +211,7 @@ function emptySummary(input: {
   automatedEligibleSources: number;
   blockedManualSources: number;
   generatedAt: string;
+  sourceFamilyHealth: PublicSourceFamilyHealth[];
   sourcesTotal: number;
 }): PublicDataCompletenessSummary {
   return {
@@ -217,6 +235,13 @@ function emptySummary(input: {
     reportCandidates: null,
     skippedSourceReasons: {},
     skippedSources: 0,
+    sourceFamilyHealth: input.sourceFamilyHealth,
+    sourceHealthScope: {
+      attempted_sources: 0,
+      finished_at: null,
+      run_id: null,
+      started_at: null
+    },
     sourcesWithPublicItems: null,
     sourcesWithRadarItems: null,
     sourcesWithRawItems: null,
@@ -321,6 +346,196 @@ function selectLatestIngestionRunRows(rows: IngestionRunRow[]) {
   }
 
   return rows[0] ? [rows[0]] : [];
+}
+
+function selectSourceHealthRunRows(rows: IngestionRunRow[], automatedEligibleSources: number) {
+  const grouped = new Map<string, IngestionRunRow[]>();
+
+  for (const row of rows) {
+    const key = activationRunBase(row.local_run_id) ?? text(row.local_run_id);
+    if (!key) {
+      continue;
+    }
+    grouped.set(key, [...(grouped.get(key) ?? []), row]);
+  }
+
+  const minimumBroadAttempt = Math.max(1, Math.min(30, Math.ceil(automatedEligibleSources * 0.5)));
+  const groups = [...grouped.values()];
+  return groups.find((group) => uniqueSourceResults(group).length >= minimumBroadAttempt) ?? groups[0] ?? [];
+}
+
+function uniqueSourceResults(rows: IngestionRunRow[]) {
+  const bySource = new Map<string, NonNullable<NonNullable<IngestionRunRow["metadata"]>["source_results"]>[number]>();
+
+  for (const result of rows.flatMap((row) => row.metadata?.source_results ?? [])) {
+    const sourceId = text(result.source_id);
+    if (sourceId) {
+      bySource.set(sourceId, result);
+    }
+  }
+
+  return [...bySource.values()];
+}
+
+function baseSourceFamilyHealth(sources: ReturnType<typeof readCleanedSources>) {
+  const rows = new Map<string, PublicSourceFamilyHealth>();
+
+  for (const source of sources) {
+    const family = sourceFamily(source);
+    const row = ensureSourceFamilyHealth(rows, family);
+    row.configured += 1;
+    if (isSourceHealthEligible(source)) {
+      row.automated_eligible += 1;
+    } else if (isManualOnlySource(source)) {
+      row.manual_blocked += 1;
+    } else {
+      row.unsupported_source += 1;
+    }
+  }
+
+  return sortedSourceFamilyHealth(rows);
+}
+
+function buildSourceFamilyHealth(input: {
+  radarRows: RadarItemRow[];
+  runRows: IngestionRunRow[];
+  sourceIdToSlug: Map<string, string>;
+  sources: ReturnType<typeof readCleanedSources>;
+}) {
+  const rows = new Map(baseSourceFamilyHealth(input.sources).map((row) => [row.family, { ...row }]));
+  const sourceBySlug = new Map(input.sources.map((source) => [source.id, source]));
+
+  for (const result of uniqueSourceResults(input.runRows)) {
+    const sourceId = text(result.source_id);
+    const source = sourceBySlug.get(sourceId);
+    const family = source ? sourceFamily(source) : "other";
+    const row = ensureSourceFamilyHealth(rows, family);
+    const status = text(result.status);
+    const itemCount = Number(result.item_count ?? 0);
+    row.attempted += 1;
+
+    if (status === "success") {
+      if (itemCount > 0) {
+        row.succeeded += 1;
+      } else {
+        row.no_items += 1;
+      }
+    } else if (status === "failed") {
+      row.failed += 1;
+    } else if (status === "skipped") {
+      row.skipped += 1;
+    }
+
+    const failureFamily = categorizeFailureFamily({
+      errorMessage: result.error_message,
+      itemCount: result.item_count,
+      metadata: result.metadata,
+      status: result.status,
+      warnings: result.warnings
+    });
+    incrementSourceHealthFamily(row, failureFamily);
+  }
+
+  for (const radarRow of input.radarRows) {
+    if (normalizeStatus(radarRow.understanding_status) !== "excluded") {
+      continue;
+    }
+
+    const failureFamily = categorizeFailureFamily({
+      exclusionReason: radarRow.exclusion_reason,
+      status: "excluded"
+    });
+    if (failureFamily !== "low_relevance_excluded") {
+      continue;
+    }
+
+    const slug = input.sourceIdToSlug.get(radarRow.source_id ?? "") ?? "";
+    const source = sourceBySlug.get(slug);
+    const family = source ? sourceFamily(source) : "other";
+    ensureSourceFamilyHealth(rows, family).low_relevance_excluded += 1;
+  }
+
+  return sortedSourceFamilyHealth(rows);
+}
+
+function ensureSourceFamilyHealth(rows: Map<string, PublicSourceFamilyHealth>, family: string) {
+  const existing = rows.get(family);
+  if (existing) {
+    return existing;
+  }
+
+  const created: PublicSourceFamilyHealth = {
+    family,
+    configured: 0,
+    automated_eligible: 0,
+    attempted: 0,
+    skipped: 0,
+    ...emptySourceHealthCounts()
+  };
+  rows.set(family, created);
+  return created;
+}
+
+function emptySourceHealthCounts(): PublicSourceHealthCounts {
+  return {
+    "403": 0,
+    duplicate_only: 0,
+    failed: 0,
+    low_relevance_excluded: 0,
+    manual_blocked: 0,
+    no_items: 0,
+    rate_limit: 0,
+    succeeded: 0,
+    timeout: 0,
+    unsupported_source: 0
+  };
+}
+
+function incrementSourceHealthFamily(row: PublicSourceHealthCounts, family: string | null) {
+  switch (family) {
+    case "timeout":
+      row.timeout += 1;
+      break;
+    case "failed_403":
+    case "403":
+      row["403"] += 1;
+      break;
+    case "rate_limit":
+      row.rate_limit += 1;
+      break;
+    case "duplicate_only":
+      row.duplicate_only += 1;
+      break;
+    case "manual_blocked":
+      row.manual_blocked += 1;
+      break;
+    case "unsupported_source":
+      row.unsupported_source += 1;
+      break;
+    case "no_items":
+    case "no_new_items":
+      row.no_items += 1;
+      break;
+  }
+}
+
+function sortedSourceFamilyHealth(rows: Map<string, PublicSourceFamilyHealth>) {
+  return [...rows.values()].sort(
+    (left, right) => right.attempted - left.attempted || right.configured - left.configured || left.family.localeCompare(right.family)
+  );
+}
+
+function sourceHealthScope(rows: IngestionRunRow[]) {
+  const runId = rows.map((row) => activationRunBase(row.local_run_id) ?? text(row.local_run_id)).find(Boolean) ?? null;
+  const timestamps = rows.flatMap((row) => [text(row.started_at), text(row.finished_at)]).filter(Boolean);
+  const sorted = timestamps.filter((value) => Number.isFinite(Date.parse(value))).sort((left, right) => Date.parse(left) - Date.parse(right));
+
+  return {
+    attempted_sources: uniqueSourceResults(rows).length,
+    finished_at: sorted.at(-1) ?? null,
+    run_id: runId,
+    started_at: sorted[0] ?? null
+  };
 }
 
 function activationRunBase(localRunId: string | null | undefined) {

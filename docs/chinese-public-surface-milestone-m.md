@@ -1,6 +1,6 @@
 # Bilingual Public Surface - Release Candidate
 
-Updated: 2026-07-14
+Updated: 2026-07-15
 
 ## Language Contract
 
@@ -25,20 +25,21 @@ English pages are not label-only shells. They render the same public snapshot, e
 - `/reports/` separates evidence drafts from reviewed/published reports and exposes quality gates;
 - `/ask/` and `/write/` operate locally on public event evidence without claiming live private chat;
 - source health and failure-family summaries are visible in both languages.
+- source health distinguishes the final focused run from the latest broad refresh and exposes a horizontally scrollable per-family status matrix in both languages.
 
 ## Current Public Data
 
 | metric | value |
 | --- | ---: |
-| public radar items | 242 |
-| public-safe snapshot items | 192 |
-| public display events | 159 |
-| public event relationships | 190 |
+| public radar items | 249 |
+| public-safe snapshot items | 199 |
+| public display events | 165 |
+| public event relationships | 197 |
 | curated events | 8 |
 | same-family two-source display events | 1 |
-| cross-source-family display events | 0 |
+| cross-source-family display events | 1 |
 
-Latest daily and weekly candidates remain `needs_review`. Both pass baseline source-stage and event-projection quality gates, while separate release-readiness labels remain negative because cross-source-family corroboration is absent.
+Latest daily and weekly candidates remain `needs_review` and both pass baseline source-stage and event-projection quality gates. The public surface now shows one company/lab plus media/analysis confirmation event and still distinguishes it from same-family repetition.
 
 ## Browser Verification
 

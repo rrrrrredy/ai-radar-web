@@ -213,6 +213,28 @@ type Snapshot = {
     unsupported_source: number;
     low_relevance_excluded: number;
   };
+  source_health_scope: {
+    started_at: string | null;
+    finished_at: string | null;
+    attempted_sources: number;
+  };
+  source_health_by_family: Array<{
+    family: string;
+    configured: number;
+    automated_eligible: number;
+    attempted: number;
+    skipped: number;
+    succeeded: number;
+    failed: number;
+    timeout: number;
+    "403": number;
+    rate_limit: number;
+    no_items: number;
+    duplicate_only: number;
+    manual_blocked: number;
+    unsupported_source: number;
+    low_relevance_excluded: number;
+  }>;
   failure_family_summary: Record<string, number>;
   report_quality_summary: {
     daily: ReportQualitySummary | null;
@@ -290,6 +312,7 @@ async function writeSite(snapshot: Snapshot) {
   ]);
 
   await Promise.all([
+    fs.copyFile(path.join(process.cwd(), "app", "icon.svg"), path.join(outputDir, "favicon.svg")),
     fs.writeFile(path.join(outputDir, "ask", "index.html"), renderAsk(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "assets", "styles.css"), stylesheet(), "utf8"),
     fs.writeFile(path.join(outputDir, "en", "ask", "index.html"), renderEnglishAsk(snapshot), "utf8"),
@@ -327,8 +350,8 @@ function renderEnglishHome(snapshot: Snapshot) {
     <section class="status-strip">
       ${metricMini("Public store / displayed", `${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} / ${snapshot.radar_items.length}`)}
       ${metricMini("Events", snapshot.event_count)}
-      ${metricMini("Sources attempted", snapshot.coverage.attempted_sources)}
-      ${metricMini("Succeeded / failed / manual", `${snapshot.source_health_summary.succeeded}/${snapshot.source_health_summary.failed}/${snapshot.source_health_summary.manual_blocked} of ${snapshot.coverage.sources_total}`)}
+      ${metricMini("Final run A/F/failed", `${snapshot.coverage.attempted_sources}/${snapshot.coverage.fetched_sources}/${snapshot.coverage.failed_sources}`)}
+      ${metricMini("Broad refresh S/F/manual", `${snapshot.source_health_summary.succeeded}/${snapshot.source_health_summary.failed}/${snapshot.source_health_summary.manual_blocked}`)}
       ${metricMini("Current report candidates", latestReportCandidates.length)}
       ${metricMini("Evidence through", formatDateEn(snapshot.coverage.latest_refresh))}
     </section>
@@ -359,7 +382,7 @@ function renderEnglishHome(snapshot: Snapshot) {
           ${rail("Cross-family corroboration", String(crossFamilyEvents))}
           ${rail("Multi-source, one family", String(sameFamilyEvents))}
           ${rail("Automated eligible", String(snapshot.coverage.automated_eligible_sources))}
-          ${rail("Succeeded / failed", `${snapshot.source_health_summary.succeeded} / ${snapshot.source_health_summary.failed} of ${snapshot.coverage.attempted_sources} attempted`)}
+          ${rail("Broad refresh succeeded / failed", `${snapshot.source_health_summary.succeeded} / ${snapshot.source_health_summary.failed} of ${snapshot.source_health_scope.attempted_sources} attempted`)}
           ${rail("Manual / blocked", `${snapshot.source_health_summary.manual_blocked} of ${snapshot.coverage.sources_total} total`)}
           ${rail("Visible sources", `${snapshot.coverage.sources_with_public_items ?? 0} / ${snapshot.coverage.sources_total}`)}
         </dl>
@@ -596,8 +619,8 @@ function renderHome(snapshot: Snapshot) {
     <section class="status-strip">
       ${metricMini("公开库/本站展示", `${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} / ${snapshot.radar_items.length}`)}
       ${metricMini("事件", snapshot.event_count)}
-      ${metricMini("已尝试来源", snapshot.coverage.attempted_sources)}
-      ${metricMini("成功/失败/手动", `${snapshot.source_health_summary.succeeded}/${snapshot.source_health_summary.failed}/${snapshot.source_health_summary.manual_blocked}（共 ${snapshot.coverage.sources_total}）`)}
+      ${metricMini("最终补跑 尝试/抓取/失败", `${snapshot.coverage.attempted_sources}/${snapshot.coverage.fetched_sources}/${snapshot.coverage.failed_sources}`)}
+      ${metricMini("广泛刷新 成功/失败/手动", `${snapshot.source_health_summary.succeeded}/${snapshot.source_health_summary.failed}/${snapshot.source_health_summary.manual_blocked}`)}
       ${metricMini("当前报告候选", latestReports.length)}
       ${metricMini("证据截至", formatDate(snapshot.coverage.latest_refresh))}
     </section>
@@ -629,7 +652,7 @@ function renderHome(snapshot: Snapshot) {
           ${rail("跨家族确认", String(snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length > 1).length))}
           ${rail("同家族多源复述", String(snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length === 1).length))}
           ${rail("自动合格来源", String(snapshot.coverage.automated_eligible_sources))}
-          ${rail("来源成功/失败", `${snapshot.source_health_summary.succeeded} / ${snapshot.source_health_summary.failed}（已尝试 ${snapshot.coverage.attempted_sources}）`)}
+          ${rail("广泛刷新成功/失败", `${snapshot.source_health_summary.succeeded} / ${snapshot.source_health_summary.failed}（已尝试 ${snapshot.source_health_scope.attempted_sources}）`)}
           ${rail("异常/排除类别", formatDistribution(snapshot.failure_family_summary))}
           ${rail("数据覆盖", `公开来源 ${snapshot.coverage.sources_with_public_items ?? 0} / ${snapshot.coverage.sources_total}`)}
         </dl>
@@ -1060,6 +1083,7 @@ function englishShell(
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="AI Industry Radar public event intelligence">
     <title>${escapeHtml(title)} - AI Industry Radar</title>
+    <link rel="icon" href="${assetPrefix}favicon.svg" type="image/svg+xml">
     <link rel="alternate" hreflang="zh-CN" href="${escapeAttr(chineseHref)}">
     <link rel="alternate" hreflang="en" href="${escapeAttr(englishHref)}">
     <link rel="stylesheet" href="${assetPrefix}assets/styles.css">
@@ -1349,7 +1373,16 @@ function coveragePanelEn(snapshot: Snapshot) {
 
 function sourceHealthPanelEn(snapshot: Snapshot) {
   const health = snapshot.source_health_summary;
-  return `<section class="panel"><div class="section-heading"><h2>Source health summary</h2><span>Evidence through ${escapeHtml(formatDateEn(snapshot.coverage.latest_refresh))}</span></div><dl class="metric-grid">${metricEn("Sources total", snapshot.coverage.sources_total)}${metricEn("Automated eligible", snapshot.coverage.automated_eligible_sources)}${metricEn("Succeeded", health.succeeded)}${metricEn("Failed", health.failed)}${metricEn("Manual / blocked", health.manual_blocked)}${metricEn("Timeout failures", health.timeout)}${metricEn("HTTP 403 failures", health["403"])}${metricEn("Rate-limit warnings (may overlap)", health.rate_limit)}${metricEn("No new items", health.no_items)}${metricEn("Duplicate only", health.duplicate_only)}</dl><div class="distribution">${distributionEn("Failures, warnings and exclusions (categories may overlap)", Object.entries(snapshot.failure_family_summary))}${distributionEn("Blocked or excluded", [["Manual blocked", health.manual_blocked], ["Unsupported", health.unsupported_source], ["Low relevance excluded", health.low_relevance_excluded]])}</div></section>`;
+  return `<section class="panel"><div class="section-heading"><h2>Source health summary</h2><span>Broad refresh through ${escapeHtml(formatDateEn(snapshot.source_health_scope.finished_at ?? snapshot.coverage.latest_refresh))}</span></div><dl class="metric-grid">${metricEn("Sources total", snapshot.coverage.sources_total)}${metricEn("Automated eligible", snapshot.coverage.automated_eligible_sources)}${metricEn("Broad refresh attempted", snapshot.source_health_scope.attempted_sources)}${metricEn("Succeeded", health.succeeded)}${metricEn("Failed", health.failed)}${metricEn("Manual / blocked", health.manual_blocked)}${metricEn("Timeout failures", health.timeout)}${metricEn("HTTP 403 failures", health["403"])}${metricEn("Rate-limit warnings (may overlap)", health.rate_limit)}${metricEn("No new items", health.no_items)}${metricEn("Duplicate only", health.duplicate_only)}</dl><div class="distribution">${distributionEn("Failures, warnings and exclusions (categories may overlap)", Object.entries(snapshot.failure_family_summary))}${distributionEn("Blocked or excluded", [["Manual blocked", health.manual_blocked], ["Unsupported", health.unsupported_source], ["Low relevance excluded", health.low_relevance_excluded]])}</div>${sourceHealthFamilyMatrixEn(snapshot)}</section>`;
+}
+
+function sourceHealthFamilyMatrixEn(snapshot: Snapshot) {
+  const rows = snapshot.source_health_by_family ?? [];
+  if (rows.length === 0) {
+    return `<p class="note">No source-family health matrix is available for this snapshot.</p>`;
+  }
+
+  return `<div class="health-table-wrap"><table class="health-table"><caption>Latest broad refresh by source family. Failure and exclusion columns may overlap.</caption><thead><tr><th>Source family</th><th>Configured</th><th>Eligible</th><th>Attempted</th><th>Succeeded</th><th>Failed</th><th>Timeout</th><th>403</th><th>Rate limit</th><th>No items</th><th>Duplicate only</th><th>Manual</th><th>Unsupported</th><th>Low relevance</th></tr></thead><tbody>${rows.map((row) => `<tr><th scope="row">${escapeHtml(sourceFamilyLabelEn(row.family))}</th>${[row.configured, row.automated_eligible, row.attempted, row.succeeded, row.failed, row.timeout, row["403"], row.rate_limit, row.no_items, row.duplicate_only, row.manual_blocked, row.unsupported_source, row.low_relevance_excluded].map((value) => `<td>${value.toLocaleString("en-US")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
 function metricEn(label: string, value: number | null) {
@@ -1430,6 +1463,11 @@ function categoryLabelEn(value: string) {
 
 function sourceFamilyLabelEn(value: string) {
   const labels: Record<string, string> = {
+    arxiv_research: "Research feeds",
+    github_open_source: "Open source",
+    official_company: "Company / lab",
+    podcast_video: "Podcast / video",
+    specialist_analysis: "Analysis / media",
     "公司/实验室": "Company / lab",
     "分析/媒体": "Analysis / media",
     "其他公开来源": "Other public sources",
@@ -1553,6 +1591,7 @@ function shell(snapshot: Snapshot, current: "home" | "radar" | "entities" | "rep
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="AI 行业雷达 Cloudflare 公开站">
     <title>${escapeHtml(title)} - AI 行业雷达</title>
+    <link rel="icon" href="${prefix}favicon.svg" type="image/svg+xml">
     <link rel="alternate" hreflang="zh-CN" href="${escapeAttr(chineseHref)}">
     <link rel="alternate" hreflang="en" href="${escapeAttr(englishHref)}">
     <link rel="stylesheet" href="${prefix}assets/styles.css">
@@ -2656,25 +2695,47 @@ function sourceHealthPanel(snapshot: Snapshot) {
   return `<section class="panel">
     <div class="section-heading">
       <h2>信息源健康摘要</h2>
-      <span>证据截至 ${escapeHtml(formatDate(snapshot.coverage.latest_refresh))}</span>
+      <span>最近广泛刷新截至 ${escapeHtml(formatDate(snapshot.source_health_scope.finished_at ?? snapshot.coverage.latest_refresh))}</span>
     </div>
     <dl class="metric-grid">
       ${metric("来源总数", snapshot.coverage.sources_total)}
       ${metric("自动合格来源", snapshot.coverage.automated_eligible_sources)}
-      ${metric("本轮成功源", health.succeeded)}
+      ${metric("广泛刷新尝试源", snapshot.source_health_scope.attempted_sources)}
+      ${metric("广泛刷新成功源", health.succeeded)}
       ${metric("失败源", health.failed)}
       ${metric("手动/阻塞源", health.manual_blocked)}
       ${metric("超时失败", health.timeout)}
       ${metric("HTTP 403 失败", health["403"])}
       ${metric("限流警告（可重叠）", health.rate_limit)}
       ${metric("无新内容", health.no_items)}
-      ${metric("重复-only", health.duplicate_only)}
+      ${metric("仅重复", health.duplicate_only)}
     </dl>
     <div class="distribution">
       ${distribution("失败/警告/排除（类别可重叠）", Object.entries(snapshot.failure_family_summary))}
       ${distribution("跳过/阻塞", [["手动阻塞", health.manual_blocked], ["不支持", health.unsupported_source], ["低相关排除", health.low_relevance_excluded]])}
     </div>
+    ${sourceHealthFamilyMatrix(snapshot)}
   </section>`;
+}
+
+function sourceHealthFamilyMatrix(snapshot: Snapshot) {
+  const rows = snapshot.source_health_by_family ?? [];
+  if (rows.length === 0) {
+    return `<p class="note">当前快照暂无来源家族健康矩阵。</p>`;
+  }
+
+  return `<div class="health-table-wrap"><table class="health-table"><caption>最近一次广泛刷新按来源家族汇总；失败、警告和排除列可能重叠。</caption><thead><tr><th>来源家族</th><th>配置</th><th>自动合格</th><th>尝试</th><th>成功</th><th>失败</th><th>超时</th><th>403</th><th>限流</th><th>无内容</th><th>仅重复</th><th>手动阻塞</th><th>不支持</th><th>低相关</th></tr></thead><tbody>${rows.map((row) => `<tr><th scope="row">${escapeHtml(sourceFamilyLabel(row.family))}</th>${[row.configured, row.automated_eligible, row.attempted, row.succeeded, row.failed, row.timeout, row["403"], row.rate_limit, row.no_items, row.duplicate_only, row.manual_blocked, row.unsupported_source, row.low_relevance_excluded].map((value) => `<td>${value.toLocaleString("en-US")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+
+function sourceFamilyLabel(family: string) {
+  switch (family) {
+    case "official_company": return "公司/实验室";
+    case "specialist_analysis": return "分析/媒体";
+    case "arxiv_research": return "研究订阅";
+    case "github_open_source": return "开源项目";
+    case "podcast_video": return "播客/视频";
+    default: return labelize(family);
+  }
 }
 
 function metric(label: string, value: number | null) {
@@ -2825,9 +2886,12 @@ function labelize(value: string) {
     infrastructure: "基础设施",
     included: "已纳入",
     media_interview: "媒体/访谈",
+    manual_blocked: "手动/阻塞",
     "model release": "模型发布",
     model_release: "模型发布",
     needs_review: "待复核",
+    no_items: "无新内容",
+    no_new_items: "无新内容",
     opinion: "观点",
     "open source": "开源",
     open_source: "开源",
@@ -2837,9 +2901,20 @@ function labelize(value: string) {
     product_update: "产品更新",
     research: "研究",
     regulation: "监管",
+    rate_limit: "限流警告",
     safety: "安全",
+    timeout: "超时失败",
     tooling: "工具",
     total: "总数",
+    unsupported_source: "不支持",
+    low_relevance_excluded: "低相关排除",
+    duplicate_only: "仅重复",
+    blocked_requires_manual: "需手动处理",
+    failed_403: "HTTP 403 失败",
+    failed_parse: "解析失败",
+    failed_rate_limit: "限流失败",
+    failed_timeout: "超时失败",
+    "403": "HTTP 403",
     weekly: "周报"
   };
   return labels[value] ?? value.replace(/_/g, " ");
@@ -3582,7 +3657,7 @@ a { color: var(--evidence); text-decoration: none; }
 a:hover { text-decoration: underline; }
 a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
 .panel p a, .note-list a, .local-result a, .report-card p a { text-decoration: underline; text-underline-offset: 3px; }
-.site-header, .site-footer, main { margin: 0 auto; max-width: 1180px; padding: 0 20px; }
+.site-header, .site-footer, main { margin: 0 auto; max-width: 1180px; padding: 0 20px; width: 100%; }
 .site-header { align-items: center; display: flex; gap: 20px; justify-content: space-between; padding-bottom: 20px; padding-top: 20px; }
 .brand { align-items: center; color: var(--ink); display: inline-flex; font-weight: 700; gap: 10px; }
 .brand-mark { background: linear-gradient(135deg, #0f766e, #2563eb); border-radius: 6px; display: inline-block; height: 26px; width: 26px; }
@@ -3595,6 +3670,7 @@ nav, .actions, .pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
 nav a, .button { border: 1px solid var(--line); border-radius: 6px; color: var(--ink); display: inline-flex; font-size: 14px; font-weight: 700; padding: 9px 12px; }
 nav a[aria-current="page"], .button.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
 main { display: grid; gap: 24px; padding-bottom: 42px; }
+main > *, .tab-panel, .panel { min-width: 0; }
 .status-strip { display: grid; gap: 10px; grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .freshness-alert { background: #fff8ed; border: 1px solid #f0c37b; border-radius: 8px; color: var(--caution); display: grid; gap: 4px; padding: 14px 16px; }
 .freshness-alert p { color: #7c3f09; }
@@ -3669,6 +3745,13 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .compact-row p, .radar-row p, .note, .note-list, .site-footer { color: var(--muted); }
 .tag-block, .distribution { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .distribution section { border: 1px solid var(--line); border-radius: 8px; flex: 1 1 220px; padding: 12px; }
+.health-table-wrap { border: 1px solid var(--line); border-radius: 8px; margin-top: 16px; max-width: 100%; min-width: 0; overflow-x: auto; width: 100%; }
+.health-table { border-collapse: collapse; font-size: 12px; min-width: 1160px; width: 100%; }
+.health-table caption { color: var(--muted); padding: 12px; text-align: left; }
+.health-table th, .health-table td { border-top: 1px solid var(--line); padding: 9px 10px; text-align: right; white-space: nowrap; }
+.health-table thead th { background: var(--soft); color: var(--muted); font-weight: 700; }
+.health-table th:first-child { left: 0; position: sticky; text-align: left; z-index: 1; }
+.health-table tbody th:first-child { background: var(--surface); }
 .controls { display: grid; gap: 12px; grid-template-columns: 2fr repeat(6, minmax(120px, 1fr)); }
 .filter-feedback { align-items: center; display: flex; gap: 12px; justify-content: space-between; margin-top: 14px; }
 .filter-feedback span { color: var(--muted); font-weight: 700; }

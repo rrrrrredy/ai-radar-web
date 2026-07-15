@@ -1,6 +1,6 @@
 # Report Quality Gates - Release Candidate
 
-Updated: 2026-07-14
+Updated: 2026-07-15
 
 ## Gates
 
@@ -15,19 +15,21 @@ The gate also requires valid evidence timestamps, no material future timestamp, 
 
 | type | candidate ID | status | usable | citations | sources | categories | freshness |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
-| daily | `2daba147-d851-41c4-a8ee-efed66eedcdf` | `needs_review` | 60 | 12 | 13 | 12 | passed |
-| weekly | `ba8dbe90-30ef-4f60-8460-04456ad7be21` | `needs_review` | 75 | 12 | 13 | 11 | passed |
+| daily | `4c0e2d7d-fe0d-4492-8dd3-a42706272aec` | `needs_review` | 51 | 12 | 18 | 10 | passed |
+| weekly | `4ffdd8d3-9b66-467a-ab15-0662f2e2045c` | `needs_review` | 78 | 12 | 12 | 12 | passed |
 
-Both were generated in bounded `live_deepseek` mode from `supabase_radar_items`, used one report-generation API call each, and passed the source-stage gate. The Cloudflare event-aware projection independently reports:
+Both were regenerated from `supabase_radar_items` in deterministic evidence-preview mode after the final DeepSeek item-understanding update. Report generation itself used no provider call and both candidates passed the source-stage gate. The Cloudflare event-aware projection independently reports:
 
 | type | usable events | citations | sources | categories | gate |
 | --- | ---: | ---: | ---: | ---: | --- |
-| daily | 11 | 11 | 6 | 6 | passed |
-| weekly | 29 | 29 | 16 | 10 | passed |
+| daily | 10 | 10 | 7 | 4 | passed |
+| weekly | 28 | 28 | 15 | 10 | passed |
 
 ## Publication Boundary
 
-Both candidates remain `needs_review`. The baseline gate measures evidence volume, citations, source count, category spread, and freshness. Passing is evidence sufficiency for editorial review, not approval or publication. Public cards separately expose same-family versus cross-family corroboration and release readiness; both current candidates remain not release-ready because cross-source-family confirmation is zero.
+Both candidates remain `needs_review`. The baseline gate measures evidence volume, citations, source count, category spread, and freshness. Passing is evidence sufficiency for editorial review, not approval or publication. Public cards separately expose same-family and cross-family corroboration. The weekly window contains the single cross-family event; the daily window does not, so its caveat remains visible.
+
+The read-only `public_report_candidates` view now includes quality-gated `needs_review` candidates through an explicit JSON allowlist. This lets the Vercel reference app show saved evidence drafts without exposing provider metadata, private review notes, operations fields, or report markdown.
 
 If a future daily gate fails, the candidate remains `needs_review` and the UI renders:
 

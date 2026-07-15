@@ -1,6 +1,6 @@
 # LearnPrompt Reference Patterns for the Event Layer
 
-Updated: 2026-07-14
+Updated: 2026-07-15
 
 Reference: https://github.com/LearnPrompt/ai-news-radar
 
@@ -36,6 +36,6 @@ AI Industry Radar implements these patterns through its own source registry, res
 public-safe signals -> deterministic event clusters -> curated events -> quality-gated report candidates -> reviewed publication
 ```
 
-Clustering uses title, entities, specific event actions, category, time, source, domain, and keyword evidence. Generic AI terms cannot merge events. Conflicting companies, projects, release versions, or partnership counterparts block or penalize a merge. The UI leads with `行业精选` and `事件雷达`, while `全部信号` retains item-level auditability.
+Clustering uses title, entities, specific event actions and concept aliases, category, time, source, domain, and keyword evidence. Generic AI terms cannot merge events. Conflicting companies, projects, release versions, partnership counterparts, or missing concept anchors block or penalize a merge. Low-event homepage and directory records remain in `全部信号` but never enter public event evidence. The UI leads with `行业精选` and `事件雷达`.
 
-The final RC has 242 public radar items, 205 current-run clusters, 159 public-display events, 8 curated events, and one same-family two-source public event. Cross-source-family confirmation remains zero and is disclosed rather than inflated by weakening merge safeguards.
+The final RC has 249 public radar items, 168 current-run event clusters, 165 public-display events, 8 curated events, one same-family two-source event, and one cross-family event. The cross-family event comes from independently worded Anthropic and MIT Technology Review evidence and was enabled by a narrow tested concept alias, not a lower global similarity threshold.

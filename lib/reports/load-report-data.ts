@@ -775,7 +775,7 @@ function reportTypeValue(value: unknown): ReportPreviewType | null {
 }
 
 function publicCandidateStatus(value: unknown): GeneratedReportStatus | null {
-  return isOneOf(value, ["approved", "published"]);
+  return isOneOf(value, ["needs_review", "approved", "published"]);
 }
 
 function publicReportStatus(value: unknown): GeneratedReportStatus | null {

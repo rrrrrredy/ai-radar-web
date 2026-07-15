@@ -224,6 +224,28 @@ export type PublicMirrorSnapshot = {
     unsupported_source: number;
     low_relevance_excluded: number;
   };
+  source_health_scope: {
+    started_at: string | null;
+    finished_at: string | null;
+    attempted_sources: number;
+  };
+  source_health_by_family: Array<{
+    family: string;
+    configured: number;
+    automated_eligible: number;
+    attempted: number;
+    skipped: number;
+    succeeded: number;
+    failed: number;
+    timeout: number;
+    "403": number;
+    rate_limit: number;
+    no_items: number;
+    duplicate_only: number;
+    manual_blocked: number;
+    unsupported_source: number;
+    low_relevance_excluded: number;
+  }>;
   failure_family_summary: Record<string, number>;
   report_quality_summary: {
     daily: ReportQualitySummary | null;
@@ -1068,6 +1090,8 @@ function buildSnapshot(input: {
   );
   const savedReportCandidates = reports.filter((report) => report.mode === "saved_candidate").length;
   const reportCitationCount = reports.reduce((count, report) => count + report.citations.length, 0);
+  const sourceHealthSummary = aggregateSourceFamilyHealth(input.publicCoverage.sourceFamilyHealth);
+  const sourceHealthFailureFamilies = sourceHealthFailureFamilySummary(sourceHealthSummary);
 
   return {
     schema_version: 1,
@@ -1144,25 +1168,20 @@ function buildSnapshot(input: {
     event_cluster_items: eventLayer.event_cluster_items,
     event_clusters: eventLayer.event_clusters,
     event_count: eventLayer.event_count,
-    failure_family_summary: input.publicCoverage.failureFamilies,
+    failure_family_summary: sourceHealthFailureFamilies,
     report_quality_summary: {
       daily: reportQualitySummary(reports, "daily", eventLayer.curated_events),
       weekly: reportQualitySummary(reports, "weekly", eventLayer.curated_events)
     },
     radar_items: items,
     reports,
-    source_health_summary: {
-      "403": input.publicCoverage.failureFamilies["403"] ?? input.publicCoverage.failureFamilies.failed_403 ?? 0,
-      duplicate_only: input.publicCoverage.failureFamilies.duplicate_only ?? 0,
-      failed: input.publicCoverage.failedSources,
-      low_relevance_excluded: input.publicCoverage.failureFamilies.low_relevance_excluded ?? 0,
-      manual_blocked: input.publicCoverage.blockedManualSources,
-      no_items: input.publicCoverage.failureFamilies.no_items ?? input.publicCoverage.failureFamilies.no_new_items ?? 0,
-      rate_limit: input.publicCoverage.failureFamilies.rate_limit ?? 0,
-      succeeded: input.publicCoverage.fetchedSources,
-      timeout: input.publicCoverage.failureFamilies.timeout ?? 0,
-      unsupported_source: input.publicCoverage.failureFamilies.unsupported_source ?? 0
+    source_health_by_family: input.publicCoverage.sourceFamilyHealth,
+    source_health_scope: {
+      attempted_sources: input.publicCoverage.sourceHealthScope.attempted_sources,
+      finished_at: input.publicCoverage.sourceHealthScope.finished_at,
+      started_at: input.publicCoverage.sourceHealthScope.started_at
     },
+    source_health_summary: sourceHealthSummary,
     timeline: eventLayer.timeline,
     caveats: publicSafeNotes([
       "Cloudflare Pages is the primary public read surface. Auth, Admin, server actions, and write workflows remain outside this public Cloudflare surface.",
@@ -2086,6 +2105,8 @@ function sanitizePublicSnapshot(snapshot: PublicMirrorSnapshot): PublicMirrorSna
       timeout: integer(snapshot.source_health_summary.timeout),
       unsupported_source: integer(snapshot.source_health_summary.unsupported_source)
     },
+    source_health_scope: publicSourceHealthScope(snapshot.source_health_scope),
+    source_health_by_family: publicSourceFamilyHealth(snapshot.source_health_by_family),
     failure_family_summary: numericRecord(snapshot.failure_family_summary),
     report_quality_summary: {
       daily: publicSafeReportQuality(reportQualitySummary(reports, "daily", eventLayer.curated_events)),
@@ -2276,6 +2297,90 @@ function entityTypeValue(value: unknown): UnderstandingEntityType {
   return publicEntityTypes.has(normalized) ? (normalized as UnderstandingEntityType) : "other";
 }
 
+function aggregateSourceFamilyHealth(
+  rows: PublicDataCompletenessSummary["sourceFamilyHealth"]
+): PublicMirrorSnapshot["source_health_summary"] {
+  return rows.reduce<PublicMirrorSnapshot["source_health_summary"]>(
+    (summary, row) => ({
+      "403": summary["403"] + row["403"],
+      duplicate_only: summary.duplicate_only + row.duplicate_only,
+      failed: summary.failed + row.failed,
+      low_relevance_excluded: summary.low_relevance_excluded + row.low_relevance_excluded,
+      manual_blocked: summary.manual_blocked + row.manual_blocked,
+      no_items: summary.no_items + row.no_items,
+      rate_limit: summary.rate_limit + row.rate_limit,
+      succeeded: summary.succeeded + row.succeeded,
+      timeout: summary.timeout + row.timeout,
+      unsupported_source: summary.unsupported_source + row.unsupported_source
+    }),
+    {
+      "403": 0,
+      duplicate_only: 0,
+      failed: 0,
+      low_relevance_excluded: 0,
+      manual_blocked: 0,
+      no_items: 0,
+      rate_limit: 0,
+      succeeded: 0,
+      timeout: 0,
+      unsupported_source: 0
+    }
+  );
+}
+
+function sourceHealthFailureFamilySummary(
+  summary: PublicMirrorSnapshot["source_health_summary"]
+) {
+  return Object.fromEntries(
+    [
+      ["timeout", summary.timeout],
+      ["403", summary["403"]],
+      ["rate_limit", summary.rate_limit],
+      ["no_items", summary.no_items],
+      ["duplicate_only", summary.duplicate_only],
+      ["manual_blocked", summary.manual_blocked],
+      ["unsupported_source", summary.unsupported_source],
+      ["low_relevance_excluded", summary.low_relevance_excluded]
+    ].filter(([, count]) => Number(count) > 0)
+  ) as Record<string, number>;
+}
+
+function publicSourceHealthScope(value: unknown): PublicMirrorSnapshot["source_health_scope"] {
+  const row = isRecord(value) ? value : {};
+  return {
+    attempted_sources: integer(row.attempted_sources),
+    finished_at: optionalText(row.finished_at) ?? null,
+    started_at: optionalText(row.started_at) ?? null
+  };
+}
+
+function publicSourceFamilyHealth(value: unknown): PublicMirrorSnapshot["source_health_by_family"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(isRecord)
+    .map((row) => ({
+      "403": integer(row["403"]),
+      attempted: integer(row.attempted),
+      automated_eligible: integer(row.automated_eligible),
+      configured: integer(row.configured),
+      duplicate_only: integer(row.duplicate_only),
+      failed: integer(row.failed),
+      family: text(row.family, 80) || "other",
+      low_relevance_excluded: integer(row.low_relevance_excluded),
+      manual_blocked: integer(row.manual_blocked),
+      no_items: integer(row.no_items),
+      rate_limit: integer(row.rate_limit),
+      skipped: integer(row.skipped),
+      succeeded: integer(row.succeeded),
+      timeout: integer(row.timeout),
+      unsupported_source: integer(row.unsupported_source)
+    }))
+    .sort((left, right) => right.attempted - left.attempted || right.configured - left.configured || left.family.localeCompare(right.family));
+}
+
 function publicSafeReportQuality(summary: ReportQualitySummary | null): ReportQualitySummary | null {
   if (!summary) {
     return null;
@@ -2342,7 +2447,11 @@ function publicSourceWarnings(snapshot: PublicMirrorSnapshot) {
 
 function publicSafeNote(value: string) {
   return value
-    .replace(/\b(NEXT_PUBLIC_SUPABASE_ANON_KEY|SUPABASE_SERVICE_ROLE_KEY|DEEPSEEK_API_KEY|api[-_]?key|token|cookie|authorization)\b/gi, "secret")
+    .replace(
+      /\b(NEXT_PUBLIC_SUPABASE_ANON_KEY|SUPABASE_SERVICE_ROLE_KEY|DEEPSEEK_API_KEY|api[\s_-]?key|token|cookie|authorization)\b\s*[:=]\s*[^\s,;]+/gi,
+      "[redacted credential]"
+    )
+    .replace(/\b(NEXT_PUBLIC_SUPABASE_ANON_KEY|SUPABASE_SERVICE_ROLE_KEY|DEEPSEEK_API_KEY)\b/gi, "credential")
     .replace(/AI Radar reviewed daily evidence snapshot/g, "AI 行业雷达已复核日报")
     .replace(/reviewed or published/gi, "已复核或已发布")
     .replace(/reviewed\/published/gi, "已复核或已发布")

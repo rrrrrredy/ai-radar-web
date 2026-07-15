@@ -25,7 +25,7 @@ export const INGESTION_LATEST_DIR = path.join(INGESTION_DIR, "latest");
 export const INGESTION_RUNS_DIR = path.join(INGESTION_DIR, "runs");
 export const INGESTION_CACHE_DIR = path.join(INGESTION_DIR, "cache");
 
-export const SAFE_CRAWL_METHODS: CrawlMethod[] = ["rss", "html", "api", "podcast_feed", "youtube_feed"];
+export const SAFE_CRAWL_METHODS: CrawlMethod[] = ["rss", "html", "sitemap", "api", "podcast_feed", "youtube_feed"];
 export const CRAWL_METHOD_FILTERS: CrawlMethodFilter[] = [...SAFE_CRAWL_METHODS, "all"];
 
 export const DEFAULT_SELECTION_OPTIONS: SourceSelectionOptions = {

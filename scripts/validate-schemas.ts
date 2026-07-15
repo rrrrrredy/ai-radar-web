@@ -57,7 +57,7 @@ const sourceCategories = new Set([
 
 const sourceTiers = new Set(["T1", "T1.5", "T2", "T3", "unreviewed"]);
 const sourceStatuses = new Set(["active", "trial", "needs_public_url", "deferred", "rejected"]);
-const crawlMethods = new Set(["rss", "html", "api", "manual", "x_api_future", "podcast_feed", "youtube_feed", "no_crawl", "unknown"]);
+const crawlMethods = new Set(["rss", "html", "sitemap", "api", "manual", "x_api_future", "podcast_feed", "youtube_feed", "no_crawl", "unknown"]);
 const sourceLanguages = new Set(["zh", "en", "mixed", "unknown"]);
 const sourceRegions = new Set(["china", "overseas", "global", "unknown"]);
 const sourceOrigins = new Set(["AI学习资源.md", "official-ai-sources.json"]);
@@ -223,6 +223,9 @@ function validateCleanedSourceRegistry(value: Record<string, unknown> | Array<Re
 
     assertPublicUrl(source.url, source.id, "url", true);
     assertPublicUrl(source.rss_url, source.id, "rss_url", true);
+    if ("sitemap_url" in source) {
+      assertPublicUrl(source.sitemap_url, source.id, "sitemap_url", true);
+    }
     assertPublicUrl(source.github_url, source.id, "github_url", true);
     assertPublicUrl(source.youtube_url, source.id, "youtube_url", true);
     assertPublicUrl(source.podcast_url, source.id, "podcast_url", true);
