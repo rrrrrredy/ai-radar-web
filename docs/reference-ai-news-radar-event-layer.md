@@ -44,4 +44,4 @@ all public-safe signals
 
 Generic AI terms cannot merge events. Conflicting companies, projects, release versions, partnerships, and unrelated papers block or penalize a merge. Low-event pages remain in `全部信号` and are excluded only from events.
 
-The RC has 261 public signals, 205 public display events, 207 event relationships, 8 curated events, one same-family multi-source event, and one cross-family event. The cross-family Anthropic/MIT Technology Review event uses a narrow tested concept alias. Product copy calls it cross-family coverage, not independent confirmation.
+The RC has 261 public signals, 203 public display events, 205 event relationships, 8 curated events, one same-family multi-source event, and one cross-family event. The cross-family Anthropic/MIT Technology Review event uses a narrow tested concept alias. Product copy calls it cross-family coverage, not independent confirmation.

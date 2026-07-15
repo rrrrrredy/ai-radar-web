@@ -45,10 +45,10 @@ The final run selected OGX through the stable legacy slug `meta-llama-stack`. It
 
 | layer | signals | event relationships | events | curated |
 | --- | ---: | ---: | ---: | ---: |
-| Supabase public view / Cloudflare `全部信号` | 261 | 207 | 205 | 8 |
+| Supabase public view / Cloudflare `全部信号` | 261 | 205 | 203 | 8 |
 | persisted event tables | 261 input | 209 | 207 | 8 |
 
-All 261 public-safe signals are exported. Fifty-four signal-only audit rows are retained in `全部信号` and disclosed in the UI; clustering excludes them because they do not meet the event contract. The remaining event-layer difference is the public display score boundary, not a loss of raw public signals.
+All 261 public-safe signals are exported. Fifty-six signal-only audit rows are retained in `全部信号` and disclosed in the UI; clustering excludes them because they do not meet the event contract. The remaining event-layer difference is the public display score and event-eligibility boundary, not a loss of raw public signals.
 
 Two multi-item public events reduce four repeated signals to two event cards. One is cross-family Anthropic/MIT Technology Review coverage; one is same-family Apple/OpenAI lawsuit coverage. Source-family diversity is visible but does not assert independence.
 

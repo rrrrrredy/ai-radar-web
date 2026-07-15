@@ -6,6 +6,10 @@ import type { RadarCategory, UnderstandingEntity, UnderstandingStatus } from "@/
 
 export type EventScoreLabel = "高优先级" | "关注" | "观察" | "噪音/低相关";
 
+export type BuildEventLayerOptions = {
+  asOf?: string;
+};
+
 export type ClusterableRadarItem = {
   id: string;
   source_id?: string;
@@ -218,13 +222,19 @@ const itemEventConceptCache = new WeakMap<ClusterableRadarItem, string[]>();
 const signalQualityCache = new WeakMap<ClusterableRadarItem, PublicSignalQuality>();
 const normalizedTextCache = new Map<string, string>();
 
-export function buildEventLayer(items: ClusterableRadarItem[]): PublicEventLayer {
+export function buildEventLayer(
+  items: ClusterableRadarItem[],
+  options: BuildEventLayerOptions = {}
+): PublicEventLayer {
   const publicItems = items
     .filter((item) => item.status === "included" || item.status === "needs_review")
     .filter((item) => !signalQuality(item).isLowEventSignal)
     .filter(hasPublicPublishedTimestamp)
     .sort(compareClusterInputItems);
-  const clusters = clusterItems(publicItems).map(materializeCluster).sort(compareEvents);
+  const referenceTime = eventReferenceTime(publicItems, options.asOf);
+  const clusters = clusterItems(publicItems)
+    .map((cluster) => materializeCluster(cluster, referenceTime))
+    .sort(compareEvents);
   const eventClusterItems = clusters.flatMap((cluster) =>
     cluster.related_item_ids.map((radarItemId, index) => ({
       event_cluster_id: cluster.event_cluster_id,
@@ -253,6 +263,18 @@ export function buildEventLayer(items: ClusterableRadarItem[]): PublicEventLayer
     event_count: clusters.length,
     timeline
   };
+}
+
+function eventReferenceTime(items: ClusterableRadarItem[], asOf?: string) {
+  if (asOf) {
+    const explicit = Date.parse(asOf);
+    if (!Number.isFinite(explicit)) {
+      throw new Error(`Event clustering requires a valid asOf timestamp; received ${asOf}.`);
+    }
+    return explicit;
+  }
+
+  return items.reduce((latest, item) => Math.max(latest, Date.parse(itemTimestamp(item))), 0);
 }
 
 export function filterPublicDisplayEventLayer(layer: PublicEventLayer): PublicEventLayer {
@@ -477,7 +499,7 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
   return Math.max(0, Math.min(1, score));
 }
 
-function materializeCluster(cluster: WorkingCluster): PublicEventCluster {
+function materializeCluster(cluster: WorkingCluster, referenceTime: number): PublicEventCluster {
   const items = [...cluster.items].sort(compareClusterItems);
   const primary = items[0];
   const sourceFamilies = unique(items.map(sourceFamilyForEvent));
@@ -501,7 +523,7 @@ function materializeCluster(cluster: WorkingCluster): PublicEventCluster {
     title: item.title,
     url: item.url
   }));
-  const score = eventScore(items, sourceFamilies, sourceNames);
+  const score = eventScore(items, sourceFamilies, sourceNames, referenceTime);
   const label = eventScoreLabel(score);
   const relatedEntities = unique(items.flatMap(itemEntities)).filter((entity) => !genericEntityTerms.has(entity)).slice(0, 10);
   const firstSeen = timeline[0]?.timestamp ?? itemTimestamp(primary);
@@ -651,7 +673,12 @@ function signalQuality(item: ClusterableRadarItem) {
   return quality;
 }
 
-function eventScore(items: ClusterableRadarItem[], sourceFamilies: string[], sourceNames: string[]) {
+function eventScore(
+  items: ClusterableRadarItem[],
+  sourceFamilies: string[],
+  sourceNames: string[],
+  referenceTime: number
+) {
   const average = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
   const qualities = items.map(signalQuality);
   const base = average(items.map((item) => item.scores.overall || item.scores.importance || 0.45)) * 52;
@@ -661,7 +688,7 @@ function eventScore(items: ClusterableRadarItem[], sourceFamilies: string[], sou
   const diversityBonus = Math.min(12, Math.max(0, sourceFamilies.length - 1) * 5 + Math.max(0, sourceNames.length - 1) * 2);
   const highTierBonus = items.some((item) => /official|tier[_ -]?1|high|primary/i.test(item.source_tier)) ? 6 : 0;
   const hasHighTierSource = highTierBonus > 0;
-  const freshnessBonus = Math.max(...items.map(freshnessBonusForItem), 0);
+  const freshnessBonus = Math.max(...items.map((item) => freshnessBonusForItem(item, referenceTime)), 0);
   const averageQualityPenalty = average(qualities.map((quality) => quality.penalty)) * 40;
   const allLowEventSignals = qualities.every((quality) => quality.isLowEventSignal);
   const importantCategoryBonus = items.some((item) =>
@@ -683,8 +710,8 @@ function eventScore(items: ClusterableRadarItem[], sourceFamilies: string[], sou
   return Math.max(0, Math.min(100, Math.round(cappedScore)));
 }
 
-function freshnessBonusForItem(item: ClusterableRadarItem) {
-  const ageMs = Date.now() - Date.parse(itemTimestamp(item));
+function freshnessBonusForItem(item: ClusterableRadarItem, referenceTime: number) {
+  const ageMs = Math.max(0, referenceTime - Date.parse(itemTimestamp(item)));
   if (!Number.isFinite(ageMs)) return 0;
   if (ageMs <= 24 * 60 * 60 * 1000) return 7;
   if (ageMs <= 7 * 24 * 60 * 60 * 1000) return 4;

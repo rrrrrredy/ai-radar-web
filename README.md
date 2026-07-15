@@ -17,7 +17,7 @@ AI Industry Radar is an event-level AI industry intelligence product. It turns p
 | automated eligible sources | 91 |
 | raw / radar / public radar items | 287 / 283 / 261 |
 | public snapshot signals | 261 |
-| public display events / relationships | 205 / 207 |
+| public display events / relationships | 203 / 205 |
 | curated events | 8 |
 | sources with public items | 64 |
 

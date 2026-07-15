@@ -303,6 +303,7 @@ jobs:
           CLOUDFLARE_SNAPSHOT_READ_SUPABASE: "true"
           CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE: "true"
           ENABLE_SUPABASE_WRITES: "false"
+          SUPABASE_SERVICE_ROLE_KEY: ${{ github.ref == 'refs/heads/main' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
         run: npm run cloudflare:build
 
       - name: Validate built Cloudflare artifact

@@ -22,7 +22,7 @@ English pages render the same event cards, all-signal rows, source health, repor
 - the homepage first viewport shows live snapshot counts and begins `今日行业精选`;
 - `/radar/` defaults to curated events;
 - all 261 public-safe rows remain under `全部信号` / All signals;
-- 207 mapped signals form 205 public events, while 54 signal-only audit rows are disclosed separately;
+- 205 mapped signals form 203 public events, while 56 signal-only audit rows are disclosed separately;
 - event filtering removes low-event records only from events, not from the audit view;
 - `/reports/` exposes event-aware quality and editorial status separately;
 - `/ask/` and `/write/` operate locally on public evidence and do not claim a live private server action;
@@ -36,7 +36,7 @@ The browser-local Ask/Write tools recognize explicit 24-hour and seven-day inten
 | metric | value |
 | --- | ---: |
 | public radar / snapshot signals | 261 / 261 |
-| public display event relationships / events | 207 / 205 |
+| public display event relationships / events | 205 / 203 |
 | curated events | 8 |
 | same-family multi-source events | 1 |
 | cross-family events | 1 |

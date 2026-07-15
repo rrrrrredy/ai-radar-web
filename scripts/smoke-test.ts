@@ -621,6 +621,8 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   );
 
   const snapshotExporter = readSource("scripts/export-public-snapshot.ts");
+  const eventClustering = readSource("lib/events/clustering.ts");
+  const refreshWorkflow = readSource(".github/workflows/radar-refresh-cloudflare.yml");
   const supabasePublicContract = readSource("scripts/check-supabase-public-contract.ts");
   const supabaseLoader = readSource("lib/retrieval/load-supabase-radar-items.ts");
   const publicEntityMigration = readSource("supabase/migrations/202607010001_public_radar_items_entities.sql");
@@ -631,6 +633,18 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
     "supabase/migrations/20260715065603_revoke_private_table_api_grants.sql"
   );
   assertPublicSnapshotSourceContract(snapshotExporter, supabaseLoader);
+  assert.equal(
+    eventClustering.includes("eventReferenceTime") &&
+      eventClustering.includes("options.asOf") &&
+      !eventClustering.includes("Date.now()"),
+    true,
+    "Event clustering and scoring must be deterministic for identical public evidence."
+  );
+  assert.equal(
+    /Build Cloudflare public snapshot[\s\S]{0,500}CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE:[^\n]+true[\s\S]{0,500}ENABLE_SUPABASE_WRITES:[^\n]+false[\s\S]{0,500}SUPABASE_SERVICE_ROLE_KEY:/.test(refreshWorkflow),
+    true,
+    "The production Cloudflare workflow must read authoritative completeness data with writes disabled."
+  );
   assertSupabasePublicContractCheckScript(supabasePublicContract);
   assertPublicRadarViewSqlContract(publicEntityMigration);
   assertPublicViewSecurityMigration(publicViewSecurityMigration, privateGrantMigration);
@@ -675,6 +689,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       false,
       `${pagePath} must not expose internal activation log phrasing.`
     );
+    assert.equal(page.toLowerCase().includes(".vercel.app"), false, `${pagePath} must not expose the private reference deployment namespace.`);
   }
   assertBilingualStaticContract();
   assertStaticCategoryFilterContract("dist/cloudflare-pages/radar/index.html");
@@ -800,10 +815,27 @@ function assertStaticCategoryFilterContract(pagePath: string) {
 function assertStaticCategoryLinkContract(pagePath: string) {
   assert.equal(fs.existsSync(path.join(process.cwd(), pagePath)), true, `${pagePath} must exist after the release build.`);
   const page = readSource(pagePath);
-  assert.equal(page.includes("category=model_release%2Cbenchmark"), true, `${pagePath} must link model reader entry to model_release + benchmark.`);
-  assert.equal(page.includes("category=agent%2Cproduct_update"), true, `${pagePath} must link product reader entry to agent + product_update.`);
-  assert.equal(page.includes("category=open_source%2Cinfrastructure"), true, `${pagePath} must link developer reader entry to open_source + infrastructure.`);
-  assert.equal(page.includes("category=business%2Cfunding%2Cregulation%2Csafety"), true, `${pagePath} must link business reader entry to grouped business/policy categories.`);
+  const snapshot = JSON.parse(readSource("dist/cloudflare-pages/data/radar-snapshot.json")) as {
+    event_clusters?: Array<{ category?: string }>;
+  };
+  const events = snapshot.event_clusters ?? [];
+  const expectations = [
+    ["", events.length],
+    ["model_release,benchmark", countEventsForStaticCategoryContract(events, ["model_release", "benchmark"])],
+    ["agent,product_update", countEventsForStaticCategoryContract(events, ["agent", "product_update"])],
+    ["open_source,infrastructure", countEventsForStaticCategoryContract(events, ["open_source", "infrastructure"])],
+    ["research", countEventsForStaticCategoryContract(events, ["research"])],
+    ["business,funding,regulation,safety", countEventsForStaticCategoryContract(events, ["business", "funding", "regulation", "safety"])]
+  ] as const;
+
+  for (const [query, expectedCount] of expectations) {
+    const href = `radar/?tab=events${query ? `&amp;category=${encodeURIComponent(query)}` : ""}`;
+    const start = page.indexOf(`<a class="event-card" href="${href}"`);
+    assert.equal(start >= 0, true, `${pagePath} must route the ${query || "all"} reader entry to the All events tab.`);
+    const end = page.indexOf("</a>", start);
+    const card = page.slice(start, end);
+    assert.equal(card.includes(`>${expectedCount} 条<`), true, `${pagePath} ${query || "all"} count must equal the landing event result count.`);
+  }
   assert.equal(/category=model_release["&<]/.test(page), false, `${pagePath} must not link the model reader entry to model_release alone.`);
   assert.equal(/category=agent["&<]/.test(page), false, `${pagePath} must not link the product reader entry to agent alone.`);
   assert.equal(/category=open_source["&<]/.test(page), false, `${pagePath} must not link the developer reader entry to open_source alone.`);
@@ -812,6 +844,11 @@ function assertStaticCategoryLinkContract(pagePath: string) {
   assert.equal(page.includes("category=open%20source"), false, `${pagePath} must not link to display label open source.`);
   assert.equal(page.includes("category=all"), false, `${pagePath} must not link to all as a concrete category.`);
   assert.equal(page.includes("category=%E6"), false, `${pagePath} must not link to localized category labels.`);
+}
+
+function countEventsForStaticCategoryContract(events: Array<{ category?: string }>, categories: string[]) {
+  const targets = new Set(categories);
+  return events.filter((event) => targets.has(String(event.category ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_"))).length;
 }
 
 function assertSupabasePublicContractCheckScript(source: string) {
@@ -879,6 +916,14 @@ function assertPublicSnapshotSourceContract(snapshotExporter: string, supabaseLo
       snapshotExporter.includes("selectReportEvents(report, eventLayer, latestTimestamp)"),
     true,
     "Production Cloudflare snapshot export must enforce report quality, declared report windows, and publication freshness."
+  );
+  assert.equal(
+    snapshotExporter.includes("completeness.sources_total < 1") &&
+      snapshotExporter.includes("completeness.automated_eligible_sources < 1") &&
+      snapshotExporter.includes("snapshot.source_health_scope.attempted_sources < 1") &&
+      snapshotExporter.includes("broadHealthOutcomes !== snapshot.source_health_scope.attempted_sources"),
+    true,
+    "Production Cloudflare export must reject partial completeness and source-health summaries."
   );
   assert.equal(
     supabaseLoader.includes('{ count: "exact" }') &&
@@ -1036,7 +1081,8 @@ function assertPublicSnapshotJsonContract(snapshotPath: string) {
     "raw_text",
     "raw_metadata",
     "model_metadata",
-    "evidence_notes"
+    "evidence_notes",
+    "reference_app_url"
   ]);
   const hits: string[] = [];
 
@@ -1061,6 +1107,7 @@ function assertPublicSnapshotJsonContract(snapshotPath: string) {
 
   visit(parsed, "");
   assert.deepEqual(hits, [], `${snapshotPath} must not expose internal public snapshot keys.`);
+  assert.equal(JSON.stringify(parsed).toLowerCase().includes(".vercel.app"), false, `${snapshotPath} must not expose a reference deployment namespace.`);
 
   assert.equal(isRecord(parsed), true, `${snapshotPath} must be a JSON object.`);
   const snapshot = parsed as JsonRecord;
@@ -1080,6 +1127,18 @@ function assertPublicSnapshotJsonContract(snapshotPath: string) {
     publicRadarItems.length,
     `${snapshotPath} must preserve every public-safe radar row for All signals.`
   );
+  const completeness = snapshot.data_completeness_summary;
+  const sourceHealthScope = snapshot.source_health_scope;
+  const sourceHealth = snapshot.source_health_summary;
+  assert.equal(isRecord(completeness), true, `${snapshotPath}.data_completeness_summary must be an object.`);
+  assert.equal(isRecord(sourceHealthScope), true, `${snapshotPath}.source_health_scope must be an object.`);
+  assert.equal(isRecord(sourceHealth), true, `${snapshotPath}.source_health_summary must be an object.`);
+  assert.equal(Number((completeness as JsonRecord).sources_total) > 0, true, `${snapshotPath} must include authoritative source totals.`);
+  assert.equal(Number((completeness as JsonRecord).automated_eligible_sources) > 0, true, `${snapshotPath} must include automated-eligible source totals.`);
+  assert.equal((completeness as JsonRecord).public_radar_items, publicRadarItems.length, `${snapshotPath} completeness counts must match the public signal set.`);
+  const broadAttempted = Number((sourceHealthScope as JsonRecord).attempted_sources);
+  const broadOutcomes = Number((sourceHealth as JsonRecord).succeeded) + Number((sourceHealth as JsonRecord).failed);
+  assert.equal(broadAttempted > 0 && broadOutcomes === broadAttempted, true, `${snapshotPath} must fully account for the audited broad source-health refresh.`);
   const entityAllowedKeys = new Set(["confidence", "name", "type"]);
   const sourceFamilyAllowedValues = new Set(["公司/实验室", "分析/媒体", "其他公开来源", "开源项目", "研究订阅"]);
   const entityKeyViolations: string[] = [];

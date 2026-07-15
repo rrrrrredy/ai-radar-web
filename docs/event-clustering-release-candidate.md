@@ -38,8 +38,8 @@ Canonical release titles retain the exact GitHub tag found across cluster items.
 | metric | persisted layer | Cloudflare display |
 | --- | ---: | ---: |
 | input public signals | 261 | 261 in `全部信号` |
-| event relationships | 209 | 207 |
-| event clusters | 207 | 205 |
+| event relationships | 209 | 205 |
+| event clusters | 207 | 203 |
 | multi-item events | 2 | 2 |
 | average items/event | 1.01 | 1.01 |
 | curated events | 8 | 8 |
@@ -52,3 +52,5 @@ Deduplication examples:
 The current duplicate reduction is two readings: four related signals become two cards. This is intentionally reported as thin coverage rather than overstated product maturity.
 
 Persistence upserts stable cluster IDs and event/radar relationships. The final authoritative write persisted 207 clusters and 209 relationships and archived 0 stale clusters. Archival safeguards require authoritative Supabase input, a minimum feed size, at least 75% eligible-item clustering coverage, at least 90% retained-cluster coverage, and an explicit reconciliation guard. Rows are never deleted by clustering.
+
+Event freshness scoring is deterministic: an explicit evidence `asOf` timestamp is accepted, otherwise the latest valid public `published_at` is used. Tutorial/onboarding pages and media interviews without an explicit AI subject remain available in `全部信号` but cannot enter the public event layer.

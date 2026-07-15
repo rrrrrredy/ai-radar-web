@@ -402,6 +402,23 @@ assert.equal(
   false,
   "events older than 30 days relative to the latest evidence must not enter the curated view"
 );
+const sameDayHistoricalLayer = buildEventLayer([historicalItem], { asOf: "2025-01-10T02:00:00Z" });
+const staleHistoricalLayer = buildEventLayer([historicalItem], { asOf: "2026-07-14T02:00:00Z" });
+assert.equal(
+  sameDayHistoricalLayer.event_clusters[0].event_score > staleHistoricalLayer.event_clusters[0].event_score,
+  true,
+  "event freshness scoring must use the explicit evidence reference time"
+);
+assert.deepEqual(
+  buildEventLayer([historicalItem]),
+  sameDayHistoricalLayer,
+  "default event scoring must derive its reference time from the latest public evidence"
+);
+assert.throws(
+  () => buildEventLayer([historicalItem], { asOf: "not-a-timestamp" }),
+  /valid asOf timestamp/,
+  "invalid explicit clustering reference times must fail closed"
+);
 
 const anthropicWorkspace = radarItem({
   categories: ["research"],
@@ -541,5 +558,29 @@ assert.equal(
   false,
   "signals without a valid public published_at must fail closed instead of borrowing internal collection time"
 );
+
+const lowEventBoundaryLayer = buildEventLayer([
+  radarItem({
+    categories: ["product_update"],
+    id: "chatgpt-getting-started",
+    published_at: "2026-07-10T08:00:00Z",
+    source_name: "OpenAI News",
+    summary_en: "An introductory tutorial explaining how new users can start using ChatGPT.",
+    tags: ["chatgpt", "tutorial", "getting-started"],
+    title: "Getting started with ChatGPT",
+    url: "https://openai.com/academy/getting-started"
+  }),
+  radarItem({
+    categories: ["media_interview"],
+    id: "unrelated-ffmpeg-podcast",
+    published_at: "2026-05-07T06:06:47Z",
+    source_name: "Example Podcast",
+    summary_en: "A discussion of FFmpeg, VLC, video codecs and open-source maintenance.",
+    tags: ["ffmpeg", "vlc", "video codecs", "podcast"],
+    title: "FFmpeg: The technology behind video on the Internet",
+    url: "https://example.com/ffmpeg"
+  })
+]);
+assert.equal(lowEventBoundaryLayer.event_count, 0, "tutorial pages and non-AI interviews must remain in All signals only");
 
 console.log("Event clustering tests passed.");

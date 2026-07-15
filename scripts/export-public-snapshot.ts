@@ -48,7 +48,6 @@ import {
 } from "@/lib/understanding/types";
 
 const cloudflareUrl = "https://ai-industry-radar.pages.dev";
-const referenceAppUrl = "https://ai-radar-web-luosongred-5507s-projects.vercel.app";
 const outputPath = path.join(process.cwd(), "dist", "cloudflare-pages", "data", "radar-snapshot.json");
 const radarLimit = 500;
 const reportLimit = 24;
@@ -154,11 +153,9 @@ type PublicSnapshotCountsInput = {
 export type PublicMirrorSnapshot = {
   schema_version: 1;
   generated_at: string;
-  reference_app_url: string;
   public_site: {
     purpose: string;
     cloudflare_url: string;
-    reference_app_url: string;
     read_only: true;
   };
   source: {
@@ -1090,7 +1087,7 @@ function buildSnapshot(input: {
   const latest = latestTimestamp(items);
   const statusCounts = countStatuses(items);
   const eventInputItems = items.map((item) => ({ ...item, evidence_notes: [] }));
-  const rawEventLayer = buildEventLayer(eventInputItems);
+  const rawEventLayer = buildEventLayer(eventInputItems, latest?.value ? { asOf: latest.value } : {});
   const eventLayer = publicDisplayEventLayer(rawEventLayer);
   const reports = mergeReports(
     buildEventAwareReports(
@@ -1107,10 +1104,8 @@ function buildSnapshot(input: {
   return {
     schema_version: 1,
     generated_at: input.generatedAt,
-    reference_app_url: referenceAppUrl,
     public_site: {
       cloudflare_url: cloudflareUrl,
-      reference_app_url: referenceAppUrl,
       purpose: "Primary Cloudflare public read surface for AI Industry Radar data.",
       read_only: true
     },
@@ -2055,7 +2050,7 @@ function sanitizePublicSnapshot(snapshot: PublicMirrorSnapshot): PublicMirrorSna
   const latest = latestTimestamp(radarItems);
   debugStep(`sanitize:build-event-layer-start rows=${radarItems.length}`);
   const eventInputItems = radarItems.map((item) => ({ ...item, evidence_notes: [] }));
-  const rawEventLayer = buildEventLayer(eventInputItems);
+  const rawEventLayer = buildEventLayer(eventInputItems, latest?.value ? { asOf: latest.value } : {});
   debugStep(`sanitize:build-event-layer-done events=${rawEventLayer.event_count}`);
   const eventLayer = publicDisplayEventLayer(rawEventLayer);
   debugStep(`sanitize:public-filter-done events=${eventLayer.event_count}`);
@@ -2072,12 +2067,10 @@ function sanitizePublicSnapshot(snapshot: PublicMirrorSnapshot): PublicMirrorSna
   return {
     schema_version: 1,
     generated_at: text(snapshot.generated_at) || new Date().toISOString(),
-    reference_app_url: referenceAppUrl,
     public_site: {
       cloudflare_url: cloudflareUrl,
       purpose: "Primary Cloudflare public read surface for AI Industry Radar data.",
-      read_only: true,
-      reference_app_url: referenceAppUrl
+      read_only: true
     },
     counts: {
       citations: integer(snapshot.counts.citations),
@@ -2370,6 +2363,21 @@ function assertStrictProductionSnapshot(snapshot: PublicMirrorSnapshot) {
     snapshot.source.local_data_used
   ) {
     throw new Error("Production snapshot export rejected a non-Supabase or fallback data source.");
+  }
+
+  const completeness = snapshot.data_completeness_summary;
+  const broadHealthOutcomes = snapshot.source_health_summary.succeeded + snapshot.source_health_summary.failed;
+  if (
+    completeness.sources_total < 1 ||
+    completeness.automated_eligible_sources < 1 ||
+    (completeness.public_radar_items ?? 0) !== publicItemCount ||
+    (completeness.sources_with_public_items ?? 0) < 1 ||
+    snapshot.source_health_scope.attempted_sources < 1 ||
+    broadHealthOutcomes !== snapshot.source_health_scope.attempted_sources
+  ) {
+    throw new Error(
+      "Production snapshot export requires authoritative completeness counts and a fully accounted broad source-health refresh."
+    );
   }
 
   if (publicItemCount < minPublicItems || snapshot.radar_items.length < minPublicItems) {

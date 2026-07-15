@@ -32,7 +32,7 @@ The final focused run fetched OGX through the legacy stable source slug `meta-ll
 | layer | signals/relationships | events | curated | multi-item |
 | --- | ---: | ---: | ---: | ---: |
 | persisted deterministic layer | 209 | 207 | 8 | 2 |
-| Cloudflare public display | 207 | 205 | 8 | 2 |
+| Cloudflare public display | 205 | 203 | 8 | 2 |
 
 Average persisted items per event are 1.01. Four repeated public signals become two event cards, reducing two duplicate readings:
 
@@ -62,7 +62,7 @@ Both quality gates pass. `needs_review` is the editorial state and is not a gate
 
 All 261 public-safe radar rows are present under `全部信号`; event-quality filtering applies only to event construction and curation.
 
-The event layer maps 207 signals into 205 public events. The remaining 54 signal-only audit rows are disclosed on the homepage and radar page instead of being silently omitted or promoted into weak events. `待复核` contains only events backed by `needs_review` signals. Browser-local Ask/Write understands explicit 24-hour and seven-day windows, anchors them to snapshot freshness, displays evidence dates, and returns an honest empty state when no event matches.
+The event layer maps 205 signals into 203 public events. The remaining 56 signal-only audit rows are disclosed on the homepage and radar page instead of being silently omitted or promoted into weak events. `待复核` contains only events backed by `needs_review` signals. Browser-local Ask/Write understands explicit 24-hour and seven-day windows, anchors them to snapshot freshness, displays evidence dates, and returns an honest empty state when no event matches.
 
 ## Release Hardening
 
@@ -70,6 +70,9 @@ The event layer maps 207 signals into 205 public events. The remaining 54 signal
 - Event persistence requires at least 75% candidate clustering coverage and 90% retained-cluster coverage before stale rows can be archived. Clustering never deletes rows.
 - Report candidates carry the full evidence set. Quality counts are recomputed from evidence, timestamps must fit the declared window, and approval/publication rechecks each item and source against `public_radar_items`.
 - Cloudflare independently reprojects report evidence into the declared daily/weekly window and fails the gate when the window has insufficient public evidence.
+- Event freshness scoring uses the latest public evidence timestamp rather than the build clock, so identical evidence produces identical scores and curation.
+- Strict production export requires authoritative completeness counts plus a fully accounted broad source-health run; the workflow supplies read credentials while keeping Supabase writes disabled.
+- Public HTML and snapshot JSON omit the Vercel reference namespace; Vercel remains an operational verification target only.
 - Chrome desktop/mobile interaction and visual QA passed 28/28 checks with no relevant console errors.
 
 ## Security and Operations

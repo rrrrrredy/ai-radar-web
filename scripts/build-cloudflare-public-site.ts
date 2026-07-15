@@ -140,11 +140,9 @@ type SnapshotTimelineEntry = SnapshotEvent["timeline"][number] & {
 type Snapshot = {
   schema_version: 1;
   generated_at: string;
-  reference_app_url: string;
   public_site: {
     purpose: string;
     cloudflare_url: string;
-    reference_app_url: string;
     read_only: true;
   };
   source: {
@@ -362,6 +360,7 @@ function renderNotFound(snapshot: Snapshot) {
 function renderEnglishHome(snapshot: Snapshot) {
   const curated = snapshot.curated_events.toSorted(compareHomepageEvents).slice(0, 8);
   const topEvents = curated.slice(0, 3);
+  const followUpEvents = curated.slice(3, 8);
   const latestReportCandidates = latestReportsByType(snapshot);
   const sameFamilyEvents = snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length === 1).length;
   const crossFamilyEvents = snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
@@ -369,7 +368,7 @@ function renderEnglishHome(snapshot: Snapshot) {
   const currentSelection = curatedWindowIsCurrent(snapshot);
   const title = currentSelection ? "Today's AI Industry Selection" : "Today's Selection (includes earlier evidence)";
   const description = currentSelection
-    ? "Related signals are merged into events so you can inspect coverage, source health, timelines and citations without reading the same story repeatedly."
+    ? "Related evidence is merged only when the match is strong. Most current events remain single-source observations, with source health, timelines and citations exposed for review."
     : "The selected set includes prior-day evidence. Every card shows its evidence date so older items are not presented as current-day news.";
 
   return englishShell(snapshot, "home", 0, title, `
@@ -420,10 +419,10 @@ function renderEnglishHome(snapshot: Snapshot) {
       </aside>
     </section>
 
-    <section class="panel">
-      <div class="section-heading"><h2>Industry selection</h2><a href="radar/">Explore all views</a></div>
-      <div class="event-grid">${curated.map((event) => renderEventCardEn(event, snapshot)).join("") || empty("No selected events are available.")}</div>
-    </section>
+    ${followUpEvents.length > 0 ? `<section class="panel">
+      <div class="section-heading"><h2>More selected events</h2><a href="radar/?tab=events">Explore all events</a></div>
+      <div class="event-grid">${followUpEvents.map((event) => renderEventCardEn(event, snapshot)).join("")}</div>
+    </section>` : ""}
 
     <section class="grid two">
       <div class="panel">
@@ -478,7 +477,7 @@ function renderEnglishRadar(snapshot: Snapshot) {
         <div class="pill-row">
           ${pill(`${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} public store / ${snapshot.radar_items.length} displayed`, "success")}
           ${pill(`${snapshot.event_count} events / ${eventItemIds.size} mapped signals`, "evidence")}
-          ${pill(`${snapshot.coverage.attempted_sources} sources attempted`, "neutral")}
+          ${pill(`${snapshot.coverage.attempted_sources} focused-refresh sources attempted`, "neutral")}
           ${pill(sourceLabelEn(snapshot.source.data_source), "neutral")}
         </div>
         <h1>Event Radar</h1>
@@ -516,7 +515,7 @@ function renderEnglishRadar(snapshot: Snapshot) {
       <div class="distribution">
         ${distributionEn("Status", [["Included", snapshot.counts.included], ["Needs review", snapshot.counts.needs_review], ["Excluded", snapshot.counts.excluded], ["Failed", snapshot.counts.failed]])}
         ${distributionEn("Categories", snapshot.top_categories.slice(0, 8).map((entry) => [entry.label, entry.count]))}
-        ${distributionEn("Source coverage", [["Total", snapshot.coverage.sources_total], ["Automated eligible", snapshot.coverage.automated_eligible_sources], ["Attempted", snapshot.coverage.attempted_sources], ["Publicly visible", snapshot.coverage.sources_with_public_items ?? 0], ["Failed", snapshot.coverage.failed_sources]])}
+        ${distributionEn("Focused refresh coverage", [["Configured total", snapshot.coverage.sources_total], ["Automated eligible", snapshot.coverage.automated_eligible_sources], ["Focused attempted", snapshot.coverage.attempted_sources], ["Publicly visible", snapshot.coverage.sources_with_public_items ?? 0], ["Focused failed", snapshot.coverage.failed_sources]])}
         ${distributionEn("Freshness", freshnessBuckets(snapshot.radar_items, "en"))}
       </div>
     </section>
@@ -536,6 +535,7 @@ function renderEnglishRadar(snapshot: Snapshot) {
       <div class="timeline-list">${snapshot.timeline.map((entry) => renderTimelineEntryEn(entry, snapshot)).join("") || empty("No timeline entries are available.")}</div>
     </section>
     <section aria-labelledby="radar-tab-review" class="tab-panel" data-tab-panel="review" hidden id="radar-panel-review" role="tabpanel">
+      <div class="callout"><strong>${reviewItemIds.size} needs-review signals map to ${reviewEvents.length} review events</strong><p>This tab is event-level. Open All signals for row-level status and evidence.</p></div>
       <div class="event-grid">${reviewEvents.map((event) => renderEventCardEn(event, snapshot)).join("") || empty("No events currently require review.")}</div>
     </section>
     <section aria-labelledby="radar-tab-health" class="tab-panel" data-tab-panel="health" hidden id="radar-panel-health" role="tabpanel">${sourceHealthPanelEn(snapshot)}</section>
@@ -638,14 +638,14 @@ function renderHome(snapshot: Snapshot) {
   const latestReports = latestReportsByType(snapshot);
   const curated = snapshot.curated_events.toSorted(compareHomepageEvents).slice(0, 8);
   const topEvents = curated.slice(0, 3);
-  const followUpEvents = curated.slice(3, 7);
+  const followUpEvents = curated.slice(3, 8);
   const title = snapshotCuratedTitle(snapshot);
   const briefing = readerBriefing(snapshot);
   const currentSelection = curatedWindowIsCurrent(snapshot);
   const eventCoverage = eventSignalCoverage(snapshot);
   const topSectionTitle = currentSelection ? "今日 Top 3" : "本轮 Top 3";
   const description = currentSelection
-    ? "把重复信号合并成事件，区分跨家族多源报道、同家族复述和单源观察，并展示来源健康、时间线、引用和局限。"
+    ? "只在匹配证据充分时合并相关信号；当前多数事件仍是单源观察，页面同时展示来源健康、时间线、引用和局限。"
     : "本轮精选包含前几日证据；每张卡片都显示证据日期，旧事件不会伪装成今日新闻。";
 
   return shell(snapshot, "home", 0, title, `
@@ -667,7 +667,7 @@ function renderHome(snapshot: Snapshot) {
           ${pill(sourceLabel(snapshot.source.data_source), "neutral")}
         </div>
         <h1>${escapeHtml(title)}</h1>
-        <div class="section-heading"><h2>${escapeHtml(topSectionTitle)}</h2><a href="radar/">全部事件</a></div>
+        <div class="section-heading"><h2>${escapeHtml(topSectionTitle)}</h2><a href="radar/?tab=events">全部事件</a></div>
         <div class="featured-list">${topEvents.map(renderFeaturedEventCard).join("") || empty("暂无可展示精选事件。")}</div>
         <p class="lead">${escapeHtml(description)} 提问与写作入口只读取当前公开快照，并明确展示证据边界。</p>
         <div class="actions">
@@ -716,18 +716,10 @@ function renderHome(snapshot: Snapshot) {
       <div class="panel">
         <div class="section-heading">
           <h2>继续跟踪</h2>
-          <a href="radar/">查看全部</a>
+          <a href="radar/?tab=events">查看全部</a>
         </div>
         <div class="row-list">${followUpEvents.map(renderEventMini).join("") || empty("暂无继续跟踪事件。")}</div>
       </div>
-    </section>
-
-    <section class="panel">
-      <div class="section-heading">
-        <h2>全部行业精选</h2>
-        <a href="radar/">查看全部事件</a>
-      </div>
-      <div class="event-grid">${curated.map((event) => renderEventCard(event, snapshot)).join("") || empty("暂无可展示事件。")}</div>
     </section>
 
     <section class="grid two">
@@ -789,6 +781,12 @@ function renderRadar(snapshot: Snapshot) {
   const eventItemIds = new Set(snapshot.event_cluster_items.map((item) => item.radar_item_id));
   const displaySignalItems = snapshot.radar_items;
   const downgradedSignalCount = displaySignalItems.filter((item) => !eventItemIds.has(item.id)).length;
+  const reviewItemIds = new Set(
+    snapshot.radar_items.filter((item) => item.status === "needs_review").map((item) => item.id)
+  );
+  const reviewEvents = snapshot.event_clusters.filter((event) =>
+    event.related_item_ids.some((id) => reviewItemIds.has(id))
+  );
 
   return shell(snapshot, "radar", 1, "雷达", `
     <section class="page-heading">
@@ -796,7 +794,7 @@ function renderRadar(snapshot: Snapshot) {
         <div class="pill-row">
           ${pill(`${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} 条公开库 / ${snapshot.radar_items.length} 条本站展示`, "success")}
           ${pill(`${snapshot.event_count} 个事件 / ${eventItemIds.size} 条已映射信号`, "evidence")}
-          ${pill(`${snapshot.coverage.attempted_sources} 个已尝试来源`, "neutral")}
+          ${pill(`${snapshot.coverage.attempted_sources} 个定向刷新已尝试来源`, "neutral")}
           ${pill(sourceLabel(snapshot.source.data_source), "neutral")}
         </div>
         <h1>事件雷达</h1>
@@ -840,13 +838,13 @@ function renderRadar(snapshot: Snapshot) {
         ])}
         ${distribution("类别", snapshot.top_categories.slice(0, 8).map((entry) => [entry.label, entry.count]))}
         ${distribution("来源家族", Object.entries(families))}
-        ${distribution("来源覆盖", [
+        ${distribution("定向刷新与来源覆盖", [
           ["总数", snapshot.coverage.sources_total],
           ["自动合格", snapshot.coverage.automated_eligible_sources],
-          ["已尝试", snapshot.coverage.attempted_sources],
+          ["定向刷新已尝试", snapshot.coverage.attempted_sources],
           ["有公开条目的来源", snapshot.coverage.sources_with_public_items ?? 0],
-          ["失败", snapshot.coverage.failed_sources],
-          ["跳过", snapshot.coverage.skipped_sources]
+          ["定向刷新失败", snapshot.coverage.failed_sources],
+          ["定向刷新跳过", snapshot.coverage.skipped_sources]
         ])}
         ${distribution("新鲜度", freshnessBuckets(snapshot.radar_items, "zh"))}
       </div>
@@ -860,7 +858,7 @@ function renderRadar(snapshot: Snapshot) {
       <div class="grid radar-layout">
       <div class="row-list radar-list" id="radar-list">
         ${downgradedSignalCount > 0 ? `<div class="callout warning"><strong>${downgradedSignalCount} 条低事件性信号仅保留作审计</strong><p>文档入口、目录页、站点首页、仓库元数据仍显示在“全部信号”，但不进入事件列表和报告正文。</p></div>` : ""}
-        ${displaySignalItems.map(renderRadarItem).join("") || empty("暂无雷达条目。")}
+        ${displaySignalItems.map((item) => renderRadarItem(item, snapshot)).join("") || empty("暂无雷达条目。")}
       </div>
       <aside class="panel sticky">
         <h2>引用栏</h2>
@@ -875,7 +873,8 @@ function renderRadar(snapshot: Snapshot) {
     </section>
 
     <section aria-labelledby="radar-tab-review" class="tab-panel" data-tab-panel="review" hidden id="radar-panel-review" role="tabpanel">
-      <div class="event-grid">${snapshot.event_clusters.filter((event) => event.related_item_ids.some((id) => snapshot.radar_items.find((item) => item.id === id)?.status === "needs_review")).map((event) => renderEventCard(event, snapshot)).join("") || empty("暂无待复核事件。")}</div>
+      <div class="callout"><strong>${reviewItemIds.size} 条待复核信号归入 ${reviewEvents.length} 个待复核事件</strong><p>本标签按事件聚合展示；逐条状态与证据仍保留在“全部信号”。</p></div>
+      <div class="event-grid">${reviewEvents.map((event) => renderEventCard(event, snapshot)).join("") || empty("暂无待复核事件。")}</div>
     </section>
 
     <section aria-labelledby="radar-tab-health" class="tab-panel" data-tab-panel="health" hidden id="radar-panel-health" role="tabpanel">
@@ -904,7 +903,7 @@ function renderEntities(snapshot: Snapshot) {
         <h1>实体跟踪</h1>
         <p class="lead">按公司、模型、产品、项目、论文和来源聚合公开信号；每个实体展示名称、类型、证据数量、来源覆盖和下一步判断。</p>
       </div>
-      <a class="button" href="${escapeAttr(snapshot.reference_app_url.replace(/\/$/, ""))}/entities">打开动态实体页</a>
+      <a class="button" href="../radar/">打开事件雷达</a>
     </section>
     ${freshnessAlert(snapshot)}
 
@@ -1142,7 +1141,7 @@ function englishShell(
     <main>${body}</main>
     <footer class="site-footer">
       <span>Generated ${escapeHtml(formatDateEn(snapshot.generated_at))}</span>
-      <span>Public read-only radar snapshot. Dynamic reference: <a href="${escapeAttr(snapshot.reference_app_url)}">${escapeHtml(snapshot.reference_app_url)}</a></span>
+      <span>Public read-only radar snapshot. This is the primary public surface.</span>
     </footer>
     <script>${languageSwitchStateScript()}</script>
   </body>
@@ -1661,7 +1660,7 @@ function shell(snapshot: Snapshot, current: "home" | "radar" | "entities" | "rep
     <main>${body}</main>
     <footer class="site-footer">
       <span>生成时间 ${escapeHtml(formatDate(snapshot.generated_at))}</span>
-      <span>公开只读雷达快照。参考动态应用：<a href="${escapeAttr(snapshot.reference_app_url)}">${escapeHtml(snapshot.reference_app_url)}</a></span>
+      <span>公开只读雷达快照。当前页面是主站公开入口。</span>
     </footer>
     <script>${languageSwitchStateScript()}</script>
   </body>
@@ -1692,7 +1691,7 @@ function renderEventCard(event: SnapshotEvent, snapshot: Snapshot) {
     </div>
     ${event.source_count > 1 && event.source_families.length > 1 ? `<p class="confirmation-note">跨来源家族比单条报道更强，但来源独立性尚未验证。</p>` : ""}
     <h2>${escapeHtml(event.canonical_title)}</h2>
-    <p>${escapeHtml(publicText(event.summary_zh))}</p>
+    <p>${escapeHtml(chineseEventSummary(event))}</p>
     <dl class="event-meta">
       ${rail("类别", labelize(event.category))}
       ${rail("时间", `${formatDate(event.first_seen_at)} 至 ${formatDate(event.latest_seen_at)}`)}
@@ -1727,7 +1726,7 @@ function renderFeaturedEventCard(event: SnapshotEvent) {
       </div>
       ${event.source_count > 1 && event.source_families.length > 1 ? `<p class="confirmation-note">来源独立性尚未验证。</p>` : ""}
       <h2>${escapeHtml(event.canonical_title)}</h2>
-      <p>${escapeHtml(publicText(event.summary_zh))}</p>
+      <p>${escapeHtml(chineseEventSummary(event))}</p>
       <dl class="event-meta">
         ${rail("为什么重要", eventImpactNote(event))}
         ${rail("下一步观察", eventWatchNote(event))}
@@ -1747,7 +1746,7 @@ function renderFeaturedEventCard(event: SnapshotEvent) {
 function readerCategoryCards(snapshot: Snapshot) {
   return readerCategoryCounts(snapshot)
     .map(
-      (category) => `<a class="event-card" href="radar/${category.query ? `?category=${encodeURIComponent(category.query)}` : ""}">
+      (category) => `<a class="event-card" href="${escapeAttr(`radar/?tab=events${category.query ? `&category=${encodeURIComponent(category.query)}` : ""}`)}">
         <div class="pill-row">${pill(`${category.count} 条`, category.count > 0 ? "success" : "neutral")}</div>
         <h2>${escapeHtml(category.label)}</h2>
         <p>${escapeHtml(category.description)}</p>
@@ -1778,36 +1777,36 @@ function readerCategoryCounts(snapshot: Snapshot) {
   return [
     {
       count: snapshot.event_count,
-      description: "先看 Top 3、事件层和来源家族覆盖。",
+      description: "浏览全部事件，并按来源家族和证据状态判断。",
       label: "热点",
       query: ""
     },
     {
-      count: countItemsByCategories(snapshot, ["model_release", "benchmark"]),
+      count: countEventsByCategories(snapshot, ["model_release", "benchmark"]),
       description: "模型发布、基准和能力边界。",
       label: "模型",
       query: "model_release,benchmark"
     },
     {
-      count: countItemsByCategories(snapshot, ["agent", "product_update"]),
+      count: countEventsByCategories(snapshot, ["agent", "product_update"]),
       description: "Agent、产品更新和工作流变化。",
       label: "产品/Agent",
       query: "agent,product_update"
     },
     {
-      count: countItemsByCategories(snapshot, ["open_source", "infrastructure"]),
+      count: countEventsByCategories(snapshot, ["open_source", "infrastructure"]),
       description: "开源项目、开发者工具和基础设施。",
       label: "开发者/开源",
       query: "open_source,infrastructure"
     },
     {
-      count: countItemsByCategories(snapshot, ["research"]),
+      count: countEventsByCategories(snapshot, ["research"]),
       description: "论文、研究路线和早期技术信号。",
       label: "论文/技术",
       query: "research"
     },
     {
-      count: countItemsByCategories(snapshot, ["business", "funding", "regulation", "safety"]),
+      count: countEventsByCategories(snapshot, ["business", "funding", "regulation", "safety"]),
       description: "商业、融资、监管和安全风险。",
       label: "商业/政策",
       query: "business,funding,regulation,safety"
@@ -1815,9 +1814,9 @@ function readerCategoryCounts(snapshot: Snapshot) {
   ];
 }
 
-function countItemsByCategories(snapshot: Snapshot, categories: string[]) {
+function countEventsByCategories(snapshot: Snapshot, categories: string[]) {
   const targets = new Set(categories);
-  return snapshot.radar_items.filter((item) => item.categories.some((category) => targets.has(category))).length;
+  return snapshot.event_clusters.filter((event) => targets.has(categoryFilterValue(event.category))).length;
 }
 
 function categoryFilterValue(value: string) {
@@ -2188,7 +2187,7 @@ function renderEntityDetail(snapshot: Snapshot, entity: EntitySummary) {
     <section class="panel">
       <div class="section-heading">
         <h2>证据图</h2>
-        <a href="${escapeAttr(snapshot.reference_app_url.replace(/\/$/, ""))}/entities/${encodeURIComponent(entityRouteId(entity))}">可选动态参考</a>
+        <a href="../../radar/">查看事件雷达</a>
       </div>
       <dl class="rail">
         ${rail("实体 ID", entityRouteId(entity))}
@@ -2355,19 +2354,30 @@ function watchTone(label: string): "caution" | "evidence" | "neutral" | "success
   return "neutral";
 }
 
-function renderRadarItem(item: SnapshotItem) {
+function renderRadarItem(item: SnapshotItem, snapshot: Snapshot) {
   const family = sourceFamily(item);
   const search = [item.title, item.source_name, item.status, item.categories.join(" "), item.tags.join(" "), item.summary_en, item.summary_zh].join(" ").toLowerCase();
   const timestampLabel = item.published_at ? "发布时间" : item.collected_at ? "采集时间" : "处理时间";
   const timestamp = item.published_at ?? "";
   const freshness = freshnessBucket(timestamp);
+  const relatedEvent = snapshot.event_clusters.find((event) => event.related_item_ids.includes(item.id));
+  const summary = chineseProductText(
+    item.summary_zh,
+    relatedEvent
+      ? chineseProductText(relatedEvent.summary_zh, "该事件暂无中文摘要，请结合原标题和公开来源核对。")
+      : "该信号暂无中文摘要，请结合原标题和公开来源核对。"
+  );
+  const whyItMatters = chineseProductText(
+    item.why_it_matters,
+    relatedEvent ? eventImpactNote(relatedEvent) : "该信号未进入事件层，仅保留作逐条审计，使用前需回到公开来源核对。"
+  );
 
   return `<article class="radar-row" data-category="${escapeAttr(`${item.categories.join(" ")} ${item.categories.map(labelize).join(" ")}`)}" data-family="${escapeAttr(family)}" data-freshness="${freshness}" data-search="${escapeAttr(search)}" data-status="${escapeAttr(item.status)}">
     <div>
       <div class="pill-row">${pill(statusLabel(item.status), statusTone(item.status))}${pill(family, "neutral")}${pill(`综合 ${item.scores.overall.toFixed(2)}`, "evidence")}${pill(`置信度 ${formatPercent(item.confidence)}`, "success")}</div>
       <h2><a href="${escapeAttr(item.url)}">${escapeHtml(item.title)}</a></h2>
-      <p>${escapeHtml(item.summary_zh || item.summary_en || "暂无公开摘要。")}</p>
-      ${item.why_it_matters ? `<p class="note"><strong>为什么重要：</strong> ${escapeHtml(publicText(item.why_it_matters))}</p>` : ""}
+      <p>${escapeHtml(summary)}</p>
+      <p class="note"><strong>为什么重要：</strong> ${escapeHtml(whyItMatters)}</p>
       <div class="pill-row">${item.categories.map((category) => pill(labelize(category), "evidence")).join("")}${item.tags.slice(0, 5).map((tag) => pill(tag, "neutral")).join("")}</div>
     </div>
     <aside><dl class="rail">${rail("来源", item.source_name)}${rail("层级", item.source_tier)}${rail(timestampLabel, formatDate(timestamp))}${rail("处理时间", formatDate(item.processed_at))}</dl><a class="source-link" href="${escapeAttr(item.url)}">打开引用</a></aside>
@@ -2639,6 +2649,18 @@ function sourceFamily(item: Pick<SnapshotItem, "source_family" | "source_name" |
   });
 }
 
+function chineseProductText(value: string | undefined, fallback: string) {
+  const localized = publicText(value ?? "").trim();
+  return /[\u3400-\u9fff]/.test(localized) ? localized : fallback;
+}
+
+function chineseEventSummary(event: SnapshotEvent) {
+  return chineseProductText(
+    event.summary_zh,
+    `该事件汇集 ${event.related_item_ids.length} 条公开信号，当前覆盖 ${event.source_count} 个来源；请结合时间线和引用核对。`
+  );
+}
+
 function freshnessBucket(timestamp: string) {
   const ageMs = Date.now() - Date.parse(timestamp);
   if (!Number.isFinite(ageMs)) return "unknown";
@@ -2736,7 +2758,7 @@ function coverageRailRows(snapshot: Snapshot) {
     rail("公开数据集", "公开只读"),
     rail("来源总数", String(snapshot.coverage.sources_total)),
     rail("自动合格来源", String(snapshot.coverage.automated_eligible_sources)),
-    rail("已尝试来源", String(snapshot.coverage.attempted_sources)),
+    rail("本轮定向刷新已尝试来源", String(snapshot.coverage.attempted_sources)),
     rail("有公开条目的来源", String(snapshot.coverage.sources_with_public_items ?? "待补")),
     rail("公开记录", String(snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)),
     rail("可见信号", String(snapshot.radar_items.length)),
@@ -2762,7 +2784,7 @@ function sourceHealthPanel(snapshot: Snapshot) {
       ${metric("自动合格来源", snapshot.coverage.automated_eligible_sources)}
       ${metric("广泛刷新尝试源", snapshot.source_health_scope.attempted_sources)}
       ${metric("广泛刷新成功源", health.succeeded)}
-      ${metric("失败源", health.failed)}
+      ${metric("广泛刷新失败源", health.failed)}
       ${metric("手动/阻塞源", health.manual_blocked)}
       ${metric("超时失败", health.timeout)}
       ${metric("HTTP 403 失败", health["403"])}
@@ -3512,7 +3534,11 @@ function localEvidenceToolScript(
   }
 
   function eventSummary(snapshot, event) {
-    if (language !== "en") return event.summary_zh;
+    if (language !== "en") {
+      const summary = String(event.summary_zh || "");
+      if (/[\u3400-\u9fff]/.test(summary)) return summary;
+      return "该事件汇集 " + Number((event.related_item_ids || []).length) + " 条公开信号，当前覆盖 " + Number(event.source_count || 0) + " 个来源；请结合时间线和引用核对。";
+    }
     const item = relatedItem(snapshot, event);
     if (item?.summary_en) return item.summary_en;
     return "This public event is supported by " + Number(event.source_count || 0) + " source(s) and " + Number((event.related_item_ids || []).length) + " related signal(s). Review the citations before drawing a firm conclusion.";
@@ -3705,7 +3731,7 @@ function localEvidenceToolScript(
       '<p>问题：' + escapeHtml(query) + '</p>' +
       '<p>证据边界：仅基于当前公开快照，最新内容发布时间 ' + escapeHtml(freshness) + '；结果不是实时联网回答。</p>' +
       '<ol>' + events.map((event) =>
-        '<li><strong>' + escapeHtml(event.canonical_title) + '</strong><p>' + escapeHtml(event.summary_zh) + '</p>' +
+        '<li><strong>' + escapeHtml(event.canonical_title) + '</strong><p>' + escapeHtml(eventSummary(snapshot, event)) + '</p>' +
         '<small>' + escapeHtml(eventDate(event)) + ' / ' + escapeHtml(event.event_score_label) + ' / 分数 ' + escapeHtml(event.event_score) + ' / ' + escapeHtml(event.source_count) + ' 个来源 / ' + escapeHtml((event.source_families || []).join("、")) + '</small>' +
         '<div class="local-citations">' + citationHtml(event) + '</div></li>'
       ).join("") + '</ol>';
@@ -3722,7 +3748,7 @@ function localEvidenceToolScript(
         '<p>Evidence dates: ' + escapeHtml(selected.map((event) => eventDate(event)).join(', ')) + '.</p>' +
         '<h4>Sources</h4><div class="local-citations">' + citations + '</div>';
     }
-    const observations = selected.map((event) => event.canonical_title + '：' + event.summary_zh).join(' ');
+    const observations = selected.map((event) => event.canonical_title + '：' + eventSummary(snapshot, event)).join(' ');
     return '<h3>AI 行业观察</h3>' +
       '<p>截至公开内容最新发布时间 ' + escapeHtml(freshness) + '，本轮行业精选呈现出 ' + escapeHtml(selected.length) + ' 条值得继续跟踪的信号。' + escapeHtml(observations) + ' 这些判断只覆盖当前公开快照：单源事件仍需独立来源确认，跨家族报道也不等于来源彼此独立，不能外推为完整实时行业结论。</p>' +
       '<p>证据日期：' + escapeHtml(selected.map((event) => eventDate(event)).join('、')) + '。</p>' +
@@ -3752,7 +3778,7 @@ function localEvidenceToolScript(
       '<ol>' + events.slice(0, 4).map((event) =>
         '<li><strong>' + escapeHtml(event.canonical_title) + '</strong>' +
         '<p>证据日期：' + escapeHtml(eventDate(event)) + '</p>' +
-        '<p>论点：' + escapeHtml(event.summary_zh) + '</p>' +
+        '<p>论点：' + escapeHtml(eventSummary(snapshot, event)) + '</p>' +
         '<p>证据：' + escapeHtml(event.source_count) + ' 个来源，来源家族 ' + escapeHtml((event.source_families || []).join("、")) + '。</p>' +
         '<p>边界：' + escapeHtml((event.caveats || ["仍需补充独立来源确认。"]) [0]) + '</p>' +
         '<div class="local-citations">' + citationHtml(event) + '</div></li>'

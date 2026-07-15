@@ -102,6 +102,18 @@ const eventCuePatterns = [
   /发布|推出|上线|合作|融资|收购|开源|模型|基准|论文|智能体/
 ];
 
+const tutorialPatterns = [
+  /\bgetting started\b/i,
+  /\bbeginner(?:'s)? guide\b/i,
+  /\bhow to use\b/i,
+  /入门指南|新手指南|使用教程/
+];
+
+const aiSubjectPatterns = [
+  /\b(?:ai|artificial intelligence|machine learning|deep learning|large language models?|llms?|agents?|openai|anthropic|chatgpt|claude|gemini|gpt(?:-\d+)?|deepseek|llama|mistral|nvidia)\b/i,
+  /人工智能|机器学习|深度学习|大语言模型|智能体|模型训练|推理模型|生成式\s*AI/i
+];
+
 export function assessPublicSignalQuality(item: QualityInput): PublicSignalQuality {
   const title = clean(item.title);
   const titleLower = title.toLowerCase();
@@ -115,6 +127,22 @@ export function assessPublicSignalQuality(item: QualityInput): PublicSignalQuali
   let hardLowSignal = false;
 
   const hasEventCue = eventCuePatterns.some((pattern) => pattern.test(`${title} ${url} ${summary}`));
+  const tutorialLike =
+    tutorialPatterns.some((pattern) => pattern.test(`${title} ${summary}`)) ||
+    /(?:^|\s)(?:tutorial|getting-started|beginner-guide)(?:\s|$)/i.test(tags);
+  const mediaInterviewWithoutAiSubject =
+    item.categories?.includes("media_interview") &&
+    !aiSubjectPatterns.some((pattern) => pattern.test(`${title} ${summary} ${tags}`));
+
+  if (tutorialLike) {
+    hardLowSignal = true;
+    reasons.push("教程或入门页，不是行业事件");
+  }
+
+  if (mediaInterviewWithoutAiSubject) {
+    hardLowSignal = true;
+    reasons.push("访谈缺少明确 AI 主题");
+  }
 
   if (genericExactTitles.has(titleLower)) {
     penalty += 0.5;
