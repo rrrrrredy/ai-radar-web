@@ -10,6 +10,7 @@ import {
   MINIMUM_STALE_CLUSTERED_INPUT_COVERAGE_RATIO,
   MINIMUM_STALE_CLUSTER_COVERAGE_RATIO,
   MINIMUM_STALE_CLUSTER_INPUT_ITEMS,
+  assertAuthoritativeEventPersistenceInput,
   assertEventPersistenceWriteEnabled,
   buildEventClusterItemUpsertRows,
   buildEventClusterUpsertRows,
@@ -102,6 +103,19 @@ test("event persistence requires the explicit Supabase write gate", () => {
   assert.throws(() => assertEventPersistenceWriteEnabled(undefined), /ENABLE_SUPABASE_WRITES=true/);
   assert.throws(() => assertEventPersistenceWriteEnabled("false"), /ENABLE_SUPABASE_WRITES=true/);
   assert.throws(() => assertEventPersistenceWriteEnabled("1"), /ENABLE_SUPABASE_WRITES=true/);
+});
+
+test("event persistence rejects non-authoritative fallback inputs", () => {
+  assert.doesNotThrow(() => assertAuthoritativeEventPersistenceInput("supabase_radar_items", true));
+  assert.throws(
+    () => assertAuthoritativeEventPersistenceInput("supabase_radar_items", false),
+    /authoritative direct Supabase/
+  );
+  assert.throws(
+    () => assertAuthoritativeEventPersistenceInput("local_understanding_output", false),
+    /local, snapshot, mock, and fallback inputs are rejected/
+  );
+  assert.throws(() => assertAuthoritativeEventPersistenceInput("mock_data", false), /fallback inputs are rejected/);
 });
 
 test("event rows preserve stable ids and all public-safe event fields", () => {

@@ -1,26 +1,26 @@
 # Data Completeness Release Candidate
 
-Generated: 2026-07-15T06:16:52.185Z
+Generated: 2026-07-16T02:51:51.357Z
 
 ## Gate Summary
 
 - Sources total: 317
 - Automated eligible sources: 91
-- Attempted sources in latest run: 1
-- Fetched sources in latest run: 1
+- Attempted sources in latest run: 30
+- Fetched sources in latest run: 27
 - Skipped sources in latest run: 0
-- Failed sources in latest run: 0
+- Failed sources in latest run: 3
 - Blocked/manual sources: 226
 - Sources with public visible items: 64
-- Raw items: 287
-- Radar items: 283
-- Public radar items: 261
+- Raw items: 326
+- Radar items: 322
+- Public radar items: 298
 
 ## Conversion Rates
 
 - Source to raw coverage: 91.2%
-- Raw to radar conversion: 98.6%
-- Radar to public visibility: 92.2%
+- Raw to radar conversion: 98.8%
+- Radar to public visibility: 92.5%
 - Public visible sources / total configured sources: 20.2%
 
 ## Pipeline Counts
@@ -28,17 +28,17 @@ Generated: 2026-07-15T06:16:52.185Z
 - Sources with at least one raw item: 83
 - Sources with at least one radar item: 83
 - Sources with at least one public radar item: 64
-- Raw items with radar items: 283
-- Included / needs_review / excluded / failed radar items: 260 / 4 / 19 / 0
-- Report candidates: 34
-- Latest ingestion timestamp: 2026-07-15T06:00:25.944+00:00
-- Latest understanding timestamp: 2026-07-15T06:06:41.986+00:00
+- Raw items with radar items: 322
+- Included / needs_review / excluded / failed radar items: 297 / 4 / 21 / 0
+- Report candidates: 40
+- Latest ingestion timestamp: 2026-07-16T02:15:03.513+00:00
+- Latest understanding timestamp: 2026-07-16T02:19:41.582+00:00
 
 ## Persistence Audit
 
 - Unpersisted chunks found: no
-- Completed chunks: 1
-- Persisted chunks: 1
+- Completed chunks: 6
+- Persisted chunks: 6
 - Persist-failed chunks: 0
 - Missing latest raw item ids in Supabase: 0
 - Missing latest radar item ids in Supabase: 0
@@ -46,34 +46,35 @@ Generated: 2026-07-15T06:16:52.185Z
 
 ## Public Visibility Audit
 
-- Public view gaps: 22
+- Public view gaps: 24
 - Valid included/needs_review rows missing public view: 0
 - Public view gaps fixed in this audit: no
 
 ### Public Gap Reasons
 
-- excluded:ai_relevance_below_threshold: 19
+- excluded:ai_relevance_below_threshold: 21
 - source_risk_flags: 3
 
 ### Excluded Reasons
 
-- ai_relevance_below_threshold: 19
+- ai_relevance_below_threshold: 21
 
 ### Failed Source Reasons
 
-- None.
+- failed_timeout: 3
 
 ### Failure Families
 
-- low_relevance_excluded: 19
-- rate_limit: 1
+- low_relevance_excluded: 21
+- timeout: 3
+- 403: 2
 
 ## GitHub Rate Limit
 
-- GitHub token present: no
-- Minimum remaining observed: 12
-- Latest reset at: 2026-07-15T06:33:37.000Z
-- Sources observed: 1
+- GitHub token present: yes
+- Minimum remaining observed: 4920
+- Latest reset at: 2026-07-16T02:22:44.000Z
+- Sources observed: 8
 
 ## Safety
 
@@ -268,7 +269,7 @@ Generated: 2026-07-15T06:16:52.185Z
 | the-origin-of-consciousness | 《二分心智的崩塌：人类意识的起源》（ 《The Origin Of Consciousness》） | specialist_analysis | T2 | deferred | no_crawl | no | no | no | 0 | 0 | 0 |  |  |  | blocked_requires_manual | Source is configured for manual/future crawl or needs a public URL; it was not automatically crawled. |
 | source-6a8069dd | 《统计学习方法》 | specialist_analysis | T2 | deferred | no_crawl | no | no | no | 0 | 0 | 0 |  |  |  | blocked_requires_manual | Source is configured for manual/future crawl or needs a public URL; it was not automatically crawled. |
 | source-07500849 | 《芯片战争》 | specialist_analysis | T2 | deferred | no_crawl | no | no | no | 0 | 0 | 0 |  |  |  | blocked_requires_manual | Source is configured for manual/future crawl or needs a public URL; it was not automatically crawled. |
-| lex-fridman | Lex Fridman | podcast_video | T2 | active | podcast_feed | yes | no | no | 7 | 7 | 4 | 2026-07-14T07:02:44.537+00:00 | 2026-07-14T07:07:45.108+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
+| lex-fridman | Lex Fridman | podcast_video | T2 | active | podcast_feed | yes | yes | yes | 7 | 7 | 4 | 2026-07-16T01:29:04.828+00:00 | 2026-07-16T01:34:59.041+00:00 | Feed response was truncated to the configured byte limit. | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
 | no-priors-podcast-1-ai-ai-openai-anthropic-2-sarah-guo-ai-ai-elad-gil-high-growth-handbook-stripe-airbnb-3-4-ai | No Priors podcast\|1. 主题聚焦 - 探讨AI技术前沿（如大语言模型、生成式AI） - 分析科技创业趋势与投资逻辑 - 对话行业领军人物（如OpenAI、Anthropic等公司创始人） 2. 主持人背景 - Sarah Guo: 深度参与AI领域投资，曾主导多家明星AI初创企业的早期投资。 - Elad Gil: 连续创业者，著有《High Growth Handbook》，投资过Stripe、Airbnb等公司。 3. 内容特色 - 技术深度与商业洞察结合 - 提供可操作的创业建议 - 涵盖技术伦理、行业竞争等宏观议题 4. 适合人群 - AI/科技领域从业者 - 创业者及投资人 - 对技术创新感兴趣的学生与研究者 | podcast_video | T2 | trial | manual | no | no | no | 0 | 0 | 0 |  |  |  | blocked_requires_manual | Source is configured for manual/future crawl or needs a public URL; it was not automatically crawled. |
 | a16z-podcast | a16z Podcast | podcast_video | T2 | trial | manual | no | no | no | 0 | 0 | 0 |  |  |  | blocked_requires_manual | Source is configured for manual/future crawl or needs a public URL; it was not automatically crawled. |
 | jun-0216fb | 张小珺Jùn\|商业访谈录 | podcast_video | T1.5 | trial | manual | no | no | no | 0 | 0 | 0 |  |  |  | blocked_requires_manual | Source is configured for manual/future crawl or needs a public URL; it was not automatically crawled. |
@@ -302,7 +303,7 @@ Generated: 2026-07-15T06:16:52.185Z
 | not-boring | Not Boring | specialist_analysis | T2 | active | html | yes | no | no | 1 | 1 | 0 | 2026-07-14T08:49:42.365+00:00 | 2026-07-14T08:50:25.459+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window. |
 | the-generalist | The Generalist | specialist_analysis | T2 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T08:55:28.664+00:00 | 2026-07-14T08:55:39.4+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | elad-gil | Elad Gil | specialist_analysis | T2 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T08:46:59.955+00:00 | 2026-07-14T08:48:04.755+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| benedict-evans | Benedict Evans | specialist_analysis | T1.5 | active | html | yes | no | no | 1 | 1 | 0 | 2026-07-14T07:08:36.137+00:00 | 2026-07-14T07:12:34.229+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window. |
+| benedict-evans | Benedict Evans | specialist_analysis | T1.5 | active | html | yes | yes | yes | 1 | 1 | 0 | 2026-07-16T02:14:51.203+00:00 | 2026-07-16T02:15:03.514+00:00 |  | fetched | Latest fetch succeeded; generated items are either excluded, awaiting review, or not visible in the public view. |
 | sam-altman | Sam Altman | specialist_analysis | T2 | active | html | yes | no | no | 1 | 1 | 0 | 2026-07-14T08:49:42.442+00:00 | 2026-07-14T08:51:59.078+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window. |
 | marc-andreessen | Marc Andreessen | specialist_analysis | T1.5 | active | html | yes | no | no | 0 | 0 | 0 |  |  |  | skipped_low_priority | Automated eligible but not selected in the latest activation window. |
 | implications | Implications | specialist_analysis | T1.5 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:27:04.986+00:00 | 2026-07-14T07:27:06.79+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
@@ -311,7 +312,7 @@ Generated: 2026-07-15T06:16:52.185Z
 | thesephist | Thesephist | specialist_analysis | T1.5 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:44:14.141+00:00 | 2026-07-14T07:45:35.815+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | fabricated-knowledge | Fabricated Knowledge | specialist_analysis | T1.5 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:19:35.063+00:00 | 2026-07-14T07:24:09.305+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | turing-post | Turing Post | specialist_analysis | T1.5 | active | html | yes | no | no | 0 | 0 | 0 |  |  |  | skipped_low_priority | Automated eligible but not selected in the latest activation window. |
-| epoch-ai | Epoch AI | specialist_analysis | T1.5 | active | html | yes | no | no | 0 | 0 | 0 |  |  |  | skipped_low_priority | Automated eligible but not selected in the latest activation window. |
+| epoch-ai | Epoch AI | specialist_analysis | T1.5 | active | html | yes | yes | no | 0 | 0 | 0 |  |  | fetch failed | failed_timeout | fetch failed |
 | stephen-wolfram | Stephen Wolfram | specialist_analysis | T1.5 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:40:18.587+00:00 | 2026-07-14T07:40:29.244+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | the-strategy-desk | The Strategy Desk | specialist_analysis | T1.5 | active | html | yes | no | no | 0 | 0 | 0 |  |  |  | skipped_low_priority | Automated eligible but not selected in the latest activation window. |
 | a16z | A16Z | specialist_analysis | T2 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:51:56.604+00:00 | 2026-07-14T07:55:27.305+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
@@ -331,7 +332,7 @@ Generated: 2026-07-15T06:16:52.185Z
 | first-1000 | First 1000 | specialist_analysis | unreviewed | active | html | yes | no | no | 1 | 1 | 0 | 2026-07-14T08:57:11.768+00:00 | 2026-07-14T08:57:14.776+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window. |
 | the-technium | The Technium | specialist_analysis | unreviewed | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T09:08:21.41+00:00 | 2026-07-14T09:08:23.316+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | every | Every | specialist_analysis | T1.5 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:19:34.994+00:00 | 2026-07-14T07:21:06.458+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| andrew-chen | Andrew Chen | specialist_analysis | T1.5 | active | html | yes | no | no | 0 | 0 | 0 |  |  |  | skipped_low_priority | Automated eligible but not selected in the latest activation window. |
+| andrew-chen | Andrew Chen | specialist_analysis | T1.5 | active | html | yes | yes | no | 0 | 0 | 0 |  |  | fetch failed | failed_timeout | fetch failed |
 | nnamdi | Nnamdi | specialist_analysis | T2 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T08:49:42.338+00:00 | 2026-07-14T08:49:44.021+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | digital-native | Digital Native | specialist_analysis | T2 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T08:46:59.938+00:00 | 2026-07-14T08:47:35.179+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | tyler-hogge | Tyler Hogge | specialist_analysis | T2 | active | html | yes | no | no | 1 | 1 | 0 | 2026-07-14T08:55:28.698+00:00 | 2026-07-14T08:55:59.871+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window. |
@@ -357,53 +358,53 @@ Generated: 2026-07-15T06:16:52.185Z
 | 3-blue-1-brown | 3 Blue 1 Brown | specialist_analysis | T2 | trial | manual | no | no | no | 0 | 0 | 0 |  |  |  | blocked_requires_manual | Source is configured for manual/future crawl or needs a public URL; it was not automatically crawled. |
 | x-andrejkarpathy | Andrej Karpathy | specialist_analysis | T2 | trial | x_api_future | no | no | no | 0 | 0 | 0 |  |  |  | blocked_requires_manual | Source is configured for manual/future crawl or needs a public URL; it was not automatically crawled. |
 | x-gregisenberg | Greg Isenberg | specialist_analysis | T2 | trial | x_api_future | no | no | no | 0 | 0 | 0 |  |  |  | blocked_requires_manual | Source is configured for manual/future crawl or needs a public URL; it was not automatically crawled. |
-| openai-news | OpenAI News | official_company | T1 | active | rss | yes | no | no | 15 | 15 | 15 | 2026-07-14T07:02:43.962+00:00 | 2026-07-14T07:03:40.037+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
+| openai-news | OpenAI News | official_company | T1 | active | rss | yes | yes | yes | 18 | 18 | 18 | 2026-07-16T01:29:03.971+00:00 | 2026-07-16T01:29:54.684+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
 | openai-research | OpenAI Research | official_company | T1 | trial | manual | no | no | no | 0 | 0 | 0 |  |  |  | blocked_requires_manual | Source is configured for manual/future crawl or needs a public URL; it was not automatically crawled. |
-| openai-cookbook | OpenAI Cookbook | github_open_source | T1 | active | api | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:02:44.324+00:00 | 2026-07-14T07:05:52.327+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| openai-python | OpenAI Python SDK | github_open_source | T1 | active | api | yes | no | no | 9 | 9 | 9 | 2026-07-14T07:19:34.971+00:00 | 2026-07-14T07:20:44.097+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| anthropic-news | Anthropic News | official_company | T1 | active | sitemap | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:08:36.007+00:00 | 2026-07-14T07:08:43.759+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| anthropic-research | Anthropic Research | official_company | T1 | active | sitemap | yes | no | no | 11 | 11 | 11 | 2026-07-15T04:22:10.763+00:00 | 2026-07-15T04:27:24.341+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| anthropic-sdk-python | Anthropic Python SDK | github_open_source | T1 | active | api | yes | no | no | 8 | 8 | 8 | 2026-07-14T07:08:36.091+00:00 | 2026-07-14T07:12:07.757+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| google-deepmind-blog | Google DeepMind Blog | official_company | T1 | active | rss | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:18:51.059+00:00 | 2026-07-14T07:22:18.342+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| google-gemini-blog | Google Gemini Blog | official_company | T1 | active | rss | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:24:48.803+00:00 | 2026-07-14T07:24:59.214+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
+| openai-cookbook | OpenAI Cookbook | github_open_source | T1 | active | api | yes | yes | yes | 1 | 1 | 1 | 2026-07-16T01:29:04.789+00:00 | 2026-07-16T01:31:54.564+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| openai-python | OpenAI Python SDK | github_open_source | T1 | active | api | yes | yes | yes | 9 | 9 | 9 | 2026-07-16T02:04:05.61+00:00 | 2026-07-16T02:05:07.956+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| anthropic-news | Anthropic News | official_company | T1 | active | sitemap | yes | yes | yes | 4 | 4 | 4 | 2026-07-16T02:10:20.623+00:00 | 2026-07-16T02:13:49.503+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| anthropic-research | Anthropic Research | official_company | T1 | active | sitemap | yes | yes | yes | 11 | 11 | 11 | 2026-07-16T02:14:51.25+00:00 | 2026-07-16T02:16:51.355+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| anthropic-sdk-python | Anthropic Python SDK | github_open_source | T1 | active | api | yes | yes | yes | 8 | 8 | 8 | 2026-07-16T01:35:47.23+00:00 | 2026-07-16T01:40:02.373+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| google-deepmind-blog | Google DeepMind Blog | official_company | T1 | active | rss | yes | yes | yes | 4 | 4 | 4 | 2026-07-16T01:35:47.103+00:00 | 2026-07-16T01:36:52.966+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| google-gemini-blog | Google Gemini Blog | official_company | T1 | active | rss | yes | yes | yes | 4 | 4 | 4 | 2026-07-16T01:35:47.33+00:00 | 2026-07-16T01:42:56.723+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
 | google-ai-developers | Google AI for Developers | official_company | T1 | active | html | yes | no | no | 6 | 4 | 4 | 2026-07-14T07:27:05.002+00:00 | 2026-07-14T07:27:35.309+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| meta-ai-blog | Meta AI Blog | official_company | T1 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:19:35.012+00:00 | 2026-07-14T07:21:34.527+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| meta-llama-stack | OGX | github_open_source | T1 | active | api | yes | yes | yes | 16 | 16 | 16 | 2026-07-15T06:00:23.412+00:00 | 2026-07-15T06:06:00.708+00:00 | GITHUB_TOKEN present: no; GitHub API requests are unauthenticated and may hit public rate limits. | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| meta-ai-blog | Meta AI Blog | official_company | T1 | active | html | yes | yes | yes | 1 | 1 | 0 | 2026-07-16T02:14:51.454+00:00 | 2026-07-16T02:19:05.539+00:00 |  | fetched | Latest fetch succeeded; generated items are either excluded, awaiting review, or not visible in the public view. |
+| meta-llama-stack | OGX | github_open_source | T1 | active | api | yes | yes | yes | 16 | 16 | 16 | 2026-07-16T02:04:05.754+00:00 | 2026-07-16T02:08:09.915+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
 | microsoft-foundry-blog | Microsoft Foundry Blog | official_company | T1 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:35:53.205+00:00 | 2026-07-14T07:36:03.906+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | microsoft-autogen | Microsoft AutoGen | github_open_source | T1 | active | api | yes | no | no | 3 | 3 | 3 | 2026-07-14T07:30:58.286+00:00 | 2026-07-14T07:32:19.635+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | microsoft-semantic-kernel | Microsoft Semantic Kernel | github_open_source | T1 | active | api | yes | no | no | 6 | 6 | 6 | 2026-07-14T07:30:58.351+00:00 | 2026-07-14T07:34:44.08+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| nvidia-ai-blog | NVIDIA AI Blog | official_company | T1 | active | rss | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:40:18.605+00:00 | 2026-07-14T07:41:09.52+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| nvidia-generative-ai-technical-blog | NVIDIA Generative AI Technical Blog | official_company | T1 | active | rss | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:40:18.657+00:00 | 2026-07-14T07:43:37.772+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| huggingface-blog | Hugging Face Blog | official_company | T1 | active | rss | yes | no | no | 1 | 1 | 0 | 2026-07-14T07:30:58.325+00:00 | 2026-07-14T07:33:19.085+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window. |
-| huggingface-transformers | Hugging Face Transformers | github_open_source | T1 | active | api | yes | no | no | 8 | 8 | 8 | 2026-07-14T07:18:50.873+00:00 | 2026-07-14T07:21:48.137+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| huggingface-peft | Hugging Face PEFT | github_open_source | T1 | active | api | yes | no | no | 3 | 3 | 3 | 2026-07-14T07:27:05.02+00:00 | 2026-07-14T07:29:20.058+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
+| nvidia-ai-blog | NVIDIA AI Blog | official_company | T1 | active | rss | yes | yes | no | 1 | 1 | 1 | 2026-07-14T07:40:18.605+00:00 | 2026-07-14T07:41:09.52+00:00 | fetch failed | failed_timeout | fetch failed |
+| nvidia-generative-ai-technical-blog | NVIDIA Generative AI Technical Blog | official_company | T1 | active | rss | yes | yes | yes | 4 | 4 | 4 | 2026-07-16T02:10:20.505+00:00 | 2026-07-16T02:11:37.571+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| huggingface-blog | Hugging Face Blog | official_company | T1 | active | rss | yes | yes | yes | 4 | 4 | 3 | 2026-07-16T01:43:24.92+00:00 | 2026-07-16T01:49:15.474+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| huggingface-transformers | Hugging Face Transformers | github_open_source | T1 | active | api | yes | yes | yes | 9 | 9 | 9 | 2026-07-16T01:43:24.865+00:00 | 2026-07-16T01:46:22.804+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| huggingface-peft | Hugging Face PEFT | github_open_source | T1 | active | api | yes | yes | yes | 3 | 3 | 3 | 2026-07-16T02:14:51.319+00:00 | 2026-07-16T02:18:37.158+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
 | mistral-news | Mistral AI News | official_company | T1 | trial | manual | no | no | no | 0 | 0 | 0 |  |  |  | blocked_requires_manual | Source is configured for manual/future crawl or needs a public URL; it was not automatically crawled. |
 | mistral-inference | Mistral Inference | github_open_source | T1 | active | api | yes | no | no | 3 | 3 | 3 | 2026-07-14T07:35:53.226+00:00 | 2026-07-14T07:37:29.431+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | deepseek-api-docs | DeepSeek API Docs | official_company | T1 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:51:56.591+00:00 | 2026-07-14T07:55:04.519+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | deepseek-home | DeepSeek | official_company | T1 | trial | manual | no | no | no | 0 | 0 | 0 |  |  |  | blocked_requires_manual | Source is configured for manual/future crawl or needs a public URL; it was not automatically crawled. |
-| deepseek-v3 | DeepSeek-V3 | github_open_source | T1 | active | api | yes | no | no | 2 | 2 | 2 | 2026-07-14T07:24:48.922+00:00 | 2026-07-14T07:26:35.275+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
+| deepseek-v3 | DeepSeek-V3 | github_open_source | T1 | active | api | yes | yes | yes | 2 | 2 | 2 | 2026-07-16T02:10:20.664+00:00 | 2026-07-16T02:14:25.297+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
 | qwen-blog | Qwen Blog | official_company | T1 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:35:53.27+00:00 | 2026-07-14T07:37:57.439+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| qwen3 | Qwen3 | github_open_source | T1 | active | api | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:24:48.834+00:00 | 2026-07-14T07:25:36.105+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
+| qwen3 | Qwen3 | github_open_source | T1 | active | api | yes | yes | yes | 1 | 1 | 1 | 2026-07-16T02:10:20.555+00:00 | 2026-07-16T02:12:04.832+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
 | alibaba-model-studio-release-notes | Alibaba Cloud Model Studio Release Notes | official_company | T1 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:44:14.159+00:00 | 2026-07-14T07:46:00.888+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | kimi-platform-docs | Kimi Platform Docs | official_company | T1 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:57:11.099+00:00 | 2026-07-14T07:57:11.347+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | kimi-home | Kimi | official_company | T1 | trial | manual | no | no | no | 0 | 0 | 0 |  |  |  | blocked_requires_manual | Source is configured for manual/future crawl or needs a public URL; it was not automatically crawled. |
 | anthropic-release-notes | Anthropic Release Notes | official_company | T1 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:24:48.885+00:00 | 2026-07-14T07:26:07.954+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | google-gemini-api-changelog | Google Gemini API Changelog | official_company | T1 | active | html | yes | no | no | 3 | 3 | 3 | 2026-07-14T07:27:05.05+00:00 | 2026-07-14T07:30:21.429+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | cohere-changelog | Cohere Changelog | official_company | T1 | active | html | yes | no | no | 1 | 1 | 1 | 2026-07-14T07:51:56.537+00:00 | 2026-07-14T07:51:56.681+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| arxiv-cs-ai | arXiv cs.AI | arxiv_research | T1 | active | rss | yes | no | no | 17 | 17 | 17 | 2026-07-14T07:02:44.293+00:00 | 2026-07-14T07:05:21.941+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| arxiv-cs-cl | arXiv cs.CL | arxiv_research | T1 | active | rss | yes | no | no | 23 | 23 | 23 | 2026-07-14T07:08:36.044+00:00 | 2026-07-14T07:10:32.744+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| arxiv-cs-lg | arXiv cs.LG | arxiv_research | T1 | active | rss | yes | no | no | 20 | 18 | 18 | 2026-07-14T07:18:51.081+00:00 | 2026-07-14T07:23:59.484+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| arxiv-cs-cv | arXiv cs.CV | arxiv_research | T1 | active | rss | yes | no | no | 23 | 23 | 23 | 2026-07-14T07:18:50.844+00:00 | 2026-07-14T07:20:06.496+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
+| arxiv-cs-ai | arXiv cs.AI | arxiv_research | T1 | active | rss | yes | yes | yes | 17 | 17 | 17 | 2026-07-16T01:29:04.746+00:00 | 2026-07-16T01:31:20.732+00:00 | Feed response was truncated to the configured byte limit. | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| arxiv-cs-cl | arXiv cs.CL | arxiv_research | T1 | active | rss | yes | yes | yes | 26 | 26 | 26 | 2026-07-16T01:35:47.172+00:00 | 2026-07-16T01:38:36.863+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| arxiv-cs-lg | arXiv cs.LG | arxiv_research | T1 | active | rss | yes | yes | yes | 23 | 21 | 21 | 2026-07-16T01:43:24.952+00:00 | 2026-07-16T01:51:04.659+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| arxiv-cs-cv | arXiv cs.CV | arxiv_research | T1 | active | rss | yes | yes | yes | 26 | 26 | 26 | 2026-07-16T01:43:24.837+00:00 | 2026-07-16T01:44:44.717+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
 | pytorch | PyTorch | github_open_source | T1 | active | api | yes | no | no | 4 | 4 | 4 | 2026-07-14T07:35:53.291+00:00 | 2026-07-14T07:39:45.962+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | vllm | vLLM | github_open_source | T1 | active | api | yes | no | no | 6 | 6 | 6 | 2026-07-14T07:40:18.623+00:00 | 2026-07-14T07:43:01.453+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | llama-cpp | llama.cpp | github_open_source | T1 | active | api | yes | no | no | 9 | 9 | 9 | 2026-07-14T07:44:14.113+00:00 | 2026-07-14T07:45:10.983+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | sglang | SGLang | github_open_source | T1 | active | api | yes | no | no | 6 | 6 | 6 | 2026-07-14T07:51:56.562+00:00 | 2026-07-14T07:53:54.648+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
 | ollama | Ollama | github_open_source | T1 | active | api | yes | no | no | 7 | 7 | 7 | 2026-07-14T07:44:14.178+00:00 | 2026-07-14T07:47:37.812+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| techcrunch-ai | TechCrunch AI | specialist_analysis | T1.5 | active | rss | yes | no | no | 3 | 3 | 3 | 2026-07-14T09:08:21.591+00:00 | 2026-07-14T09:13:21.166+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| venturebeat-ai | VentureBeat AI | specialist_analysis | T1.5 | active | rss | yes | no | no | 3 | 3 | 3 | 2026-07-14T09:15:43.956+00:00 | 2026-07-14T09:17:12.535+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| the-verge-ai | The Verge AI | specialist_analysis | T1.5 | active | rss | yes | no | no | 3 | 3 | 3 | 2026-07-14T09:08:21.605+00:00 | 2026-07-14T09:15:05.285+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| mit-technology-review-ai | MIT Technology Review AI | specialist_analysis | T1.5 | active | rss | yes | no | no | 5 | 5 | 5 | 2026-07-15T02:08:56.784+00:00 | 2026-07-15T02:10:56.441+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
-| ars-technica-ai | Ars Technica AI | specialist_analysis | T1.5 | active | rss | yes | no | no | 3 | 3 | 3 | 2026-07-14T09:08:21.581+00:00 | 2026-07-14T09:11:42.363+00:00 |  | skipped_low_priority | Automated eligible but not selected in the latest activation window; prior public rows exist. |
+| techcrunch-ai | TechCrunch AI | specialist_analysis | T1.5 | active | rss | yes | yes | yes | 6 | 6 | 5 | 2026-07-16T01:43:24.89+00:00 | 2026-07-16T01:47:50.344+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| venturebeat-ai | VentureBeat AI | specialist_analysis | T1.5 | active | rss | yes | yes | yes | 4 | 4 | 4 | 2026-07-16T02:04:05.764+00:00 | 2026-07-16T02:09:38.506+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| the-verge-ai | The Verge AI | specialist_analysis | T1.5 | active | rss | yes | yes | yes | 6 | 6 | 6 | 2026-07-16T02:04:05.728+00:00 | 2026-07-16T02:06:36.896+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| mit-technology-review-ai | MIT Technology Review AI | specialist_analysis | T1.5 | active | rss | yes | yes | yes | 6 | 6 | 6 | 2026-07-16T01:29:04.812+00:00 | 2026-07-16T01:33:13.379+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
+| ars-technica-ai | Ars Technica AI | specialist_analysis | T1.5 | active | rss | yes | yes | yes | 6 | 6 | 6 | 2026-07-16T01:35:47.253+00:00 | 2026-07-16T01:41:29.143+00:00 |  | fetched | Latest fetch succeeded and at least one item is visible through the public radar view. |
 
 ## Warnings
 

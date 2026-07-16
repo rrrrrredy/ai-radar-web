@@ -83,6 +83,17 @@ export function assertEventPersistenceWriteEnabled(value = process.env.ENABLE_SU
   }
 }
 
+export function assertAuthoritativeEventPersistenceInput(
+  dataSource: RetrievalDataSource,
+  directSupabaseRead: boolean
+) {
+  if (dataSource !== "supabase_radar_items" || directSupabaseRead !== true) {
+    throw new Error(
+      "Event persistence requires an authoritative direct Supabase public-radar read; local, snapshot, mock, and fallback inputs are rejected."
+    );
+  }
+}
+
 export function buildEventClusterUpsertRows(
   events: PublicEventCluster[],
   persistedAt = new Date().toISOString()

@@ -8,6 +8,7 @@ import {
   MINIMUM_STALE_CLUSTERED_INPUT_COVERAGE_RATIO,
   MINIMUM_STALE_CLUSTER_COVERAGE_RATIO,
   MINIMUM_STALE_CLUSTER_INPUT_ITEMS,
+  assertAuthoritativeEventPersistenceInput,
   persistEventLayer,
   type EventLayerPersistenceResult,
   type StaleClusterReconciliationGuard
@@ -20,8 +21,11 @@ const outputPath = path.join(process.cwd(), "data", "events", "latest", "event-l
 
 async function main() {
   const options = parseOptions(process.argv.slice(2));
-  const persistenceClient = options.persist ? getSupabaseServiceClientForWrite() : null;
   const feed = await loadRadarFeed();
+  if (options.persist) {
+    assertAuthoritativeEventPersistenceInput(feed.data_source, feed.authoritative_supabase_read);
+  }
+  const persistenceClient = options.persist ? getSupabaseServiceClientForWrite() : null;
   const eventLayer = buildEventLayer(feed.items.map(toClusterableRadarItem));
   const staleClusterReconciliation = buildStaleClusterReconciliationGuard(feed);
 

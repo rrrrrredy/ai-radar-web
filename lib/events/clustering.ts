@@ -201,6 +201,19 @@ const knownEntityPatterns = [
   "苹果"
 ];
 
+const broadNamedEntityTerms = new Set([
+  ...knownEntityPatterns,
+  "claude",
+  "gpt",
+  "llm",
+  "model",
+  "models",
+  "copilot",
+  "huggingface",
+  "language model",
+  "large language model"
+]);
+
 const eventActionPatterns = [
   ["legal", /\b(?:sue|sues|sued|suing|lawsuit|litigation|court|complaint)\b|诉讼|起诉|法律行动/i],
   ["funding", /\b(?:raise|raises|raised|funding|fundraise|financing|investment)\b|融资|投资/i],
@@ -451,6 +464,9 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
     specificEventConceptMatch &&
     sharedStrongEntityCount >= 2 &&
     timeScore >= 0.35;
+  const corroboratedNamedEntityMatch = cluster.items.some((clusterItem) =>
+    sharesDistinctiveNamedEvent(clusterItem, item)
+  );
 
   if (versionConflict) {
     return 0;
@@ -477,6 +493,10 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
   }
 
   if (corroboratedConceptMatch) {
+    score = Math.max(score, 0.72);
+  }
+
+  if (corroboratedNamedEntityMatch) {
     score = Math.max(score, 0.72);
   }
 
@@ -1160,6 +1180,39 @@ function sharesSpecificEventAction(leftTitle: string, rightTitle: string) {
 function sharesSpecificEventConcept(left: ClusterableRadarItem, right: ClusterableRadarItem) {
   const leftConcepts = new Set(itemEventConcepts(left));
   return itemEventConcepts(right).some((concept) => leftConcepts.has(concept));
+}
+
+function sharesDistinctiveNamedEvent(left: ClusterableRadarItem, right: ClusterableRadarItem) {
+  if (sourceFamilyForEvent(left) === sourceFamilyForEvent(right)) {
+    return false;
+  }
+
+  if (timeWindowScore(left, right) < 1 || intersectionSize(new Set(left.categories), new Set(right.categories)) === 0) {
+    return false;
+  }
+
+  const leftTitle = normalizeText(left.title);
+  const rightTitle = normalizeText(right.title);
+  const rightEntities = new Set(strongItemEntities(right).map(canonicalEventEntity));
+
+  return strongItemEntities(left)
+    .map(canonicalEventEntity)
+    .filter((entity) => rightEntities.has(entity) && isDistinctiveNamedEntity(entity))
+    .some((entity) => containsNormalizedPhrase(leftTitle, entity) && containsNormalizedPhrase(rightTitle, entity));
+}
+
+function isDistinctiveNamedEntity(value: string) {
+  const entity = normalizeEntity(value);
+  if (!entity || genericEntityTerms.has(entity) || broadNamedEntityTerms.has(entity)) {
+    return false;
+  }
+
+  const tokens = entity.split(" ").filter(Boolean);
+  return tokens.length >= 2 ? entity.length >= 6 : entity.length >= 8;
+}
+
+function containsNormalizedPhrase(text: string, phrase: string) {
+  return ` ${text} `.includes(` ${normalizeEntity(phrase)} `);
 }
 
 function safeDomain(rawUrl: string) {

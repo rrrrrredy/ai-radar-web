@@ -505,6 +505,79 @@ assert.equal(
   "directory and landing-page signals must remain outside the public event evidence layer"
 );
 
+const gptRedOfficial = radarItem({
+  categories: ["research", "safety"],
+  entities: [company("OpenAI"), { confidence: 0.99, name: "GPT-Red", type: "model" as const }],
+  id: "openai-gpt-red",
+  published_at: "2026-07-15T10:00:00Z",
+  source_id: "openai-news",
+  source_name: "OpenAI News",
+  source_tier: "T1",
+  summary_en: "OpenAI describes GPT-Red as a self-improving red-team model for robustness research.",
+  title: "GPT-Red: Unlocking Self-Improvement for Robustness",
+  url: "https://openai.com/index/unlocking-self-improvement-gpt-red"
+});
+const gptRedCoverage = radarItem({
+  categories: ["safety", "research"],
+  entities: [company("OpenAI"), { confidence: 0.99, name: "GPT-Red", type: "model" as const }],
+  id: "mit-gpt-red",
+  published_at: "2026-07-15T17:09:00Z",
+  source_id: "mit-technology-review-ai",
+  source_name: "MIT Technology Review AI",
+  summary_en: "MIT Technology Review examines the GPT-Red system and its model-safety claims.",
+  title: "Meet GPT-Red: an LLM super-hacker OpenAI built to make its models safer",
+  url: "https://www.technologyreview.com/2026/07/15/meet-gpt-red"
+});
+const gptRedLaterBenchmark = radarItem({
+  categories: ["research", "safety"],
+  entities: [company("OpenAI"), { confidence: 0.99, name: "GPT-Red", type: "model" as const }],
+  id: "gpt-red-later-benchmark",
+  published_at: "2026-07-17T18:00:00Z",
+  source_name: "Independent Benchmark Lab",
+  title: "GPT-Red receives a separate benchmark evaluation",
+  url: "https://example.org/gpt-red-separate-benchmark"
+});
+const gptRedLayer = buildEventLayer([gptRedOfficial, gptRedCoverage, gptRedLaterBenchmark]);
+const gptRedEvent = gptRedLayer.event_clusters.find((event) => event.related_item_ids.includes(gptRedOfficial.id));
+assert.ok(gptRedEvent, "expected a GPT-Red event");
+assert.deepEqual(
+  new Set(gptRedEvent.related_item_ids),
+  new Set([gptRedOfficial.id, gptRedCoverage.id]),
+  "a distinctive named entity in both titles may merge cross-family corroboration within 24 hours"
+);
+assert.equal(gptRedEvent.source_families.length, 2);
+assert.equal(
+  gptRedLayer.event_clusters.some((event) => event.related_item_ids.length > 1 && event.related_item_ids.includes(gptRedLaterBenchmark.id)),
+  false,
+  "a later event about the same named system must remain separate"
+);
+
+const sameDayClaudeLayer = buildEventLayer([
+  radarItem({
+    categories: ["research"],
+    entities: [company("Anthropic"), { confidence: 0.98, name: "Claude", type: "model" as const }],
+    id: "claude-values-same-day",
+    published_at: "2026-07-15T08:00:00Z",
+    source_name: "Anthropic Research",
+    title: "How Claude's values vary by model and language",
+    url: "https://www.anthropic.com/research/claude-values"
+  }),
+  radarItem({
+    categories: ["research"],
+    entities: [company("Anthropic"), { confidence: 0.98, name: "Claude", type: "model" as const }],
+    id: "claude-robotics-same-day",
+    published_at: "2026-07-15T12:00:00Z",
+    source_name: "Independent Robotics Review",
+    title: "How Claude performs on robotics tasks",
+    url: "https://example.net/claude-robotics"
+  })
+]);
+assert.equal(
+  sameDayClaudeLayer.event_count,
+  2,
+  "broad company and model entities must not merge unrelated same-day research"
+);
+
 const publicationTimeItems = [
   radarItem({
     categories: ["model_release"],

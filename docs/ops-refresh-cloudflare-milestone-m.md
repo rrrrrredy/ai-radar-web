@@ -46,6 +46,10 @@ Required configuration is read from GitHub secrets/variables without printing va
 
 The authoritative release build sets both `CLOUDFLARE_SNAPSHOT_READ_SUPABASE=true` and `CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE=true` only for the build process. Public-radar loading uses exact-count pagination and rejects short pages, count drift, duplicate/missing IDs, or normalization loss. The exporter fails closed on missing/fallback data, incomplete public-signal parity, fewer than 180 public rows, missing event/report layers, a failed weekly gate, report evidence outside its declared window, or stale/invalid publication time. The resulting JSON contains all public-safe signals plus allowlisted events, report gates, aggregate health, and safe failure reasons. It contains no source error payloads or private logs.
 
+Event persistence has an additional hard boundary: `--persist` requires an authoritative direct Supabase public-radar read. Local output, public snapshot, mock data, or any fallback source is rejected before the service write client is created. Authoritative event/report reads run sequentially in the workflow so exact-count drift cannot be hidden by a fallback.
+
+The default chunk size remains 5. The 30-source live release run demonstrated real checkpoint recovery after interruption. For interactive debugging where faster recovery points matter more than throughput, operators can lower `chunk_size` to 2 or 3 without changing the workflow default.
+
 ## Operator Command
 
 Use the GitHub Actions `Radar Refresh Cloudflare` manual run form. For a real refresh, select `live`, choose bounded limits, leave persistence off for inspection, then rerun with persistence only after reviewing the activation artifact and enabling the independent write gate. Cloudflare remains the primary public destination; GitHub Pages is not part of this workflow.

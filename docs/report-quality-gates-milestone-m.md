@@ -1,6 +1,6 @@
 # Report Quality Gates - Release Candidate
 
-Updated: 2026-07-15
+Updated: 2026-07-16
 
 ## Thresholds
 
@@ -9,36 +9,32 @@ Updated: 2026-07-15
 | daily | 5 | 3 | 2 | 2 |
 | weekly | 20 | 8 | 5 | 3 |
 
-The gate fails closed when required metrics or metadata are missing. It recomputes thresholds from the candidate's full `evidence_items` list, rejects forged self-reported counts, accepts only valid `published_at` evidence time, rejects material future timestamps, and enforces the daily/weekly evidence windows. Collection or processing time cannot substitute for publication time.
+The gate recomputes metrics from full evidence, accepts only valid `published_at` timestamps, enforces daily/weekly windows, and rejects missing, forged, future, or out-of-window evidence. Approval and publication recheck every evidence row against `public_radar_items`.
 
-Approval and publication call the same readiness gate and verify every evidence ID, source ID, category, status, and timestamp against `public_radar_items`. A stored `quality_gate_passed=true` value cannot override a current failure.
-
-Candidate duplicate suppression uses a versioned content signature over evidence IDs, quality counts, caveats, missing evidence, and gate reasons. A changed event projection therefore refreshes the candidate even when the evidence IDs are unchanged; order-only changes remain deduplicated.
+Candidate duplicate suppression uses a versioned content signature over evidence IDs, quality counts, caveats, missing evidence, and gate reasons. Evidence-order-only changes remain deduplicated.
 
 ## Final Candidates
 
 | type | candidate ID | status | usable | citations | sources | categories | source gate |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
-| daily | `39b6efc5-90bf-474a-964a-6eb4c0cad663` | `needs_review` | 21 | 12 | 9 | 10 | passed |
-| weekly | `451d6048-5ec0-4164-bafa-3886a503af60` | `needs_review` | 40 | 12 | 18 | 12 | passed |
+| daily | `d659ec34-176c-44e8-a495-693b426e7fa2` | `needs_review` | 24 | 11 | 12 | 10 | passed |
+| weekly | `8d0ced7c-24ba-489f-adea-b89193a049fc` | `needs_review` | 71 | 12 | 23 | 13 | passed |
 
-Cloudflare independently projects the candidates onto public event evidence:
+Cloudflare independently projects each candidate onto public event evidence:
 
 | type | usable events | citations | sources | categories | event gate |
 | --- | ---: | ---: | ---: | ---: | --- |
-| daily | 8 | 8 | 5 | 4 | passed |
-| weekly | 25 | 25 | 14 | 9 | passed |
+| daily | 9 | 9 | 7 | 5 | passed |
+| weekly | 26 | 26 | 12 | 8 | passed |
 
-Both candidates are sufficient evidence drafts and remain `needs_review` for editorial review. Gate pass does not mean publication.
-
-Cloudflare performs an independent event-aware projection: only event signals inside the candidate's declared window contribute to the public metrics, citations, source IDs, and top-event list. A zero-evidence or out-of-window projection cannot inherit a previous pass.
+Both candidates remain `needs_review` for editorial review. Gate pass does not mean publication.
 
 ## Failure Boundary
 
-When a future daily candidate fails, metadata keeps `quality_gate_passed=false`, reasons, usable count, citation count, source count, and category count. The public card must display:
+A future failing daily candidate keeps `quality_gate_passed=false`, reasons, and all metric counts. The public card displays:
 
 ```text
 今日数据不足，需补充信源或等待下一轮刷新
 ```
 
-The public report views expose trigger-maintained allowlisted report payloads. They never grant anonymous users access to original report `metadata`, model metadata, provider output, raw text, report markdown, private notes, credentials, or operational logs.
+Public report views expose allowlisted report payloads only. They never expose original report metadata, model/provider output, raw text, report markdown, private notes, credentials, or operational logs.
