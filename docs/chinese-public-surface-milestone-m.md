@@ -1,6 +1,6 @@
 # Bilingual Public Surface - Release Candidate
 
-Updated: 2026-07-15
+Updated: 2026-07-16
 
 ## Language Contract
 
@@ -21,25 +21,25 @@ English pages render the same event cards, all-signal rows, source health, repor
 
 - the homepage first viewport shows live snapshot counts and begins `今日行业精选`;
 - `/radar/` defaults to curated events;
-- all 261 public-safe rows remain under `全部信号` / All signals;
-- 205 mapped signals form 203 public events, while 56 signal-only audit rows are disclosed separately;
+- all 298 public-safe rows remain under `全部信号` / All signals;
+- 244 mapped signals form 241 public events, while 54 signal-only audit rows are disclosed separately;
 - event filtering removes low-event records only from events, not from the audit view;
 - `/reports/` exposes event-aware quality and editorial status separately;
 - `/ask/` and `/write/` operate locally on public evidence and do not claim a live private server action;
 - source health and failure-family summaries are visible in both languages;
 - desktop and mobile navigation expose the language switch without horizontal scrolling.
 
-The browser-local Ask/Write tools recognize explicit 24-hour and seven-day intent, filter on event publication time, show evidence dates and citations, and do not imply a live server-side model call. The final Google Chrome desktop/mobile regression passed 28/28 checks with no relevant console errors.
+The browser-local Ask/Write tools recognize explicit 24-hour and seven-day intent, filter on event publication time, show evidence dates and citations, and do not imply a live server-side model call. Exact event names narrow the result set, while mixed cross-family/single-source requests preserve both evidence states. Automated regressions also cover numeric zeroes and reader-facing source-health timestamps.
 
 ## Current Public Data
 
 | metric | value |
 | --- | ---: |
-| public radar / snapshot signals | 261 / 261 |
-| public display event relationships / events | 205 / 203 |
+| public radar / snapshot signals | 298 / 298 |
+| public display event relationships / events | 244 / 241 |
 | curated events | 8 |
 | same-family multi-source events | 1 |
-| cross-family events | 1 |
+| cross-family events | 2 |
 | daily / weekly public gate | passed / passed |
 
 ## Public Boundary

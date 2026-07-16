@@ -637,6 +637,9 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   const privateGrantMigration = readSource(
     "supabase/migrations/20260715065603_revoke_private_table_api_grants.sql"
   );
+  const wrongDomainGrantMigration = readSource(
+    "supabase/migrations/20260716041758_revoke_wrong_domain_public_api_grants.sql"
+  );
   assertPublicSnapshotSourceContract(snapshotExporter, supabaseLoader);
   assert.equal(
     eventClustering.includes("eventReferenceTime") &&
@@ -653,6 +656,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   assertSupabasePublicContractCheckScript(supabasePublicContract);
   assertPublicRadarViewSqlContract(publicEntityMigration);
   assertPublicViewSecurityMigration(publicViewSecurityMigration, privateGrantMigration);
+  assertWrongDomainGrantMigration(wrongDomainGrantMigration);
 
   const snapshotPath = "dist/cloudflare-pages/data/radar-snapshot.json";
   if (!fs.existsSync(path.join(process.cwd(), snapshotPath))) {
@@ -738,6 +742,19 @@ function assertBilingualStaticContract() {
     assert.equal(english.includes('<html lang="en">'), true, `${englishPath} must declare the English locale.`);
     assert.equal(english.includes('class="language-switch"') && english.includes('lang="zh-CN"'), true, `${englishPath} must expose the top-right Chinese switch.`);
   }
+
+  const chineseHome = readSource("dist/cloudflare-pages/index.html");
+  const englishHome = readSource("dist/cloudflare-pages/en/index.html");
+  assert.equal(
+    chineseHome.includes("<summary>展开时间线</summary>") && chineseHome.includes("<summary>查看相关信号</summary>"),
+    true,
+    "Chinese homepage featured events must expose their timeline and complete related-signal citations."
+  );
+  assert.equal(
+    englishHome.includes("<summary>Expand timeline</summary>") && englishHome.includes("<summary>View related signals</summary>"),
+    true,
+    "English homepage featured events must expose their timeline and complete related-signal citations."
+  );
 
   const englishRadar = readSource("dist/cloudflare-pages/en/radar/index.html");
   assert.equal(
@@ -865,6 +882,21 @@ function countEventsForStaticCategoryContract(events: Array<{ category?: string 
 }
 
 function assertSupabasePublicContractCheckScript(source: string) {
+  const wrongDomainTables = [
+    "radar_models",
+    "radar_model_versions",
+    "radar_external_metrics",
+    "radar_deepseek_metrics",
+    "radar_source_gated_signals",
+    "radar_pulse_snapshots",
+    "radar_leaderboard_snapshots",
+    "radar_admin_review_items",
+    "radar_audit_events",
+    "radar_refresh_runs",
+    "radar_companies",
+    "radar_deferred_surfaces"
+  ];
+
   assert.deepEqual(
     selectListFromRestPath(source, "public_radar_items?select=id,local_id,entities&limit=1"),
     ["entities", "id", "local_id"],
@@ -899,6 +931,18 @@ function assertSupabasePublicContractCheckScript(source: string) {
     source.includes("supabase_project_host_dns_not_found") && source.includes("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
     true,
     "Remote Supabase public contract check must report DNS failures safely and read only anon public config."
+  );
+  for (const table of wrongDomainTables) {
+    assert.equal(
+      source.includes(`"${table}"`),
+      true,
+      `Remote Supabase public contract check must reject anonymous reads from ${table}.`
+    );
+  }
+  assert.equal(
+    source.includes("wrongDomainTablesRejected") && source.includes("wrongDomainChecks.every"),
+    true,
+    "Remote Supabase public contract check must fail unless every wrong-domain table rejects anonymous reads."
   );
 }
 
@@ -1263,6 +1307,30 @@ function assertPublicViewSecurityMigration(securitySql: string, privateGrantSql:
     true,
     "Private Data API tables and trigger search paths must be explicitly hardened."
   );
+}
+
+function assertWrongDomainGrantMigration(sql: string) {
+  const wrongDomainTables = [
+    "radar_models",
+    "radar_model_versions",
+    "radar_external_metrics",
+    "radar_deepseek_metrics",
+    "radar_source_gated_signals",
+    "radar_pulse_snapshots",
+    "radar_leaderboard_snapshots",
+    "radar_admin_review_items",
+    "radar_audit_events",
+    "radar_refresh_runs",
+    "radar_companies",
+    "radar_deferred_surfaces"
+  ];
+
+  for (const table of wrongDomainTables) {
+    assert.equal(sql.includes(`'${table}'`), true, `Wrong-domain grant migration must cover ${table}.`);
+  }
+  assert.match(sql, /enable row level security/i);
+  assert.match(sql, /revoke all privileges on table public\.%I from public, anon, authenticated/i);
+  assert.doesNotMatch(sql, /\b(drop|truncate)\b|\bdelete\s+from\b/i);
 }
 
 function assertPublicWarningsAreReaderSafe(values: unknown[], label: string) {

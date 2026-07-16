@@ -20,6 +20,8 @@ type CheckResult = {
   forbiddenCode?: string;
   forbiddenEvidenceCode?: string;
   forbiddenModelMetadataCode?: string;
+  wrongDomainTableStatuses?: Record<string, number>;
+  wrongDomainTablesRejected?: boolean;
   reason?: string;
 };
 
@@ -59,6 +61,16 @@ async function main() {
       headers
     );
     const selectAll = await requestJson(baseUrl, "public_radar_items?select=*&limit=1", headers);
+    const wrongDomainChecks = await Promise.all(
+      wrongDomainTables.map(async (table) => [
+        table,
+        await requestJson(baseUrl, `${table}?select=*&limit=1`, headers)
+      ] as const)
+    );
+    const wrongDomainTableStatuses = Object.fromEntries(
+      wrongDomainChecks.map(([table, result]) => [table, result.status])
+    );
+    const wrongDomainTablesRejected = wrongDomainChecks.every(([, result]) => !result.ok);
     const first = Array.isArray(allowed.body) ? allowed.body[0] : null;
     const selectAllFirst = Array.isArray(selectAll.body) ? selectAll.body[0] : null;
     const allowedKeys = isRecord(first) ? Object.keys(first).sort() : [];
@@ -72,6 +84,7 @@ async function main() {
       !forbidden.ok &&
       !forbiddenEvidence.ok &&
       !forbiddenModelMetadata.ok &&
+      wrongDomainTablesRejected &&
       sameStringSet(allowedKeys, ["entities", "id", "local_id"]) &&
       sameStringSet(selectAllKeys, publicRadarItemAllowedKeys) &&
       (entityKeys.length === 0 || sameStringSet(entityKeys, ["confidence", "name", "type"]));
@@ -90,6 +103,8 @@ async function main() {
       forbiddenRejected: !forbidden.ok,
       forbiddenEvidenceRejected: !forbiddenEvidence.ok,
       forbiddenModelMetadataRejected: !forbiddenModelMetadata.ok,
+      wrongDomainTableStatuses,
+      wrongDomainTablesRejected,
       forbiddenCode: isRecord(forbidden.body) ? text(forbidden.body.code) : undefined,
       forbiddenEvidenceCode: isRecord(forbiddenEvidence.body) ? text(forbiddenEvidence.body.code) : undefined,
       forbiddenModelMetadataCode: isRecord(forbiddenModelMetadata.body)
@@ -215,6 +230,21 @@ const publicRadarItemAllowedKeys = [
   "url",
   "why_it_matters"
 ].sort();
+
+const wrongDomainTables = [
+  "radar_models",
+  "radar_model_versions",
+  "radar_external_metrics",
+  "radar_deepseek_metrics",
+  "radar_source_gated_signals",
+  "radar_pulse_snapshots",
+  "radar_leaderboard_snapshots",
+  "radar_admin_review_items",
+  "radar_audit_events",
+  "radar_refresh_runs",
+  "radar_companies",
+  "radar_deferred_surfaces"
+] as const;
 
 function sameStringSet(left: string[], right: string[]) {
   return left.length === right.length && left.every((value, index) => value === right[index]);

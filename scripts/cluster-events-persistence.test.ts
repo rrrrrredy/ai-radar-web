@@ -29,6 +29,10 @@ const authoritativeReconciliationGuard: StaleClusterReconciliationGuard = {
   minimumExistingClusterCoverageRatio: MINIMUM_STALE_CLUSTER_COVERAGE_RATIO,
   minimumInputItemCount: MINIMUM_STALE_CLUSTER_INPUT_ITEMS
 };
+const authoritativePersistenceProvenance = {
+  dataSource: "supabase_radar_items",
+  directSupabaseRead: true
+} as const;
 
 const event: PublicEventCluster = {
   canonical_title: "OpenAI releases a durable event API",
@@ -118,6 +122,28 @@ test("event persistence rejects non-authoritative fallback inputs", () => {
   assert.throws(() => assertAuthoritativeEventPersistenceInput("mock_data", false), /fallback inputs are rejected/);
 });
 
+test("the persistence boundary rejects non-authoritative provenance before any database operation", async () => {
+  await withEventWriteGate(async () => {
+    for (const dataSource of ["mock_data", "local_understanding_output"] as const) {
+      const fake = createFakeSupabase();
+      await assert.rejects(
+        persistEventLayer(
+          fake.client,
+          { event_cluster_items: [relationship], event_clusters: [event] },
+          {
+            batchSize: 50,
+            persistedAt,
+            provenance: { dataSource, directSupabaseRead: false }
+          }
+        ),
+        /authoritative direct Supabase/
+      );
+      assert.equal(fake.updates.length, 0);
+      assert.equal(fake.upserts.length, 0);
+    }
+  });
+});
+
 test("event rows preserve stable ids and all public-safe event fields", () => {
   const first = buildEventClusterUpsertRows([event], persistedAt);
   const second = buildEventClusterUpsertRows([event], persistedAt);
@@ -170,11 +196,13 @@ test("authoritative persistence performs idempotent upserts and guarded non-dest
     const first = await persistEventLayer(fake.client, coveredLayer, {
       batchSize: 50,
       persistedAt,
+      provenance: authoritativePersistenceProvenance,
       staleClusterReconciliation: authoritativeReconciliationGuard
     });
     const second = await persistEventLayer(fake.client, coveredLayer, {
       batchSize: 50,
       persistedAt,
+      provenance: authoritativePersistenceProvenance,
       staleClusterReconciliation: authoritativeReconciliationGuard
     });
 
@@ -209,7 +237,7 @@ test("persistence cannot archive without an explicit reconciliation guard", asyn
     const result = await persistEventLayer(
       fake.client,
       { event_cluster_items: [relationship], event_clusters: [event] },
-      { batchSize: 50, persistedAt }
+      { batchSize: 50, persistedAt, provenance: authoritativePersistenceProvenance }
     );
 
     assert.equal(result.eventClustersArchived, 0);
@@ -229,6 +257,7 @@ test("mock and local fallback inputs cannot authorize stale-cluster reconciliati
           {
             batchSize: 50,
             persistedAt,
+            provenance: authoritativePersistenceProvenance,
             staleClusterReconciliation: {
               ...authoritativeReconciliationGuard,
               dataSource
@@ -250,6 +279,7 @@ test("a Supabase-shaped fallback snapshot cannot authorize stale-cluster reconci
       persistEventLayer(fake.client, coveredLayer, {
         batchSize: 50,
         persistedAt,
+        provenance: authoritativePersistenceProvenance,
         staleClusterReconciliation: {
           ...authoritativeReconciliationGuard,
           directSupabaseRead: false
@@ -272,6 +302,7 @@ test("a degraded tiny public feed cannot archive stale clusters", async () => {
         {
           batchSize: 50,
           persistedAt,
+          provenance: authoritativePersistenceProvenance,
           staleClusterReconciliation: authoritativeReconciliationGuard
         }
       ),
@@ -298,6 +329,7 @@ test("a public feed with poor retained-cluster coverage cannot archive stale clu
         {
           batchSize: 50,
           persistedAt,
+          provenance: authoritativePersistenceProvenance,
           staleClusterReconciliation: authoritativeReconciliationGuard
         }
       ),

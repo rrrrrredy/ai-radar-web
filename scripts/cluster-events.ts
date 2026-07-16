@@ -33,7 +33,13 @@ async function main() {
   await fs.writeFile(outputPath, `${JSON.stringify(eventLayer, null, 2)}\n`, "utf8");
 
   const persistence = persistenceClient
-    ? await persistEventLayer(persistenceClient, eventLayer, { staleClusterReconciliation })
+    ? await persistEventLayer(persistenceClient, eventLayer, {
+        provenance: {
+          dataSource: feed.data_source,
+          directSupabaseRead: feed.authoritative_supabase_read
+        },
+        staleClusterReconciliation
+      })
     : null;
 
   const mergedEvents = eventLayer.event_clusters.filter((event) => event.related_item_ids.length > 1);

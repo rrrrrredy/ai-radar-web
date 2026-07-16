@@ -61,7 +61,13 @@ export type EventLayerPersistenceResult = {
 export type EventLayerPersistenceOptions = {
   batchSize?: number;
   persistedAt?: string;
+  provenance: EventLayerPersistenceProvenance;
   staleClusterReconciliation?: StaleClusterReconciliationGuard;
+};
+
+export type EventLayerPersistenceProvenance = {
+  directSupabaseRead: boolean;
+  dataSource: RetrievalDataSource;
 };
 
 export type StaleClusterReconciliationGuard = {
@@ -184,9 +190,13 @@ export function buildEventClusterItemUpsertRows(
 export async function persistEventLayer(
   supabase: SupabaseClient,
   layer: PersistableEventLayer,
-  options: EventLayerPersistenceOptions = {}
+  options: EventLayerPersistenceOptions
 ): Promise<EventLayerPersistenceResult> {
   assertEventPersistenceWriteEnabled();
+  assertAuthoritativeEventPersistenceInput(
+    options.provenance.dataSource,
+    options.provenance.directSupabaseRead
+  );
 
   const batchSize = positiveInteger(options.batchSize ?? 200, "event persistence batch size");
   const clusterRows = buildEventClusterUpsertRows(layer.event_clusters, options.persistedAt);

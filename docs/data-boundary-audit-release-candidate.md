@@ -1,6 +1,6 @@
 # Data Boundary Audit - Release Candidate
 
-Updated: 2026-07-15
+Updated: 2026-07-16
 
 ## Table Classification
 
@@ -22,25 +22,27 @@ Updated: 2026-07-15
 
 ## Security Boundary
 
-Migrations `20260715064603_harden_public_views_security_invoker.sql` and `20260715065603_revoke_private_table_api_grants.sql` implement:
+Migrations `20260715064603_harden_public_views_security_invoker.sql`, `20260715065603_revoke_private_table_api_grants.sql`, and `20260716041758_revoke_wrong_domain_public_api_grants.sql` implement:
 
 - `security_invoker=true` on all three public views;
 - trigger-maintained allowlisted report payloads, so report `metadata` is never granted;
 - column-level grants only for fields required by public views;
 - explicit public-row RLS policies;
 - revocation of anonymous/authenticated privileges on private operational tables;
+- RLS plus explicit privilege revocation on all 12 wrong-domain model-radar tables;
 - fixed trigger-function search paths.
 
 Verification results:
 
 - Supabase Security Advisor ERROR: 0;
-- anonymous public radar rows: 261;
-- anonymous public report candidates: 34;
+- anonymous public radar rows: 298;
+- anonymous public report candidates: 40;
 - anonymous access to `raw_items`: denied;
 - anonymous access to raw/model/report metadata: denied.
+- anonymous access to every C-group table: denied with `401`.
 
 The remaining advisor warning is Auth leaked-password protection. Public Cloudflare access has no login, and admin authentication is not a public release dependency.
 
 ## Wrong-Domain Audit
 
-Code search across public routes, loaders, Cloudflare builder, and snapshot exporter found no C-group runtime reads. Snapshot key scans and sensitive scans reject raw/private fields. No table was dropped and no destructive SQL was run.
+Code search across public routes, loaders, Cloudflare builder, and snapshot exporter found no C-group runtime reads. Snapshot key scans and sensitive scans reject raw/private fields. The live contract tests all 12 C-group relations on every release check. No table was dropped and no destructive SQL was run.

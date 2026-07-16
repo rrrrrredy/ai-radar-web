@@ -1171,10 +1171,12 @@ function entityLabelEn(value: string) {
     anthropic: "Anthropic",
     github: "GitHub",
     "gpt 5 6": "GPT-5.6",
+    "gpt red": "GPT-Red",
     "hugging face": "Hugging Face",
     "llama cpp": "llama.cpp",
     microsoft: "Microsoft",
     openai: "OpenAI",
+    "deepstream 9 1": "DeepStream 9.1",
     vllm: "vLLM"
   };
   return aliases[value.trim().toLowerCase()] ?? entityDisplayLabel(value);
@@ -1249,8 +1251,10 @@ function renderFeaturedEventCardEn(event: SnapshotEvent, snapshot: Snapshot) {
       <h2>${escapeHtml(eventEnglishTitle(event, snapshot))}</h2>
       <p>${escapeHtml(eventEnglishSummary(event, snapshot))}</p>
       <dl class="event-meta">${rail("Why it matters", eventImpactNoteEn(event))}${rail("Next check", eventWatchNoteEn(event))}</dl>
+      <details><summary>Expand timeline</summary><div class="timeline-list compact">${event.timeline.map(renderEventTimelineRowEn).join("")}</div></details>
+      <details><summary>View related signals</summary><div class="citation-grid">${event.citations.map(renderEventCitationEn).join("")}</div></details>
     </div>
-    <aside><dl class="rail compact-rail">${rail("Score", String(event.event_score))}${rail("Latest", formatDateEn(event.latest_seen_at))}${rail("Citations", String(event.citations.length))}</dl>${event.citations[0] ? `<a class="source-link" href="${escapeAttr(event.citations[0].url)}">${escapeHtml(event.citations[0].source_name)}</a>` : ""}</aside>
+    <aside><dl class="rail compact-rail">${rail("Score", String(event.event_score))}${rail("Latest", formatDateEn(event.latest_seen_at))}${rail("Citations", String(event.citations.length))}</dl>${event.citations.map((citation) => `<a class="source-link" href="${escapeAttr(citation.url)}">${escapeHtml(citation.source_name)}</a>`).join("")}</aside>
   </article>`;
 }
 
@@ -1755,6 +1759,14 @@ function renderFeaturedEventCard(event: SnapshotEvent) {
         ${rail("为什么重要", eventImpactNote(event))}
         ${rail("下一步观察", eventWatchNote(event))}
       </dl>
+      <details>
+        <summary>展开时间线</summary>
+        <div class="timeline-list compact">${event.timeline.map(renderEventTimelineRow).join("")}</div>
+      </details>
+      <details>
+        <summary>查看相关信号</summary>
+        <div class="citation-grid">${event.citations.map(renderEventCitation).join("")}</div>
+      </details>
     </div>
     <aside>
       <dl class="rail compact-rail">
@@ -1762,7 +1774,7 @@ function renderFeaturedEventCard(event: SnapshotEvent) {
         ${rail("最新", formatDate(event.latest_seen_at))}
         ${rail("引用", String(event.citations.length))}
       </dl>
-      ${event.citations[0] ? `<a class="source-link" href="${escapeAttr(event.citations[0].url)}">${escapeHtml(event.citations[0].source_name)}</a>` : ""}
+      ${event.citations.map((citation) => `<a class="source-link" href="${escapeAttr(citation.url)}">${escapeHtml(citation.source_name)}</a>`).join("")}
     </aside>
   </article>`;
 }
@@ -2074,6 +2086,7 @@ function entityDisplayLabel(value: string) {
     anthropic: "Anthropic",
     github: "GitHub",
     "gpt 5 6": "GPT-5.6",
+    "gpt red": "GPT-Red",
     "hugging face": "Hugging Face",
     "hugging face transformers": "Hugging Face Transformers",
     "llama cpp": "llama.cpp",
@@ -2081,6 +2094,7 @@ function entityDisplayLabel(value: string) {
     "microsoft 365 copilot": "Microsoft 365 Copilot",
     openai: "OpenAI",
     "openai python sdk": "OpenAI Python SDK",
+    "deepstream 9 1": "DeepStream 9.1",
     vllm: "vLLM",
     "vllm project vllm": "vLLM"
   };
@@ -2949,7 +2963,6 @@ function eventConfirmationFilterValue(event: SnapshotEvent) {
 }
 
 function eventConfirmationTone(event: SnapshotEvent): "caution" | "evidence" | "success" {
-  if (event.source_count > 1 && event.source_families.length > 1) return "success";
   return event.source_count > 1 ? "evidence" : "caution";
 }
 
@@ -3589,7 +3602,7 @@ function localEvidenceToolScript(
   if (!input || !button || !result) return;
 
   function escapeHtml(value) {
-    return String(value || "")
+    return String(value ?? "")
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
@@ -3686,15 +3699,43 @@ function localEvidenceToolScript(
     return Array.from(new Set(latin.concat(cjk)));
   }
 
+  function normalizedQueryPhrase(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[“”'\"’]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function queryNamesExactEvent(snapshot, event, query) {
+    const normalizedQuery = normalizedQueryPhrase(query);
+    const titles = [
+      eventTitle(snapshot, event),
+      event.canonical_title,
+      ...(event.timeline || []).map((entry) => entry.title)
+    ];
+    return titles.some((title) => {
+      const normalizedTitle = normalizedQueryPhrase(title);
+      return normalizedTitle.length >= 12 && normalizedQuery.includes(normalizedTitle);
+    });
+  }
+
+  function queryAnchorTokens(query) {
+    const genericAnchors = new Set(["cross-family", "high-priority", "multi-source", "single-source", "source-family"]);
+    return queryTokens(query).filter((token) => /[-._+]/.test(token) && token.length >= 4 && !genericAnchors.has(token));
+  }
+
   function matchesIntent(event, text, intent) {
     const sourceCount = Number(event.source_count || 0);
     const familyCount = Number((event.source_families || []).length);
     const category = String(event.category || "").toLowerCase();
     const titleAndEntities = [event.canonical_title || "", ...(event.related_entities || [])].join(" ").toLowerCase();
-    if (intent.crossFamily && !(sourceCount > 1 && familyCount > 1)) return false;
-    if (intent.sameFamily && !(sourceCount > 1 && familyCount === 1)) return false;
-    if (intent.multiSource && sourceCount <= 1) return false;
-    if (intent.singleSource && sourceCount !== 1) return false;
+    const requestedEvidenceStates = [];
+    if (intent.crossFamily) requestedEvidenceStates.push(sourceCount > 1 && familyCount > 1);
+    if (intent.sameFamily) requestedEvidenceStates.push(sourceCount > 1 && familyCount === 1);
+    if (intent.multiSource) requestedEvidenceStates.push(sourceCount > 1);
+    if (intent.singleSource) requestedEvidenceStates.push(sourceCount === 1);
+    if (requestedEvidenceStates.length > 0 && !requestedEvidenceStates.some(Boolean)) return false;
     if (intent.highPriority && event.event_score_label !== "高优先级") return false;
     if (intent.modelRelease && category !== "model_release") return false;
     if (intent.agent && !/\bagents?\b|智能体|developer tool|coding tool|\bsdk\b|\bcli\b|开发工具|工具链/i.test(titleAndEntities)) return false;
@@ -3731,9 +3772,12 @@ function localEvidenceToolScript(
       }
     }
     if (!structuredIntent && !titleMatched && (tokenMatches === 0 || (tokenMatches === 1 && relevance < 18))) return null;
-    if (intent.crossFamily) relevance += 40;
-    else if (intent.sameFamily || intent.multiSource) relevance += 26;
-    if (intent.singleSource) relevance += 18;
+    const sourceCount = Number(event.source_count || 0);
+    const familyCount = Number((event.source_families || []).length);
+    if (intent.crossFamily && sourceCount > 1 && familyCount > 1) relevance += 40;
+    else if (intent.sameFamily && sourceCount > 1 && familyCount === 1) relevance += 26;
+    else if (intent.multiSource && sourceCount > 1) relevance += 26;
+    if (intent.singleSource && sourceCount === 1) relevance += 18;
     if (intent.modelRelease || intent.agent) relevance += 16;
     if (intent.important) relevance += Number(event.event_score || 0) / 2;
     return Number(event.event_score || 0) + relevance;
@@ -3751,12 +3795,32 @@ function localEvidenceToolScript(
     }
     const intent = queryIntent(query);
     const pool = (intent.selectedOnly ? curated : merged).filter((event) => eventWithinIntentWindow(snapshot, event, intent));
-    return pool
+    const exactTitleMatches = pool.filter((event) => queryNamesExactEvent(snapshot, event, query));
+    const anchorTokens = queryAnchorTokens(query);
+    const anchorMatches = anchorTokens.length > 0
+      ? pool.filter((event) => anchorTokens.every((token) => textOf(snapshot, event).includes(token)))
+      : [];
+    const scopedPool = exactTitleMatches.length > 0 ? exactTitleMatches : (anchorMatches.length > 0 ? anchorMatches : pool);
+    return scopedPool
       .map((event) => ({ event, score: scoreEvent(snapshot, event, query, intent) }))
       .filter((entry) => entry.score !== null)
       .sort((left, right) => right.score - left.score || Number(right.event.event_score || 0) - Number(left.event.event_score || 0))
       .slice(0, 6)
       .map((entry) => entry.event);
+  }
+
+  function displayDateTime(value) {
+    const parsed = new Date(value || "");
+    if (!Number.isFinite(parsed.getTime())) return language === "en" ? "unavailable" : "待补";
+    return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "zh-CN", {
+      day: "2-digit",
+      hour: "2-digit",
+      hour12: false,
+      minute: "2-digit",
+      month: "short",
+      timeZone: "UTC",
+      year: "numeric"
+    }).format(parsed) + " UTC";
   }
 
   function renderSourceHealthResult(snapshot, query) {
@@ -3771,11 +3835,11 @@ function localEvidenceToolScript(
     const auditedAt = snapshot.source_health_scope?.finished_at || snapshot.coverage?.latest_refresh;
     if (language === "en") {
       return '<h3>Source health answer</h3><p>Question: ' + escapeHtml(query) + '</p>' +
-        '<p>Broad refresh audited through: ' + escapeHtml(auditedAt || "unavailable") + '.</p>' +
+        '<p>Broad refresh audited through: ' + escapeHtml(displayDateTime(auditedAt)) + '.</p>' +
         '<dl class="inline-defs"><dt>Succeeded</dt><dd>' + escapeHtml(health.succeeded || 0) + '</dd><dt>Failed</dt><dd>' + escapeHtml(health.failed || 0) + '</dd><dt>Manual / blocked</dt><dd>' + escapeHtml(health.manual_blocked || 0) + '</dd><dt>No new items</dt><dd>' + escapeHtml(health.no_items || 0) + '</dd><dt>Duplicate only</dt><dd>' + escapeHtml(health.duplicate_only || 0) + '</dd></dl><h4>Named failed sources</h4><ul>' + (failedSources || '<li>None</li>') + '</ul><h4>Failures, warnings and exclusions</h4><ul>' + families + '</ul>';
     }
     return '<h3>来源健康回答</h3><p>问题：' + escapeHtml(query) + '</p>' +
-      '<p>广泛刷新审计截至：' + escapeHtml(auditedAt || "待补") + '。</p>' +
+      '<p>广泛刷新审计截至：' + escapeHtml(displayDateTime(auditedAt)) + '。</p>' +
       '<dl class="inline-defs"><dt>成功</dt><dd>' + escapeHtml(health.succeeded || 0) + '</dd><dt>失败</dt><dd>' + escapeHtml(health.failed || 0) + '</dd><dt>手动/阻塞</dt><dd>' + escapeHtml(health.manual_blocked || 0) + '</dd><dt>无新条目</dt><dd>' + escapeHtml(health.no_items || 0) + '</dd><dt>仅重复</dt><dd>' + escapeHtml(health.duplicate_only || 0) + '</dd></dl><h4>具名失败来源</h4><ul>' + (failedSources || '<li>无</li>') + '</ul><h4>失败、警告与排除</h4><ul>' + families + '</ul>';
   }
 

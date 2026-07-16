@@ -70,9 +70,11 @@ Both source-stage and public event gates pass. `needs_review` is the editorial s
 
 All 298 public-safe signals remain under `全部信号`. The event layer maps 244 signals into 241 public events; 54 signal-only rows remain auditable and are not promoted into weak events.
 
+Exact named-event queries now narrow to that event instead of mixing in unrelated high-scoring records. Requests that explicitly compare cross-family and single-source evidence use union semantics, so both evidence states remain available to Ask/Write output. Source-health zeroes and refresh timestamps render as reader-facing values rather than blanks or raw ISO strings.
+
 ## Safety and Operations
 
-The refresh workflow remains `workflow_dispatch` only. No schedule, X/WeChat auto-crawl, source-health write, destructive SQL, automatic publication, or deployed write gate is enabled. Production snapshot export requires authoritative Supabase input and excludes raw text, raw/model/report metadata, provider payloads, credentials, private notes, and operational logs.
+The refresh workflow remains `workflow_dispatch` only. No schedule, X/WeChat auto-crawl, source-health write, destructive SQL, automatic publication, or deployed write gate is enabled. Production snapshot export requires authoritative Supabase input and excludes raw text, raw/model/report metadata, provider payloads, credentials, private notes, and operational logs. A non-destructive production migration revokes `public`, `anon`, and `authenticated` privileges from all 12 wrong-domain model-radar tables; the live anonymous contract returns `401` for every table while the allowlisted public radar view remains readable.
 
 ## Remaining Limitation
 
