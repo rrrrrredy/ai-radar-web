@@ -1387,7 +1387,7 @@ function renderReportEn(report: SnapshotReport, snapshot: Snapshot) {
     ${fallbackEvents.length > 0 ? `<h3>Top events included</h3><div class="event-mini-list">${fallbackEvents.map((event) => renderEventMiniEn(event, snapshot)).join("")}</div>` : ""}
     ${gateReasons.length > 0 ? `<h3>Why the gate did not pass</h3>${noteListEn(gateReasons)}` : ""}
     <h3>Caveats</h3>${noteListEn(reportCaveatsEn(report, snapshot))}
-    ${report.citations.length > 0 ? `<div class="citation-grid">${report.citations.slice(0, 12).map((citation) => `<a class="citation" href="${escapeAttr(citation.url)}"><span>${escapeHtml(citation.source_name)}</span><strong>${escapeHtml(citation.title)}</strong><small>${escapeHtml(formatDateEn(citation.published_at))}</small></a>`).join("")}</div>` : ""}
+    ${report.citations.length > 0 ? `<div class="citation-grid">${report.citations.map((citation) => `<a class="citation" href="${escapeAttr(citation.url)}"><span>${escapeHtml(citation.source_name)}</span><strong>${escapeHtml(citation.title)}</strong><small>${escapeHtml(formatDateEn(citation.published_at))}</small></a>`).join("")}</div>` : ""}
   </article>`;
 }
 
@@ -1861,11 +1861,12 @@ function categoryFilterValue(value: string) {
 
 function renderEventMini(event: SnapshotEvent) {
   const primaryCitation = event.citations[0];
+  const impact = eventImpactNote(event).replace(/[。；;]+$/u, "");
   return `<article class="event-mini">
     ${pill(event.event_score_label, eventScoreTone(event.event_score_label))}
     <strong>${escapeHtml(event.canonical_title)}</strong>
     <span>${escapeHtml(`${event.source_count} 个来源 / ${event.source_families.length} 个来源家族 / ${event.related_item_ids.length} 条信号`)}</span>
-    <small>${escapeHtml(`产业影响：${eventImpactNote(event)}；下一步：${eventWatchNote(event)}`)}</small>
+    <small>${escapeHtml(`产业影响：${impact}；下一步：${eventWatchNote(event)}`)}</small>
     ${primaryCitation ? `<a class="source-link" href="${escapeAttr(primaryCitation.url)}">主证据：${escapeHtml(primaryCitation.source_name)} · ${escapeHtml(formatDate(primaryCitation.published_at))}</a>` : ""}
   </article>`;
 }
@@ -1904,7 +1905,7 @@ function eventImpactNote(event: SnapshotEvent) {
   }
 
   if (category === "product_update") {
-    return `${entity} 的产品/API 表面发生变化，优先评估开发者迁移成本、接口兼容性和治理能力；当前证据强度：${evidence}。`;
+    return `${entity} 的产品能力或 API 接口发生变化，优先评估开发者迁移成本、接口兼容性和治理能力；当前证据强度：${evidence}。`;
   }
 
   if (category === "open_source") {
@@ -2009,9 +2010,10 @@ function primaryEventEntity(event: SnapshotEvent) {
   const title = event.canonical_title.toLowerCase();
   const normalizedTitle = entityMatchText(title);
   const titleTokens = meaningfulTitleTokens(title);
+  const genericEntities = new Set(["ai", "agent", "agents", "artificial intelligence", "model", "models", "research", "safety", "人工智能", "安全", "智能体", "模型", "研究"]);
   const titleMatchedEntity = event.related_entities.find((entity) => {
     const normalized = entityMatchText(entity);
-    return normalized.length >= 3 && normalizedTitle.includes(normalized);
+    return normalized.length >= 3 && !genericEntities.has(normalized) && normalizedTitle.includes(normalized);
   });
 
   if (titleMatchedEntity) {
@@ -2020,15 +2022,15 @@ function primaryEventEntity(event: SnapshotEvent) {
 
   const tokenMatchedEntity = event.related_entities.find((entity) => {
     const normalized = entity.toLowerCase();
-    return titleTokens.some((token) => token.length >= 4 && normalized.includes(token));
+    return !genericEntities.has(entityMatchText(entity)) && titleTokens.some((token) => token.length >= 4 && normalized.includes(token));
   });
 
-  return entityDisplayLabel(tokenMatchedEntity ? publicText(tokenMatchedEntity) : labelize(event.category));
+  return tokenMatchedEntity ? entityDisplayLabel(publicText(tokenMatchedEntity)) : "该事件";
 }
 
 function primaryEventEntityEn(event: SnapshotEvent) {
   const entity = primaryEventEntity(event);
-  if (entity === labelize(event.category)) return "This event";
+  if (entity === "该事件" || entity === labelize(event.category)) return "This event";
   const originalEntity = event.related_entities.find((candidate) => entityDisplayLabel(candidate) === entity) ?? entity;
   const directIndex = event.canonical_title.toLowerCase().indexOf(originalEntity.toLowerCase());
   if (directIndex >= 0) return event.canonical_title.slice(directIndex, directIndex + originalEntity.length);
@@ -3665,7 +3667,7 @@ function localEvidenceToolScript(
     const sameFamily = /same source family|one source family|同(来源)?家族|同家族.*复述/.test(q);
     const selectedOnly = /selected events?|today['’]s selection|industry selection|行业精选|今日精选|本轮精选|精选事件/.test(q);
     const highPriority = /high[- ]priority|highest[- ]priority|高优先级/.test(q);
-    const timeWindowHours = /(?:past|last|within)\s*24\s*(?:hours?|hrs?|h)\b|\b24h\b|过去\s*24\s*小时|近\s*24\s*小时|今天发生|今日发生|\btoday\b/.test(q)
+    const timeWindowHours = /(?:past|last|within)\s*24\s*(?:hours?|hrs?|h)\b|\b24h\b|过去\s*24\s*小时|近\s*24\s*小时|今天|今日|\btoday\b/.test(q)
       ? 24
       : /(?:past|last|within)\s*(?:7\s*days?|one\s*week)|\bthis week\b|过去一周|近一周|本周/.test(q)
         ? 24 * 7
@@ -3723,6 +3725,24 @@ function localEvidenceToolScript(
   function queryAnchorTokens(query) {
     const genericAnchors = new Set(["cross-family", "high-priority", "multi-source", "single-source", "source-family"]);
     return queryTokens(query).filter((token) => /[-._+]/.test(token) && token.length >= 4 && !genericAnchors.has(token));
+  }
+
+  function normalizedEntityPhrase(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9\u3400-\u9fff]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function queryNamesEntity(event, query) {
+    const normalizedQuery = " " + normalizedEntityPhrase(query) + " ";
+    const genericEntities = new Set(["ai", "agent", "agents", "artificial intelligence", "large language model", "llm", "model", "models", "open source", "product", "research", "safety", "人工智能", "安全", "智能体", "模型", "研究"]);
+    return (event.related_entities || []).some((entity) => {
+      const normalizedEntity = normalizedEntityPhrase(entity);
+      if (normalizedEntity.length < 4 || genericEntities.has(normalizedEntity)) return false;
+      return normalizedQuery.includes(" " + normalizedEntity + " ");
+    });
   }
 
   function matchesIntent(event, text, intent) {
@@ -3800,7 +3820,14 @@ function localEvidenceToolScript(
     const anchorMatches = anchorTokens.length > 0
       ? pool.filter((event) => anchorTokens.every((token) => textOf(snapshot, event).includes(token)))
       : [];
-    const scopedPool = exactTitleMatches.length > 0 ? exactTitleMatches : (anchorMatches.length > 0 ? anchorMatches : pool);
+    const entityMatches = pool.filter((event) => queryNamesEntity(event, query));
+    const scopedPool = exactTitleMatches.length > 0
+      ? exactTitleMatches
+      : anchorMatches.length > 0
+        ? anchorMatches
+        : entityMatches.length > 0
+          ? entityMatches
+          : pool;
     return scopedPool
       .map((event) => ({ event, score: scoreEvent(snapshot, event, query, intent) }))
       .filter((entry) => entry.score !== null)
@@ -3836,11 +3863,17 @@ function localEvidenceToolScript(
     if (language === "en") {
       return '<h3>Source health answer</h3><p>Question: ' + escapeHtml(query) + '</p>' +
         '<p>Broad refresh audited through: ' + escapeHtml(displayDateTime(auditedAt)) + '.</p>' +
-        '<dl class="inline-defs"><dt>Succeeded</dt><dd>' + escapeHtml(health.succeeded || 0) + '</dd><dt>Failed</dt><dd>' + escapeHtml(health.failed || 0) + '</dd><dt>Manual / blocked</dt><dd>' + escapeHtml(health.manual_blocked || 0) + '</dd><dt>No new items</dt><dd>' + escapeHtml(health.no_items || 0) + '</dd><dt>Duplicate only</dt><dd>' + escapeHtml(health.duplicate_only || 0) + '</dd></dl><h4>Named failed sources</h4><ul>' + (failedSources || '<li>None</li>') + '</ul><h4>Failures, warnings and exclusions</h4><ul>' + families + '</ul>';
+        '<dl class="inline-defs"><dt>Succeeded</dt><dd>' + escapeHtml(health.succeeded || 0) + '</dd><dt>Failed</dt><dd>' + escapeHtml(health.failed || 0) + '</dd><dt>Manual / blocked</dt><dd>' + escapeHtml(health.manual_blocked || 0) + '</dd><dt>No new items</dt><dd>' + escapeHtml(health.no_items || 0) + '</dd><dt>Duplicate only</dt><dd>' + escapeHtml(health.duplicate_only || 0) + '</dd></dl>' +
+        '<h4>Decision impact</h4><p>' + escapeHtml(Number(health.failed || 0) + ' failed and ' + Number(health.manual_blocked || 0) + ' manual / blocked sources mean coverage is partial; no new items does not prove the industry was quiet.') + '</p>' +
+        '<h4>Next step</h4><p>Retry named failures during the next manual refresh and add compliant adapters or manual evidence for blocked sources before making coverage-wide claims.</p>' +
+        '<h4>Named failed sources</h4><ul>' + (failedSources || '<li>None</li>') + '</ul><h4>Failures, warnings and exclusions</h4><ul>' + families + '</ul>';
     }
     return '<h3>来源健康回答</h3><p>问题：' + escapeHtml(query) + '</p>' +
       '<p>广泛刷新审计截至：' + escapeHtml(displayDateTime(auditedAt)) + '。</p>' +
-      '<dl class="inline-defs"><dt>成功</dt><dd>' + escapeHtml(health.succeeded || 0) + '</dd><dt>失败</dt><dd>' + escapeHtml(health.failed || 0) + '</dd><dt>手动/阻塞</dt><dd>' + escapeHtml(health.manual_blocked || 0) + '</dd><dt>无新条目</dt><dd>' + escapeHtml(health.no_items || 0) + '</dd><dt>仅重复</dt><dd>' + escapeHtml(health.duplicate_only || 0) + '</dd></dl><h4>具名失败来源</h4><ul>' + (failedSources || '<li>无</li>') + '</ul><h4>失败、警告与排除</h4><ul>' + families + '</ul>';
+      '<dl class="inline-defs"><dt>成功</dt><dd>' + escapeHtml(health.succeeded || 0) + '</dd><dt>失败</dt><dd>' + escapeHtml(health.failed || 0) + '</dd><dt>手动/阻塞</dt><dd>' + escapeHtml(health.manual_blocked || 0) + '</dd><dt>无新条目</dt><dd>' + escapeHtml(health.no_items || 0) + '</dd><dt>仅重复</dt><dd>' + escapeHtml(health.duplicate_only || 0) + '</dd></dl>' +
+      '<h4>决策影响</h4><p>' + escapeHtml(Number(health.failed || 0) + ' 个失败来源和 ' + Number(health.manual_blocked || 0) + ' 个手动/阻塞来源意味着覆盖仍不完整；“无新条目”不能证明行业当天没有变化。') + '</p>' +
+      '<h4>下一步</h4><p>下一轮手动刷新应重试具名失败来源；在形成全局判断前，还需为阻塞来源补充合规适配器或人工证据。</p>' +
+      '<h4>具名失败来源</h4><ul>' + (failedSources || '<li>无</li>') + '</ul><h4>失败、警告与排除</h4><ul>' + families + '</ul>';
   }
 
   function citationHtml(event) {
@@ -3856,14 +3889,27 @@ function localEvidenceToolScript(
     return parsed.toISOString().slice(0, 10);
   }
 
+  function eventUncertainty(event) {
+    if (language !== "en") {
+      return (event.caveats || [])[0] || (Number(event.source_count || 0) > 1 ? "多条报道仍需核实来源是否彼此独立。" : "当前仅有单一来源，需要补充独立证据。");
+    }
+    if (Number((event.source_families || []).length) > 1) {
+      return "The source families differ, but one may repeat the original claim; source independence has not been established.";
+    }
+    if (Number(event.source_count || 0) > 1) {
+      return "Multiple reports come from one source family, so independent confirmation is still needed.";
+    }
+    return "This remains a single-source observation and needs independent confirmation.";
+  }
+
   function renderAskResult(snapshot, query, events) {
-    const freshness = snapshot.freshness && snapshot.freshness.latest_timestamp ? snapshot.freshness.latest_timestamp : (language === "en" ? "unavailable" : "待补证据");
+    const freshness = snapshot.freshness && snapshot.freshness.latest_timestamp ? displayDateTime(snapshot.freshness.latest_timestamp) : (language === "en" ? "unavailable" : "待补证据");
     if (language === "en") {
       return '<h3>Public evidence answer</h3>' +
         '<p>Question: ' + escapeHtml(query) + '</p>' +
         '<p>Evidence boundary: this answer uses only the current public snapshot. Latest content publication: ' + escapeHtml(freshness) + '. It is not live web research.</p>' +
         '<ol>' + events.map((event) =>
-          '<li><strong>' + escapeHtml(eventTitle(snapshot, event)) + '</strong><p>' + escapeHtml(eventSummary(snapshot, event)) + '</p>' +
+          '<li><strong>' + escapeHtml(eventTitle(snapshot, event)) + '</strong><p>' + escapeHtml(eventSummary(snapshot, event)) + '</p><p><strong>Uncertainty:</strong> ' + escapeHtml(eventUncertainty(event)) + '</p>' +
           '<small>' + escapeHtml(eventDate(event)) + ' / ' + escapeHtml(scoreLabel(event)) + ' / score ' + escapeHtml(event.event_score) + ' / ' + escapeHtml(event.source_count) + (Number(event.source_count || 0) === 1 ? ' source / ' : ' sources / ') + escapeHtml(sourceFamilies(event).join(", ")) + '</small>' +
           '<div class="local-citations">' + citationHtml(event) + '</div></li>'
         ).join("") + '</ol>';
@@ -3872,14 +3918,14 @@ function localEvidenceToolScript(
       '<p>问题：' + escapeHtml(query) + '</p>' +
       '<p>证据边界：仅基于当前公开快照，最新内容发布时间 ' + escapeHtml(freshness) + '；结果不是实时联网回答。</p>' +
       '<ol>' + events.map((event) =>
-        '<li><strong>' + escapeHtml(event.canonical_title) + '</strong><p>' + escapeHtml(eventSummary(snapshot, event)) + '</p>' +
+        '<li><strong>' + escapeHtml(event.canonical_title) + '</strong><p>' + escapeHtml(eventSummary(snapshot, event)) + '</p><p><strong>不确定性：</strong>' + escapeHtml(eventUncertainty(event)) + '</p>' +
         '<small>' + escapeHtml(eventDate(event)) + ' / ' + escapeHtml(event.event_score_label) + ' / 分数 ' + escapeHtml(event.event_score) + ' / ' + escapeHtml(event.source_count) + ' 个来源 / ' + escapeHtml((event.source_families || []).join("、")) + '</small>' +
         '<div class="local-citations">' + citationHtml(event) + '</div></li>'
       ).join("") + '</ol>';
   }
 
   function renderWriteParagraph(snapshot, query, events) {
-    const freshness = snapshot.freshness && snapshot.freshness.latest_timestamp ? snapshot.freshness.latest_timestamp : (language === "en" ? "unavailable" : "待补");
+    const freshness = snapshot.freshness && snapshot.freshness.latest_timestamp ? displayDateTime(snapshot.freshness.latest_timestamp) : (language === "en" ? "unavailable" : "待补");
     const selected = events.slice(0, 3);
     const citations = selected.map((event) => citationHtml(event)).filter(Boolean).join("<br>");
     if (language === "en") {
@@ -3914,7 +3960,7 @@ function localEvidenceToolScript(
 
   function renderWriteResult(snapshot, query, events, intent) {
     if (intent.paragraph) return renderWriteParagraph(snapshot, query, events);
-    const freshness = snapshot.freshness && snapshot.freshness.latest_timestamp ? snapshot.freshness.latest_timestamp : (language === "en" ? "unavailable" : "待补证据");
+    const freshness = snapshot.freshness && snapshot.freshness.latest_timestamp ? displayDateTime(snapshot.freshness.latest_timestamp) : (language === "en" ? "unavailable" : "待补证据");
     if (language === "en") {
       return '<h3>Evidence-led outline</h3>' +
         '<p>Request: ' + escapeHtml(query) + '</p>' +
@@ -4078,6 +4124,8 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .timeline-list { display: grid; gap: 10px; }
 .timeline-list.compact { margin-top: 10px; }
 .timeline-row { border: 1px solid var(--line); border-radius: 8px; color: var(--ink); display: grid; gap: 6px; grid-template-columns: 170px minmax(0, 1fr) 160px; padding: 12px; }
+.featured-card .timeline-row, .event-card .timeline-row { grid-template-columns: 110px minmax(0, 1fr); }
+.featured-card .timeline-row span, .event-card .timeline-row span { grid-column: 2; }
 .timeline-row strong, .citation strong { overflow-wrap: anywhere; }
 .timeline-row time, .timeline-row span { color: var(--muted); font-size: 13px; }
 .callout { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
@@ -4132,6 +4180,7 @@ textarea { font: inherit; line-height: 1.5; min-height: 120px; resize: vertical;
   .mini-metric { min-height: 76px; padding: 10px; }
   .mini-metric strong { font-size: 16px; }
   .featured-card aside { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; padding-top: 12px; }
+  .featured-card .timeline-row span, .event-card .timeline-row span { grid-column: auto; }
   .controls { grid-template-columns: 1fr; }
   .citation-grid { grid-template-columns: 1fr; }
   .event-meta { grid-template-columns: 1fr; }

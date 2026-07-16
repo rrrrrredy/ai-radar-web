@@ -5,6 +5,7 @@ import test from "node:test";
 import vm from "node:vm";
 
 type ToolMode = "ask" | "write";
+type Locale = "en" | "zh";
 
 const outputRoot = path.join(process.cwd(), "dist", "cloudflare-pages");
 const snapshot = JSON.parse(
@@ -19,7 +20,31 @@ test("an exact event question does not pull unrelated high-scoring events", asyn
 
   assert.match(html, /GPT-Red/i);
   assert.doesNotMatch(html, /v0\.25\.0|v0\.24\.0|Microsoft is reportedly|Advancing content provenance/i);
+  assert.match(html, /source independence has not been established/i);
   assert.equal(countMatches(html, /<li><strong>/g), 1);
+});
+
+test("a named-entity writing request excludes unrelated evidence", async () => {
+  const html = await runLocalTool(
+    "write",
+    "Draft an observation about GPT-Red, separating facts, inference, and uncertainty."
+  );
+
+  assert.match(html, /GPT-Red/i);
+  assert.doesNotMatch(html, /CANDI:|Mistral-Nemo|Faithful, Not Corrective/i);
+  assert.equal(countMatches(html, /<li><strong>/g), 1);
+});
+
+test("bare Chinese today intent enforces the 24-hour evidence window", async () => {
+  const askHtml = await runLocalTool("ask", "今天有哪些高优先级事件？", "zh");
+  const writeHtml = await runLocalTool("write", "用今天的高优先级事件写一段行业观察。", "zh");
+
+  for (const html of [askHtml, writeHtml]) {
+    assert.match(html, /GPT-Red/i);
+    assert.doesNotMatch(html, /Anthropic found a hidden space/i);
+    assert.doesNotMatch(html, /T\d{2}:\d{2}:\d{2}/);
+  }
+  assert.equal(countMatches(askHtml, /<li><strong>/g), 1);
 });
 
 test("a mixed evidence-state writing request uses union semantics", async () => {
@@ -39,10 +64,26 @@ test("source health renders numeric zeroes and a reader-friendly timestamp", asy
   assert.match(html, /<dd>0<\/dd>/);
   assert.doesNotMatch(html, /T\d{2}:\d{2}:\d{2}/);
   assert.match(html, /UTC/);
+  assert.match(html, /Decision impact/);
+  assert.match(html, /Next step/);
 });
 
-async function runLocalTool(mode: ToolMode, query: string) {
-  const pagePath = path.join(outputRoot, "en", mode, "index.html");
+test("English reports render every citation declared by the visible quality summaries", () => {
+  const html = fs.readFileSync(path.join(outputRoot, "en", "reports", "index.html"), "utf8");
+  const declared = Array.from(
+    html.matchAll(/<dt>Citations<\/dt><dd>(\d+)<\/dd>/g),
+    (match) => Number(match[1])
+  );
+  const expected = declared.reduce((sum, count) => sum + count, 0);
+
+  assert.ok(declared.length >= 2);
+  assert.equal(countMatches(html, /class="citation"/g), expected);
+});
+
+async function runLocalTool(mode: ToolMode, query: string, locale: Locale = "en") {
+  const pagePath = locale === "en"
+    ? path.join(outputRoot, "en", mode, "index.html")
+    : path.join(outputRoot, mode, "index.html");
   const script = extractToolScript(fs.readFileSync(pagePath, "utf8"), mode);
   const input = {
     value: query

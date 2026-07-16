@@ -138,6 +138,7 @@ test("the persistence boundary rejects non-authoritative provenance before any d
         ),
         /authoritative direct Supabase/
       );
+      assert.equal(fake.fromCalls, 0);
       assert.equal(fake.updates.length, 0);
       assert.equal(fake.upserts.length, 0);
     }
@@ -367,9 +368,11 @@ function createFakeSupabase(options: {
     { id: "event-database-archived", local_id: "event_archived", status: "archived" }
   ];
   let destructiveCalls = 0;
+  let fromCalls = 0;
 
   const client = {
     from(table: string) {
+      fromCalls += 1;
       return {
         delete() {
           destructiveCalls += 1;
@@ -449,6 +452,9 @@ function createFakeSupabase(options: {
     client,
     get destructiveCalls() {
       return destructiveCalls;
+    },
+    get fromCalls() {
+      return fromCalls;
     },
     updates,
     upserts

@@ -70,7 +70,7 @@ Both source-stage and public event gates pass. `needs_review` is the editorial s
 
 All 298 public-safe signals remain under `全部信号`. The event layer maps 244 signals into 241 public events; 54 signal-only rows remain auditable and are not promoted into weak events.
 
-Exact named-event queries now narrow to that event instead of mixing in unrelated high-scoring records. Requests that explicitly compare cross-family and single-source evidence use union semantics, so both evidence states remain available to Ask/Write output. Source-health zeroes and refresh timestamps render as reader-facing values rather than blanks or raw ISO strings.
+Exact named-event and distinctive entity queries now narrow to matching events instead of mixing in unrelated high-scoring records. Bare Chinese `今天/今日` intent enforces the same 24-hour evidence window as explicit `最近 24 小时`. Requests that explicitly compare cross-family and single-source evidence use union semantics, so both evidence states remain available to Ask/Write output. Source-health answers expose zeroes, readable timestamps, decision impact and next actions; event answers expose event-specific uncertainty, and English report cards render every declared citation.
 
 ## Safety and Operations
 
