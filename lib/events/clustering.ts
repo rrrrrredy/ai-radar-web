@@ -228,6 +228,46 @@ const eventConceptPatterns = [
   }
 ] as const;
 
+const namedProductObjectPatterns = [
+  ["keyboard", /\bkeyboards?\b|键盘/i],
+  ["mouse", /\b(?:mouse|mice)\b|鼠标/i],
+  ["headset", /\bheadsets?\b|头显|耳机/i],
+  ["glasses", /\b(?:smart )?glasses\b|智能眼镜/i],
+  ["phone", /\b(?:smart)?phones?\b|手机/i],
+  ["tablet", /\btablets?\b|平板/i],
+  ["laptop", /\blaptops?\b|笔记本电脑/i],
+  ["speaker", /\bspeakers?\b|音箱/i],
+  ["camera", /\bcameras?\b|相机|摄像头/i],
+  ["robot", /\brobots?\b|机器人/i],
+  ["drone", /\bdrones?\b|无人机/i],
+  ["chip", /\bchips?\b|芯片/i],
+  ["processor", /\bprocessors?\b|处理器/i],
+  ["server", /\bservers?\b|服务器/i],
+  ["console", /\bconsoles?\b|游戏机/i],
+  ["controller", /\bcontrollers?\b|控制器|手柄/i],
+  ["wearable", /\bwearables?\b|可穿戴设备/i],
+  ["device", /\bdevices?\b|设备/i]
+] as const;
+
+const namedProductActionPatterns = [
+  ["launch", /\b(?:announc\w*|debut\w*|introduc\w*|launch\w*|releas\w*|ship\w*|unveil\w*|roll(?:ed|s|ing)?\s+out|go(?:es|ing)?\s+on\s+sale)\b|发布|推出|亮相|揭晓|开售|上市/i],
+  ["update", /\b(?:add\w*|expand\w*|updat\w*|upgrad\w*)\b|更新|升级|新增|扩展/i],
+  ["withdrawal", /\b(?:discontinu\w*|recall\w*|retir\w*|sunset\w*|withdraw\w*)\b|召回|撤回|停产|下线/i]
+] as const;
+
+const genericNamedProductTokens = new Set([
+  ...genericEntityTerms,
+  "app",
+  "application",
+  "assistant",
+  "device",
+  "hardware",
+  "platform",
+  "service",
+  "software",
+  "system"
+]);
+
 const itemKeywordCache = new WeakMap<ClusterableRadarItem, string[]>();
 const itemEntityCache = new WeakMap<ClusterableRadarItem, string[]>();
 const itemStrongEntityCache = new WeakMap<ClusterableRadarItem, string[]>();
@@ -295,9 +335,14 @@ export function filterPublicDisplayEventLayer(layer: PublicEventLayer): PublicEv
   const eventIds = new Set(events.map((event) => event.event_cluster_id));
   const curated = layer.curated_events.filter((event) => eventIds.has(event.event_cluster_id));
   const fallbackCurated = selectCuratedEvents(events);
+  const curatedEvents: PublicEventCluster[] = [];
+
+  for (const event of [...curated, ...fallbackCurated]) {
+    addCurated(curatedEvents, event);
+  }
 
   return {
-    curated_events: (curated.length > 0 ? curated : fallbackCurated).slice(0, 8),
+    curated_events: curatedEvents,
     event_cluster_items: layer.event_cluster_items.filter((item) => eventIds.has(item.event_cluster_id)),
     event_clusters: events,
     event_count: events.length,
@@ -306,7 +351,10 @@ export function filterPublicDisplayEventLayer(layer: PublicEventLayer): PublicEv
 }
 
 export function isPublicDisplayEvent(event: PublicEventCluster) {
-  return event.event_score_label !== "噪音/低相关" && event.event_score >= 45 && !looksLikeSourcePageEvent(event);
+  return event.event_score_label !== "噪音/低相关" &&
+    event.event_score >= 45 &&
+    hasReaderReadyEventSummary(event) &&
+    !looksLikeSourcePageEvent(event);
 }
 
 function compareClusterInputItems(left: ClusterableRadarItem, right: ClusterableRadarItem) {
@@ -467,6 +515,9 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
   const corroboratedNamedEntityMatch = cluster.items.some((clusterItem) =>
     sharesDistinctiveNamedEvent(clusterItem, item)
   );
+  const corroboratedNamedProductObjectActionMatch = cluster.items.some((clusterItem) =>
+    sharesNamedProductObjectAction(clusterItem, item)
+  );
 
   if (versionConflict) {
     return 0;
@@ -497,6 +548,10 @@ function clusterSimilarity(cluster: WorkingCluster, item: ClusterableRadarItem) 
   }
 
   if (corroboratedNamedEntityMatch) {
+    score = Math.max(score, 0.72);
+  }
+
+  if (corroboratedNamedProductObjectActionMatch) {
     score = Math.max(score, 0.72);
   }
 
@@ -754,7 +809,7 @@ function scoreReason(score: number, sourceCount: number, sourceFamilies: string[
       ? `${sourceCount} 个来源、${sourceFamilies.length} 个来源家族提供多源报道，来源独立性未验证`
       : sourceCount > 1
         ? `${sourceCount} 个来源报道，但集中在同一来源家族`
-        : "单一来源，需继续观察",
+        : "单一来源，需补独立来源",
     sourceFamilies.length > 1 ? `覆盖 ${sourceFamilies.join("、")}` : `来源家族：${sourceFamilies[0] ?? "未知"}`,
     `AI 相关度 ${Math.round((primary.scores.ai_relevance || 0) * 100)}%`,
     `重要性 ${Math.round((primary.scores.importance || 0) * 100)}%`,
@@ -1059,6 +1114,12 @@ function hasPartnerConflict(left: ClusterableRadarItem, right: ClusterableRadarI
   return intersectionSize(leftPartners, rightPartners) === 0;
 }
 
+function hasReaderReadyEventSummary(event: PublicEventCluster) {
+  const summary = event.summary_zh.trim();
+
+  return summary.length >= 18 && !/(未提供具体内容|未提供正文|没有正文|内容未提供|仅提供元数据|缺少正文|没有可用摘要|摘要不可用|无法提取正文|文章标题指出|这是一篇(?:来自)?|标题为《)/u.test(summary);
+}
+
 function partnerEntities(item: ClusterableRadarItem) {
   const rawText = `${item.title} ${item.summary_zh ?? ""} ${item.summary_en ?? ""}`;
   const text = normalizeText(rawText);
@@ -1070,8 +1131,15 @@ function partnerEntities(item: ClusterableRadarItem) {
     ...rawText.matchAll(/\b(?:openai|anthropic|google|microsoft|meta)\s+and\s+([a-z0-9][a-z0-9 .&-]{1,40}?)\s+(?:partner|partnership|collaborat)/gi),
     ...rawText.matchAll(/\bwith\s+([a-z0-9][a-z0-9 .&-]{1,40}?)\s+(?:to|on|for)\b/gi)
   ].map((match) => normalizeEntity(match[1]).replace(/\b(to|bring|all|citizens|enterprise|environments)\b.*$/g, "").trim()).filter(Boolean);
+  const nonPartnerEntities = new Set((item.entities ?? [])
+    .filter((entity) => ["model", "product", "paper", "project", "repository"].includes(entity.type))
+    .map((entity) => canonicalEventEntity(entity.name)));
   const entities = strongItemEntities(item)
-    .filter((entity) => !["openai", "microsoft", "google", "meta", "anthropic"].includes(entity));
+    .map(canonicalEventEntity)
+    .filter((entity) =>
+      !["openai", "microsoft", "google", "meta", "anthropic"].includes(entity) &&
+      !nonPartnerEntities.has(entity)
+    );
   return new Set([...entities, ...parsedPartners]);
 }
 
@@ -1180,6 +1248,111 @@ function sharesSpecificEventAction(leftTitle: string, rightTitle: string) {
 function sharesSpecificEventConcept(left: ClusterableRadarItem, right: ClusterableRadarItem) {
   const leftConcepts = new Set(itemEventConcepts(left));
   return itemEventConcepts(right).some((concept) => leftConcepts.has(concept));
+}
+
+function sharesNamedProductObjectAction(left: ClusterableRadarItem, right: ClusterableRadarItem) {
+  const leftDomain = safeDomain(left.url);
+  const rightDomain = safeDomain(right.url);
+  if (
+    normalizeEntity(left.source_name) === normalizeEntity(right.source_name) ||
+    Boolean(leftDomain && leftDomain === rightDomain) ||
+    timeWindowScore(left, right) < 1 ||
+    hasVersionConflict(left, right) ||
+    hasPartnerConflict(left, right) ||
+    isResearchPaperEvidence(left) ||
+    isResearchPaperEvidence(right)
+  ) {
+    return false;
+  }
+
+  const leftCompanies = new Set(itemCompanyEntities(left));
+  const rightCompanies = new Set(itemCompanyEntities(right));
+  if (intersectionSize(leftCompanies, rightCompanies) === 0) {
+    return false;
+  }
+
+  const leftProducts = new Set(itemNamedProductEntities(left));
+  const rightProducts = new Set(itemNamedProductEntities(right));
+  if (!hasCompatibleNamedProduct(leftProducts, rightProducts)) {
+    return false;
+  }
+
+  const leftText = itemEventEvidenceText(left);
+  const rightText = itemEventEvidenceText(right);
+  const sharedObject = namedProductObjectPatterns.some(([, pattern]) => pattern.test(leftText) && pattern.test(rightText));
+  const sharedAction = intersectionSize(
+    new Set(itemNamedProductActions(left)),
+    new Set(itemNamedProductActions(right))
+  ) > 0;
+  return sharedObject && sharedAction;
+}
+
+function hasCompatibleNamedProduct(left: Set<string>, right: Set<string>) {
+  for (const leftProduct of left) {
+    for (const rightProduct of right) {
+      if (leftProduct === rightProduct) return true;
+      const shorter = leftProduct.length <= rightProduct.length ? leftProduct : rightProduct;
+      const longer = leftProduct.length > rightProduct.length ? leftProduct : rightProduct;
+      if (shorter.length >= 5 && !genericNamedProductTokens.has(shorter) && longer.startsWith(`${shorter} `)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function itemCompanyEntities(item: ClusterableRadarItem) {
+  return unique((item.entities ?? [])
+    .filter((entity) => entity.type === "company")
+    .map((entity) => canonicalEventEntity(entity.name))
+    .filter(Boolean));
+}
+
+function itemNamedProductEntities(item: ClusterableRadarItem) {
+  const companies = itemCompanyEntities(item).sort((left, right) => right.length - left.length);
+  return unique((item.entities ?? [])
+    .filter((entity) => entity.type === "product")
+    .map((entity) => canonicalNamedProductEntity(entity.name, companies))
+    .filter(isDistinctiveNamedProductEntity));
+}
+
+function canonicalNamedProductEntity(value: string, companies: string[]) {
+  let entity = canonicalEventEntity(value);
+  for (const company of companies) {
+    if (entity.startsWith(`${company} `)) {
+      entity = entity.slice(company.length + 1).trim();
+      break;
+    }
+  }
+  return entity;
+}
+
+function itemNamedProductActions(item: ClusterableRadarItem) {
+  const titleActions = namedProductActionPatterns
+    .filter(([, pattern]) => pattern.test(item.title))
+    .map(([name]) => name);
+  if (titleActions.length > 0) {
+    return titleActions;
+  }
+
+  const evidenceText = itemEventEvidenceText(item);
+  return namedProductActionPatterns
+    .filter(([, pattern]) => pattern.test(evidenceText))
+    .map(([name]) => name);
+}
+
+function isDistinctiveNamedProductEntity(value: string) {
+  const entity = normalizeEntity(value);
+  const tokens = entity.split(" ").filter(Boolean);
+  return entity.length >= 5 && tokens.some((token) => !genericNamedProductTokens.has(token));
+}
+
+function isResearchPaperEvidence(item: ClusterableRadarItem) {
+  return isResearchPaperItem(item) || (item.entities ?? []).some((entity) => entity.type === "paper");
+}
+
+function itemEventEvidenceText(item: ClusterableRadarItem) {
+  return [item.title, item.summary_zh ?? "", item.summary_en ?? "", item.tags.join(" ")].join(" ");
 }
 
 function sharesDistinctiveNamedEvent(left: ClusterableRadarItem, right: ClusterableRadarItem) {

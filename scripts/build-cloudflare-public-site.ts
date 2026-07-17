@@ -3,7 +3,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { sourceFamilyForEvent } from "@/lib/events/clustering";
-
 import {
   buildEntityEvidenceGraph,
   buildEntitySummaries,
@@ -12,13 +11,11 @@ import {
   entityTrackingInsight,
   type EntitySummary
 } from "@/lib/radar/entity-insights";
+import type { RetrievalRadarItem } from "@/lib/retrieval/types";
 import {
   reportEntityTraceability,
-  reportSectionTraceability,
-  type ReportSectionTraceability,
   type ReportTraceDocument
 } from "@/lib/reports/entity-traceability";
-import type { RetrievalRadarItem } from "@/lib/retrieval/types";
 import type { UnderstandingEntity } from "@/lib/understanding/types";
 
 type SnapshotItem = {
@@ -303,20 +300,14 @@ async function writeSite(snapshot: Snapshot) {
   await fs.rm(path.join(outputDir, "entities"), { force: true, recursive: true });
   await fs.rm(path.join(outputDir, "ask"), { force: true, recursive: true });
   await fs.rm(path.join(outputDir, "write"), { force: true, recursive: true });
-  const traceItems = snapshotItemsForTraceability(snapshot.radar_items);
-  const entitySummaries = staticEntityDetailSummaries(snapshot, traceItems);
   await Promise.all([
     fs.mkdir(path.join(outputDir, "ask"), { recursive: true }),
     fs.mkdir(path.join(outputDir, "assets"), { recursive: true }),
     fs.mkdir(path.join(outputDir, "en", "ask"), { recursive: true }),
-    fs.mkdir(path.join(outputDir, "en", "entities"), { recursive: true }),
     fs.mkdir(path.join(outputDir, "en", "radar"), { recursive: true }),
     fs.mkdir(path.join(outputDir, "en", "reports"), { recursive: true }),
-    fs.mkdir(path.join(outputDir, "en", "write"), { recursive: true }),
-    fs.mkdir(path.join(outputDir, "entities"), { recursive: true }),
     fs.mkdir(path.join(outputDir, "radar"), { recursive: true }),
-    fs.mkdir(path.join(outputDir, "reports"), { recursive: true }),
-    fs.mkdir(path.join(outputDir, "write"), { recursive: true })
+    fs.mkdir(path.join(outputDir, "reports"), { recursive: true })
   ]);
 
   await Promise.all([
@@ -325,23 +316,73 @@ async function writeSite(snapshot: Snapshot) {
     fs.writeFile(path.join(outputDir, "assets", "styles.css"), stylesheet(), "utf8"),
     fs.writeFile(path.join(outputDir, "404.html"), renderNotFound(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "en", "ask", "index.html"), renderEnglishAsk(snapshot), "utf8"),
-    fs.writeFile(path.join(outputDir, "en", "entities", "index.html"), renderEnglishEntities(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "en", "index.html"), renderEnglishHome(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "en", "radar", "index.html"), renderEnglishRadar(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "en", "reports", "index.html"), renderEnglishReports(snapshot), "utf8"),
-    fs.writeFile(path.join(outputDir, "en", "write", "index.html"), renderEnglishWrite(snapshot), "utf8"),
-    fs.writeFile(path.join(outputDir, "entities", "index.html"), renderEntities(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "index.html"), renderHome(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "radar", "index.html"), renderRadar(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "reports", "index.html"), renderReports(snapshot), "utf8"),
-    fs.writeFile(path.join(outputDir, "version.json"), `${JSON.stringify(publicVersion(snapshot), null, 2)}\n`, "utf8"),
-    fs.writeFile(path.join(outputDir, "write", "index.html"), renderWrite(snapshot), "utf8"),
-    ...entitySummaries.map(async (entity) => {
-      const entityDir = path.join(outputDir, "entities", entityStaticSlug(entity));
-      await fs.mkdir(entityDir, { recursive: true });
-      await fs.writeFile(path.join(entityDir, "index.html"), renderEntityDetail(snapshot, entity), "utf8");
-    })
+    fs.writeFile(path.join(outputDir, "_redirects"), retiredRouteRedirects(), "utf8"),
+    fs.writeFile(path.join(outputDir, "_routes.json"), retiredRouteWorkerRoutes(), "utf8"),
+    fs.writeFile(path.join(outputDir, "_worker.js"), retiredRouteWorker(), "utf8"),
+    fs.writeFile(path.join(outputDir, "version.json"), `${JSON.stringify(publicVersion(snapshot), null, 2)}\n`, "utf8")
   ]);
+}
+
+function retiredRouteRedirects() {
+  return [
+    "/write /404.html 404",
+    "/write/ /404.html 404",
+    "/en/write /404.html 404",
+    "/en/write/ /404.html 404",
+    "/entities /404.html 404",
+    "/entities/ /404.html 404",
+    "/entities/* /404.html 404",
+    "/en/entities /404.html 404",
+    "/en/entities/ /404.html 404",
+    "/en/entities/* /404.html 404",
+    "/api/writing-assistant /404.html 404",
+    "/api/writing-assistant/ /404.html 404"
+  ].join("\n") + "\n";
+}
+
+function retiredRouteWorker() {
+  return `const retiredPrefixes = ["/write", "/en/write", "/entities", "/en/entities", "/api/writing-assistant"];
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (retiredPrefixes.some((prefix) => url.pathname === prefix || url.pathname.startsWith(prefix + "/"))) {
+      return new Response("<!doctype html><meta charset=\\"utf-8\\"><title>404</title><h1>404</h1><p>This public route is not available.</p>", {
+        headers: { "content-type": "text/html; charset=utf-8" },
+        status: 404,
+        statusText: "Not Found"
+      });
+    }
+
+    return env.ASSETS.fetch(request);
+  }
+};
+`;
+}
+
+function retiredRouteWorkerRoutes() {
+  return `${JSON.stringify({
+    version: 1,
+    include: [
+      "/write",
+      "/write/*",
+      "/en/write",
+      "/en/write/*",
+      "/entities",
+      "/entities/*",
+      "/en/entities",
+      "/en/entities/*",
+      "/api/writing-assistant",
+      "/api/writing-assistant/*"
+    ],
+    exclude: []
+  }, null, 2)}\n`;
 }
 
 function renderNotFound(snapshot: Snapshot) {
@@ -358,97 +399,158 @@ function renderNotFound(snapshot: Snapshot) {
   `);
 }
 
+function eventPrimaryUrl(event: SnapshotEvent) {
+  return event.citations[0]?.url ?? event.timeline[0]?.url ?? "#";
+}
+
+function eventSources(event: SnapshotEvent, limit = 2) {
+  return uniqueStrings(event.citations.map((citation) => citation.source_name)).slice(0, limit);
+}
+
+function eventFeed(snapshot: Snapshot) {
+  const preferred = [...snapshot.curated_events, ...snapshot.event_clusters];
+  const seen = new Set<string>();
+  return preferred
+    .filter((event) => {
+      if (seen.has(event.event_cluster_id) || event.event_score_label === "噪音/低相关") return false;
+      seen.add(event.event_cluster_id);
+      return true;
+    })
+    .toSorted((left, right) => {
+      const time = Date.parse(right.latest_seen_at) - Date.parse(left.latest_seen_at);
+      return time || right.event_score - left.event_score;
+    });
+}
+
+function readerReadyEvent(event: SnapshotEvent) {
+  const summary = chineseEventSummary(event);
+  return summary.length >= 18 && !/(未提供具体内容|未提供正文|没有正文|内容未提供|仅提供元数据|文章标题指出|这是一篇(?:来自)?|标题为《)/u.test(summary);
+}
+
+function readerReadyEventForLocale(event: SnapshotEvent, snapshot: Snapshot, locale: "en" | "zh") {
+  if (locale === "zh") return readerReadyEvent(event);
+  const summary = eventEnglishSummary(event, snapshot);
+  return summary.length >= 30 && !/(only metadata|no body text|metadata only|content was not provided|title alone)/iu.test(summary);
+}
+
+function eventsByLatest(events: SnapshotEvent[]) {
+  return events.toSorted((left, right) =>
+    Date.parse(right.latest_seen_at) - Date.parse(left.latest_seen_at) ||
+    right.event_score - left.event_score ||
+    left.canonical_title.localeCompare(right.canonical_title)
+  );
+}
+
+function feedTime(value: string, locale: "en" | "zh") {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--:--";
+  return new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "zh-CN", {
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    timeZone: locale === "en" ? "UTC" : "Asia/Shanghai"
+  }).format(date);
+}
+
+function feedDayKey(value: string, locale: "en" | "zh") {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-CA", { day: "2-digit", month: "2-digit", timeZone: locale === "en" ? "UTC" : "Asia/Shanghai", year: "numeric" }).format(date);
+}
+
+function feedDayLabel(value: string, locale: "en" | "zh") {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(locale === "en" ? "en-US" : "zh-CN", {
+    day: "numeric",
+    month: locale === "en" ? "short" : "long",
+    timeZone: locale === "en" ? "UTC" : "Asia/Shanghai",
+    weekday: "short"
+  }).format(date);
+}
+
+function storyDataAttributes(event: SnapshotEvent, snapshot: Snapshot, title: string, summary: string) {
+  return `data-category="${escapeAttr(`${event.category} ${categoryFilterValue(event.category)}`)}" data-family="${escapeAttr(event.source_families.join(" "))}" data-freshness="${freshnessBucket(event.latest_seen_at)}" data-score="${escapeAttr(event.event_score_label)}" data-search="${escapeAttr(`${title} ${summary} ${eventSources(event, 8).join(" ")} ${event.related_entities.join(" ")}`.toLowerCase())}" data-source-count="${eventConfirmationFilterValue(event)}" data-status="${escapeAttr(eventStatus(event, snapshot))}"`;
+}
+
+function renderStorySources(event: SnapshotEvent, locale: "en" | "zh") {
+  return `<details class="source-drawer"><summary>${locale === "en" ? "Sources & timeline" : "来源与时间线"}</summary><div class="source-drawer-list">${event.citations.map((citation) => `<a href="${escapeAttr(citation.url)}"><span>${escapeHtml(citation.source_name)}</span><strong>${escapeHtml(citation.title)}</strong><time>${escapeHtml(locale === "en" ? formatDateEn(citation.published_at) : formatDate(citation.published_at))}</time></a>`).join("")}</div></details>`;
+}
+
+function renderScoreReason(event: SnapshotEvent, locale: "en" | "zh") {
+  const familyCount = event.source_families.length;
+  const reason = locale === "en"
+    ? `The score combines recency, AI relevance and importance with ${event.source_count} report${event.source_count === 1 ? "" : "s"} across ${familyCount} source type${familyCount === 1 ? "" : "s"}.`
+    : event.score_reason;
+  return `<details class="score-drawer"><summary>${locale === "en" ? "Why this score" : "评分依据"}</summary><p>${escapeHtml(reason)}</p></details>`;
+}
+
+function renderStoryRow(event: SnapshotEvent, snapshot: Snapshot, locale: "en" | "zh") {
+  const title = locale === "en" ? eventEnglishTitle(event, snapshot) : chineseEventTitle(event);
+  const summary = locale === "en" ? eventEnglishSummary(event, snapshot) : chineseEventSummary(event);
+  const sources = eventSources(event).join(" · ") || (locale === "en" ? "Public source" : "公开来源");
+  const sourceCount = locale === "en" ? `${event.source_count} source${event.source_count === 1 ? "" : "s"}` : `${event.source_count} 个来源`;
+  const category = locale === "en" ? categoryLabelEn(event.category) : labelize(event.category);
+  const score = locale === "en" ? eventScoreLabelEn(event.event_score_label) : event.event_score_label;
+  return `<article class="event-card story-row" ${storyDataAttributes(event, snapshot, title, summary)}>
+    <div class="story-time"><time>${escapeHtml(feedTime(event.latest_seen_at, locale))}</time><span></span></div>
+    <div class="story-content">
+      <div class="story-meta"><span>${escapeHtml(sources)}</span><strong>${escapeHtml(score)} · ${event.event_score}</strong></div>
+      <h2><a href="${escapeAttr(eventPrimaryUrl(event))}">${escapeHtml(title)}</a></h2>
+      ${summary ? `<p>${escapeHtml(summary)}</p>` : ""}
+      <div class="story-foot"><span>${escapeHtml(category)}</span><span>${escapeHtml(sourceCount)}</span></div>
+      ${renderScoreReason(event, locale)}
+      ${renderStorySources(event, locale)}
+    </div>
+  </article>`;
+}
+
+function renderStoryStream(events: SnapshotEvent[], snapshot: Snapshot, locale: "en" | "zh") {
+  let day = "";
+  return events.map((event) => {
+    const nextDay = feedDayKey(event.latest_seen_at, locale);
+    const heading = nextDay === day ? "" : `<h2 class="feed-day"><span>${escapeHtml(feedDayLabel(event.latest_seen_at, locale))}</span></h2>`;
+    day = nextDay;
+    return `${heading}${renderStoryRow(event, snapshot, locale)}`;
+  }).join("");
+}
+
+function renderTopStories(events: SnapshotEvent[], snapshot: Snapshot, locale: "en" | "zh") {
+  return events.slice(0, 3).map((event, index) => {
+    const title = locale === "en" ? eventEnglishTitle(event, snapshot) : chineseEventTitle(event);
+    const sources = locale === "en" ? `${event.source_count} source${event.source_count === 1 ? "" : "s"}` : `${event.source_count} 个来源`;
+    return `<a class="top-story" href="${escapeAttr(eventPrimaryUrl(event))}"><span>${index + 1}</span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(sources)}</small></a>`;
+  }).join("");
+}
+
+function storyFilterScript() {
+  return `(function(){
+    const input=document.querySelector("#feed-search");
+    const buttons=Array.from(document.querySelectorAll("[data-feed-category]"));
+    const rows=Array.from(document.querySelectorAll(".story-row"));
+    if(!input||buttons.length===0)return;
+    let category="all";
+    function apply(){
+      const query=input.value.trim().toLowerCase();
+      const values=category==="all"?[]:category.split(",");
+      rows.forEach(row=>{const categoryText=(row.dataset.category||"").toLowerCase();const matchesCategory=values.length===0||values.some(value=>categoryText.includes(value));const matchesQuery=!query||(row.dataset.search||"").includes(query);row.hidden=!(matchesCategory&&matchesQuery);});
+    }
+    input.addEventListener("input",apply);
+    buttons.forEach(button=>button.addEventListener("click",()=>{category=button.dataset.feedCategory||"all";buttons.forEach(candidate=>{const active=candidate===button;candidate.classList.toggle("active",active);candidate.setAttribute("aria-pressed",active?"true":"false");});apply();}));
+    buttons.forEach((button,index)=>button.setAttribute("aria-pressed",index===0?"true":"false"));
+  })();`;
+}
+
 function renderEnglishHome(snapshot: Snapshot) {
-  const curated = snapshot.curated_events.toSorted(compareHomepageEvents).slice(0, 8);
-  const topEvents = curated.slice(0, 3);
-  const followUpEvents = curated.slice(3, 8);
-  const latestReportCandidates = latestReportsByType(snapshot);
-  const sameFamilyEvents = snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length === 1).length;
-  const crossFamilyEvents = snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
-  const eventCoverage = eventSignalCoverage(snapshot);
-  const currentSelection = curatedWindowIsCurrent(snapshot);
-  const title = currentSelection ? "Today's AI Industry Selection" : "Today's Selection (includes earlier evidence)";
-  const description = currentSelection
-    ? "Related evidence is merged only when the match is strong. Most current events remain single-source observations, with source health, timelines and citations exposed for review."
-    : "The selected set includes prior-day evidence. Every card shows its evidence date so older items are not presented as current-day news.";
-
-  return englishShell(snapshot, "home", 0, title, `
-    <section class="status-strip home-status-strip">
-      ${metricMini("Public records / visible signals", `${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} / ${snapshot.radar_items.length}`)}
-      ${metricMini("Events / mapped signals", `${snapshot.event_count} / ${eventCoverage.mapped}`)}
-      ${metricMini("Focused refresh: attempted / fetched / failed", `${snapshot.coverage.attempted_sources}/${snapshot.coverage.fetched_sources}/${snapshot.coverage.failed_sources}`)}
-      ${metricMini("Coverage refresh: succeeded / failed / manual", `${snapshot.source_health_summary.succeeded}/${snapshot.source_health_summary.failed}/${snapshot.source_health_summary.manual_blocked}`)}
-      ${metricMini("Current report candidates", latestReportCandidates.length)}
-      ${metricMini("Content published through", formatDateEn(snapshot.freshness.latest_timestamp))}
-    </section>
-    ${freshnessAlertEn(snapshot).replace('class="freshness-alert"', 'class="freshness-alert home-freshness-alert"')}
-
-    <section class="home-desk">
-      <div class="headline-panel">
-        <div class="pill-row">
-          ${pill(currentSelection ? "Current-day window" : "Includes prior days", currentSelection ? "success" : "caution")}
-          ${pill("Event first", "evidence")}
-          ${pill(sourceLabelEn(snapshot.source.data_source), "neutral")}
-        </div>
-        <h1>${escapeHtml(title)}</h1>
-        <div class="section-heading"><h2>${currentSelection ? "Today's top events" : "Top selected events"}</h2><a href="radar/">All events</a></div>
-        <div class="featured-list">${topEvents.map((event) => renderFeaturedEventCardEn(event, snapshot)).join("") || empty("No selected events are available.")}</div>
-        <p class="lead">${escapeHtml(description)} The query and writing tools run locally against this public snapshot.</p>
-        <div class="actions">
-          <a class="button primary" href="radar/">Open event radar</a>
-          <a class="button" href="reports/">Review report quality</a>
-          <a class="button" href="ask/">Ask about events</a>
-          <a class="button" href="write/">Draft an industry brief</a>
-        </div>
-      </div>
-      <aside class="ops-console">
-        <h2>Source health</h2>
-        <dl class="rail">
-          ${rail("Event clusters / mapped signals", `${snapshot.event_count} / ${eventCoverage.mapped}`)}
-          ${rail("Signal-only audit rows", String(eventCoverage.signalOnly))}
-          ${rail("Cross-family coverage", String(crossFamilyEvents))}
-          ${rail("Multi-source, one family", String(sameFamilyEvents))}
-          ${rail("Automated eligible", String(snapshot.coverage.automated_eligible_sources))}
-          ${rail("Broad refresh succeeded / failed", `${snapshot.source_health_summary.succeeded} / ${snapshot.source_health_summary.failed} of ${snapshot.source_health_scope.attempted_sources} attempted`)}
-          ${rail("Manual / blocked", `${snapshot.source_health_summary.manual_blocked} of ${snapshot.coverage.sources_total} total`)}
-          ${rail("Visible sources", `${snapshot.coverage.sources_with_public_items ?? 0} / ${snapshot.coverage.sources_total}`)}
-        </dl>
-        <div class="quality-note">
-          <strong>Public evidence boundary</strong>
-          <p>Only public-safe event, signal, report and aggregate source-health fields are included. Single-source events remain provisional.</p>
-        </div>
-      </aside>
-    </section>
-
-    ${followUpEvents.length > 0 ? `<section class="panel">
-      <div class="section-heading"><h2>More selected events</h2><a href="radar/?tab=events">Explore all events</a></div>
-      <div class="event-grid">${followUpEvents.map((event) => renderEventCardEn(event, snapshot)).join("")}</div>
-    </section>` : ""}
-
-    <section class="grid two">
-      <div class="panel">
-        <div class="section-heading"><h2>Industry pulse</h2><a href="../data/radar-snapshot.json">Public JSON</a></div>
-        <div class="distribution">
-          ${distributionEn("Categories", snapshot.top_categories.slice(0, 8).map((entry) => [entry.label, entry.count]))}
-          ${distributionEn("Top sources", snapshot.top_sources.slice(0, 8).map((entry) => [entry.label, entry.count]))}
-          ${distributionEn("Signal status", [["Included", snapshot.counts.included], ["Needs review", snapshot.counts.needs_review], ["Excluded", snapshot.counts.excluded]])}
-          ${distributionEn("Failure families", Object.entries(snapshot.failure_family_summary).slice(0, 8))}
-        </div>
-      </div>
-      <div class="panel">
-        <div class="section-heading"><h2>Evidence and limits</h2><a href="reports/">Report desk</a></div>
-        ${noteListEn(englishEvidenceLimits(snapshot))}
-        <div class="actions">
-          <a class="button primary" href="ask/">Query selected events</a>
-          <a class="button" href="write/">Build an evidence-led outline</a>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="section-heading"><h2>Latest report candidates</h2><a href="reports/">Open report desk</a></div>
-      <div class="row-list">${latestReportCandidates.map((report) => renderCompactReportEn(report)).join("") || empty("No public report candidates are available.")}</div>
-    </section>
+  const events = eventFeed(snapshot).filter((event) => readerReadyEventForLocale(event, snapshot, "en"));
+  const topEvents = snapshot.curated_events.filter((event) => readerReadyEventForLocale(event, snapshot, "en")).toSorted(compareHomepageEvents).slice(0, 3);
+  return englishShell(snapshot, "home", 0, "Selected", `
+    <section class="feed-heading"><div><h1>Selected</h1><p>${escapeHtml(feedDayLabel(snapshot.freshness.latest_timestamp ?? snapshot.generated_at, "en"))}</p></div><a href="radar/?tab=events">${snapshot.event_count} events</a></section>
+    <section class="top-stories"><div class="section-heading"><h2>Top stories</h2><span>TOP 3</span></div>${renderTopStories(topEvents, snapshot, "en")}</section>
+    <section class="feed-toolbar"><div class="section-heading"><h2>Latest</h2><a href="radar/?tab=events">All events</a></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search headlines, summaries, sources..."></div><div class="feed-chips"><button class="active" data-feed-category="all" type="button">All</button><button data-feed-category="model_release,benchmark" type="button">Models</button><button data-feed-category="product_update,agent,tooling" type="button">Products</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">Industry</button><button data-feed-category="research" type="button">Research</button><button data-feed-category="open_source" type="button">Open source</button></div></section>
+    <section class="story-stream">${renderStoryStream(events.slice(0, 36), snapshot, "en")}</section>
+    <div class="feed-more"><a class="button primary" href="radar/?tab=events">Browse all events</a></div>
+    <script>${storyFilterScript()}</script>
   `);
 }
 
@@ -462,32 +564,18 @@ function renderEnglishRadar(snapshot: Snapshot) {
     ...snapshot.event_clusters.map((event) => categoryFilterValue(event.category)),
     ...snapshot.radar_items.flatMap((item) => item.categories.map(categoryFilterValue))
   ]).toSorted();
-  const eventItemIds = new Set(snapshot.event_cluster_items.map((item) => item.radar_item_id));
   const displaySignalItems = snapshot.radar_items;
-  const downgradedSignalCount = displaySignalItems.filter((item) => !eventItemIds.has(item.id)).length;
   const reviewItemIds = new Set(
     snapshot.radar_items.filter((item) => item.status === "needs_review").map((item) => item.id)
   );
   const reviewEvents = snapshot.event_clusters.filter((event) =>
     event.related_item_ids.some((id) => reviewItemIds.has(id))
   );
+  const events = eventFeed(snapshot).filter((event) => readerReadyEventForLocale(event, snapshot, "en"));
 
-  return englishShell(snapshot, "radar", 1, "Event Radar", `
-    <section class="page-heading">
-      <div>
-        <div class="pill-row">
-          ${pill(`${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} public store / ${snapshot.radar_items.length} displayed`, "success")}
-          ${pill(`${snapshot.event_count} events / ${eventItemIds.size} mapped signals`, "evidence")}
-          ${pill(`${snapshot.coverage.attempted_sources} focused-refresh sources attempted`, "neutral")}
-          ${pill(sourceLabelEn(snapshot.source.data_source), "neutral")}
-        </div>
-        <h1>Event Radar</h1>
-        <p class="lead">The default view is the curated event layer: ${eventItemIds.size} displayed signals map to ${snapshot.event_count} public events, while ${downgradedSignalCount} signal-only audit rows remain under All signals.</p>
-      </div>
-    </section>
-    ${freshnessAlertEn(snapshot)}
-
-    <section class="panel radar-tabs">
+  return englishShell(snapshot, "radar", 1, "Radar", `
+    <section class="feed-heading"><div><h1>Radar</h1><p>${escapeHtml(feedDayLabel(snapshot.freshness.latest_timestamp ?? snapshot.generated_at, "en"))}</p></div><span>${snapshot.event_count} events</span></section>
+    <section class="radar-tabs">
       <div class="tabbar" role="tablist" aria-label="Radar views">
         ${tabButton("curated", "Selected", true)}
         ${tabButton("events", "All events")}
@@ -498,49 +586,35 @@ function renderEnglishRadar(snapshot: Snapshot) {
       </div>
     </section>
 
-    <section aria-labelledby="radar-tab-curated" class="tab-panel active" data-tab-panel="curated" id="radar-panel-curated" role="tabpanel">
-      <div class="event-grid">${snapshot.curated_events.map((event) => renderEventCardEn(event, snapshot)).join("") || empty("No curated events are available.")}</div>
-    </section>
-
-    <section class="panel radar-filters" data-radar-filters>
+    <section class="radar-filters" data-radar-filters>
+      <div class="filter-mobile-toggle"><button aria-expanded="false" class="button" id="radar-filter-toggle" type="button">Filters</button></div>
       <div class="controls" role="search">
-        <label>Search <input id="radar-search" type="search" aria-label="Search titles, sources, categories and entities"></label>
+        <label class="search-control">Search <input id="radar-search" type="search" placeholder="Headline, brief, source" aria-label="Search titles, sources, categories and entities"></label>
         <label>Status <select id="radar-status">${optionRaw("all", "All statuses")}${["included", "needs_review", "excluded", "failed"].map((status) => optionRaw(status, statusLabelEn(status))).join("")}</select></label>
         <label>Category <select id="radar-category">${optionRaw("all", "All categories")}${categories.map((category) => optionRaw(category, categoryLabelEn(category))).join("")}</select></label>
-        <label>Source family <select id="radar-family">${optionRaw("all", "All families")}${families.map((family) => optionRaw(family, sourceFamilyLabelEn(family))).join("")}</select></label>
+        <label>Source type <select id="radar-family">${optionRaw("all", "All source types")}${families.map((family) => optionRaw(family, sourceFamilyLabelEn(family))).join("")}</select></label>
         <label>Score <select id="radar-score">${optionRaw("all", "All scores")}${scoreLabels.map((label) => optionRaw(label, eventScoreLabelEn(label))).join("")}</select></label>
         <label>Freshness <select id="radar-freshness">${optionRaw("all", "Any time")}${optionRaw("24h", "Within 24h")}${optionRaw("7d", "2-7 days")}${optionRaw("30d", "8-30 days")}${optionRaw("archive", "Archive (>30 days)")}${optionRaw("unknown", "Publication time unknown")}</select></label>
-        <label>Evidence coverage <select id="radar-source-count">${optionRaw("all", "Any evidence state")}${optionRaw("cross", "Cross-family coverage")}${optionRaw("same", "Multi-source, one family")}${optionRaw("single", "Single-source observation")}</select></label>
+        <label>Reporting <select id="radar-source-count">${optionRaw("all", "Any reporting level")}${optionRaw("cross", "Reported by different source types")}${optionRaw("same", "Several reports of one type")}${optionRaw("single", "One report")}</select></label>
       </div>
       <div class="filter-feedback"><span aria-live="polite" id="radar-result-count"></span><button class="button" id="radar-reset" type="button">Reset filters</button></div>
-      <div class="distribution">
-        ${distributionEn("Status", [["Included", snapshot.counts.included], ["Needs review", snapshot.counts.needs_review], ["Excluded", snapshot.counts.excluded], ["Failed", snapshot.counts.failed]])}
-        ${distributionEn("Categories", snapshot.top_categories.slice(0, 8).map((entry) => [entry.label, entry.count]))}
-        ${distributionEn("Focused refresh coverage", [["Configured total", snapshot.coverage.sources_total], ["Automated eligible", snapshot.coverage.automated_eligible_sources], ["Focused attempted", snapshot.coverage.attempted_sources], ["Publicly visible", snapshot.coverage.sources_with_public_items ?? 0], ["Focused failed", snapshot.coverage.failed_sources]])}
-        ${distributionEn("Freshness", freshnessBuckets(snapshot.radar_items, "en"))}
-      </div>
+    </section>
+    <section aria-labelledby="radar-tab-curated" class="tab-panel active" data-tab-panel="curated" id="radar-panel-curated" role="tabpanel">
+      <div class="story-stream">${renderStoryStream(eventsByLatest(snapshot.curated_events.filter((event) => readerReadyEventForLocale(event, snapshot, "en"))), snapshot, "en") || empty("No selected events are available.")}</div>
     </section>
     <section aria-labelledby="radar-tab-events" class="tab-panel" data-tab-panel="events" hidden id="radar-panel-events" role="tabpanel">
-      <div class="event-grid">${snapshot.event_clusters.map((event) => renderEventCardEn(event, snapshot)).join("") || empty("No event clusters are available.")}</div>
+      <div class="story-stream">${renderStoryStream(events, snapshot, "en") || empty("No events are available.")}</div>
     </section>
     <section aria-labelledby="radar-tab-signals" class="tab-panel" data-tab-panel="signals" hidden id="radar-panel-signals" role="tabpanel">
-      <div class="grid radar-layout">
-        <div class="row-list radar-list" id="radar-list">
-          ${downgradedSignalCount > 0 ? `<div class="callout warning"><strong>${downgradedSignalCount} low-event signals are retained below for audit</strong><p>Directory pages, site homepages and repository metadata remain visible in All signals, but do not become public events or report evidence.</p></div>` : ""}
-          ${displaySignalItems.map(renderRadarItemEn).join("") || empty("No public radar signals are available.")}
-        </div>
-        <aside class="panel sticky"><h2>Citations</h2><p class="note">Links point to public source pages. Private raw text, provider metadata and operational logs are not included.</p><div class="row-list">${displaySignalItems.slice(0, 12).map(renderCitationEn).join("")}</div></aside>
-      </div>
+      <div class="row-list radar-list" id="radar-list">${displaySignalItems.map(renderRadarItemEn).join("") || empty("No public radar signals are available.")}</div>
     </section>
     <section aria-labelledby="radar-tab-timeline" class="tab-panel" data-tab-panel="timeline" hidden id="radar-panel-timeline" role="tabpanel">
       <div class="timeline-list">${snapshot.timeline.map((entry) => renderTimelineEntryEn(entry, snapshot)).join("") || empty("No timeline entries are available.")}</div>
     </section>
     <section aria-labelledby="radar-tab-review" class="tab-panel" data-tab-panel="review" hidden id="radar-panel-review" role="tabpanel">
-      <div class="callout"><strong>${reviewItemIds.size} needs-review signals map to ${reviewEvents.length} review events</strong><p>This tab is event-level. Open All signals for row-level status and evidence.</p></div>
-      <div class="event-grid">${reviewEvents.map((event) => renderEventCardEn(event, snapshot)).join("") || empty("No events currently require review.")}</div>
+      <div class="story-stream">${renderStoryStream(reviewEvents, snapshot, "en") || empty("No events currently require review.")}</div>
     </section>
     <section aria-labelledby="radar-tab-health" class="tab-panel" data-tab-panel="health" hidden id="radar-panel-health" role="tabpanel">${sourceHealthPanelEn(snapshot)}</section>
-    ${coveragePanelEn(snapshot)}
     <script>${filterScript("en")}</script>
   `);
 }
@@ -553,221 +627,201 @@ function renderEnglishEntities(snapshot: Snapshot) {
     <section class="page-heading">
       <div>
         <div class="pill-row">
-          ${pill(`${entities.length} trackable entities`, "success")}
-          ${pill(`${snapshot.counts.snapshot_radar_items} public signals`, "evidence")}
-          ${pill(sourceLabelEn(snapshot.source.data_source), "neutral")}
+          ${pill(`${entities.length} names in focus`, "success")}
+          ${pill(`${snapshot.counts.snapshot_radar_items} reports`, "evidence")}
         </div>
         <h1>Entity Tracking</h1>
-        <p class="lead">Companies, models, products, projects and papers are aggregated from public signals so you can see evidence volume, source coverage and review status.</p>
+        <p class="lead">Companies, models, products, projects and papers appearing across the current reporting.</p>
       </div>
     </section>
     ${freshnessAlertEn(snapshot)}
     <section class="grid two">
-      <div class="panel"><h2>Tracking rules</h2>${noteListEn(["Prioritize entities with multiple sources, repeated appearances and traceable citations.", "Treat single-source or review-pending entities as observations, not settled conclusions.", "Report claims must trace back to public event and item evidence."])}</div>
+      <div class="panel"><h2>Reading guide</h2>${noteListEn(["Prioritize names that recur across independent reporting.", "Treat a name seen in only one report as a lead, not a settled conclusion.", "Open the cited reporting before using a claim externally."])}</div>
       <div class="panel"><h2>Entity distribution</h2><div class="distribution">${distributionEn("Types", entityTypeDistributionEn(entities))}${distributionEn("Priority", entityPriorityDistributionEn(entities))}</div></div>
     </section>
     <section class="panel"><div class="section-heading"><h2>Priority entities</h2><a href="../reports/">Report evidence</a></div><div class="event-grid">${priorityEntities.map(renderEntityCardEn).join("") || empty("No entities are available.")}</div></section>
   `);
 }
 
+function reportEvents(report: SnapshotReport, snapshot: Snapshot, locale: "en" | "zh") {
+  const itemIds = new Set(report.source_item_ids);
+  return snapshot.event_clusters
+    .filter((event) => event.related_item_ids.some((id) => itemIds.has(id)))
+    .filter((event) => readerReadyEventForLocale(event, snapshot, locale))
+    .toSorted((left, right) => right.event_score - left.event_score || Date.parse(right.latest_seen_at) - Date.parse(left.latest_seen_at))
+    .slice(0, report.report_type === "daily" ? 8 : 12);
+}
+
+function reportDisplayTitle(report: SnapshotReport, locale: "en" | "zh") {
+  if (locale === "en") return report.report_type === "daily" ? "AI Industry Radar Daily" : "AI Industry Radar Weekly";
+  return report.report_type === "daily" ? "AI 行业雷达日报" : "AI 行业雷达周报";
+}
+
+function renderReportEvent(event: SnapshotEvent, snapshot: Snapshot, locale: "en" | "zh") {
+  const title = locale === "en" ? eventEnglishTitle(event, snapshot) : chineseEventTitle(event);
+  const summary = locale === "en" ? eventEnglishSummary(event, snapshot) : chineseEventSummary(event);
+  const category = locale === "en" ? categoryLabelEn(event.category) : labelize(event.category);
+  const sourceCount = locale === "en" ? `${event.source_count} source${event.source_count === 1 ? "" : "s"}` : `${event.source_count} 个来源`;
+  const score = locale === "en" ? eventScoreLabelEn(event.event_score_label) : event.event_score_label;
+  return `<article class="report-event"><p class="report-event-meta"><span>${escapeHtml(score)}</span><span>${escapeHtml(sourceCount)}</span><span>${escapeHtml(category)}</span></p><h3><a href="${escapeAttr(eventPrimaryUrl(event))}">${escapeHtml(title)}</a></h3>${summary ? `<p>${escapeHtml(summary)}</p>` : ""}<time>${escapeHtml(locale === "en" ? formatDateEn(event.latest_seen_at) : formatDate(event.latest_seen_at))}</time></article>`;
+}
+
+function firstSentence(value: string, locale: "en" | "zh") {
+  const sentence = value.replace(/\s+/g, " ").split(locale === "en" ? /[.!?]/ : /[。！？]/u)[0]?.trim() ?? "";
+  if (!sentence) return locale === "en" ? "The report provides a traceable public source." : "该事件已有可核对的公开来源。";
+  return `${sentence}${locale === "en" ? "." : "。"}`;
+}
+
+function reportEventEvidence(event: SnapshotEvent, locale: "en" | "zh") {
+  const sources = eventSources(event, 3);
+  const sourceNames = locale === "en" ? sources.join(", ") : sources.join("、");
+  if (event.source_count > 1 && event.source_families.length > 1) {
+    return locale === "en"
+      ? `${event.source_count} reports from ${sourceNames} span different source types; whether they are independent still needs checking.`
+      : `${sourceNames}等 ${event.source_count} 篇报道跨越不同来源类型，但是否相互独立仍需核实。`;
+  }
+  if (event.source_count > 1) {
+    return locale === "en"
+      ? `${event.source_count} reports from ${sourceNames} are all the same source type, so they do not yet amount to independent confirmation.`
+      : `${sourceNames}等 ${event.source_count} 篇报道属于同一来源类型，尚不能视为独立确认。`;
+  }
+  return locale === "en"
+    ? `${sourceNames || "One public source"} is the only report currently available.`
+    : `目前只有${sourceNames || "一个公开来源"}这一篇报道。`;
+}
+
+function reportEditorial(events: SnapshotEvent[], snapshot: Snapshot, locale: "en" | "zh") {
+  const isEnglish = locale === "en";
+  const crossFamily = events.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
+  const sameFamily = events.filter((event) => event.source_count > 1 && event.source_families.length === 1).length;
+  const singleSource = events.filter((event) => event.source_count <= 1).length;
+  const signalCount = events.reduce((sum, event) => sum + event.related_item_ids.length, 0);
+  const mergedReadingPaths = Math.max(0, signalCount - events.length);
+  const first = events[0];
+  const second = events[1];
+  const thesis = isEnglish
+    ? `Evidence strength is uneven across these ${events.length} events: ${crossFamily} span different source types, ${sameFamily} have several reports of one type, and ${singleSource} still rely on one report.`
+    : `这 ${events.length} 个事件的证据强度并不一致：${crossFamily} 件跨越不同来源类型，${sameFamily} 件只有同类来源的多篇报道，${singleSource} 件仍是单篇报道。`;
+  const lead = first
+    ? isEnglish
+      ? `“${eventEnglishTitle(first, snapshot)}” ranks first. ${firstSentence(eventEnglishSummary(first, snapshot), "en")} ${reportEventEvidence(first, locale)}`
+      : `“${chineseEventTitle(first)}”位列首位。${firstSentence(chineseEventSummary(first), "zh")}${reportEventEvidence(first, locale)}`
+    : "";
+  const follow = second
+    ? isEnglish
+      ? `“${eventEnglishTitle(second, snapshot)}” is the second event to track. ${firstSentence(eventEnglishSummary(second, snapshot), "en")} ${reportEventEvidence(second, locale)}`
+      : `第二个需要跟踪的是“${chineseEventTitle(second)}”。${firstSentence(chineseEventSummary(second), "zh")}${reportEventEvidence(second, locale)}`
+    : "";
+  const clustering = isEnglish
+    ? mergedReadingPaths > 0
+      ? `${signalCount} underlying radar signals are represented here; clustering removes ${mergedReadingPaths} repeated reading path${mergedReadingPaths === 1 ? "" : "s"}.`
+      : `${signalCount} underlying radar signals map one-to-one to these events in this report.`
+    : mergedReadingPaths > 0
+      ? `这些事件对应 ${signalCount} 条雷达信号；聚类合并了 ${mergedReadingPaths} 条重复阅读路径。`
+      : `这些事件对应 ${signalCount} 条雷达信号，本期没有可合并的重复报道。`;
+  return `<section class="report-analysis"><h3>${isEnglish ? "Events and evidence" : "重点与证据"}</h3><p class="report-thesis">${escapeHtml(thesis)}</p>${lead ? `<p>${escapeHtml(lead)}</p>` : ""}${follow ? `<p>${escapeHtml(follow)}</p>` : ""}<p>${escapeHtml(clustering)}</p></section>`;
+}
+
+function renderReportReader(report: SnapshotReport, snapshot: Snapshot, locale: "en" | "zh") {
+  const isEnglish = locale === "en";
+  const type = isEnglish ? reportTypeLabelEn(report.report_type) : reportTypeLabel(report.report_type);
+  const events = reportEvents(report, snapshot, locale);
+  const minimumReadableEvents = report.report_type === "daily" ? 5 : 8;
+  const reportStage = report.mode === "saved_candidate"
+    ? (isEnglish ? "Report candidate" : "报告候选")
+    : (isEnglish ? statusLabelEn(report.status) : statusLabel(report.status));
+  const reviewStage = report.status === "needs_review"
+    ? (isEnglish ? "Editorial check pending" : "编辑校对中")
+    : (isEnglish ? statusLabelEn(report.status) : statusLabel(report.status));
+  const qualityStage = report.quality_gate_passed
+    ? (isEnglish ? "Enough reporting to review" : "信息量达到审阅要求")
+    : (isEnglish ? "More reporting needed" : "信息仍不足");
+  const summary = isEnglish
+    ? `${events.length} developments worth reading across ${report.distinct_source_count} sources and ${report.category_count} themes.`
+    : `本期聚焦 ${events.length} 个重点事件，覆盖 ${report.distinct_source_count} 个来源和 ${report.category_count} 个主题。`;
+  const window = `${isEnglish ? formatDateEn(report.time_window.start) : formatDate(report.time_window.start)} — ${isEnglish ? formatDateEn(report.time_window.end) : formatDate(report.time_window.end)}`;
+  const notes = isEnglish
+    ? [
+        "Most events still have only one report; update the judgment as additional reporting appears.",
+        "Social-platform posts are not part of the automatic refresh, so some fast-moving developments may be missing.",
+        `This brief covers ${formatDateEn(report.time_window.start)} to ${formatDateEn(report.time_window.end)}.`
+      ]
+    : [
+        "多数事件仍只有一篇报道，判断需要随着后续报道继续修正。",
+        "社交平台内容不在自动更新范围内，部分突发动态可能遗漏。",
+        `本期观察范围为 ${formatDate(report.time_window.start)} 至 ${formatDate(report.time_window.end)}。`
+      ];
+
+  if (!report.quality_gate_passed || events.length < minimumReadableEvents) {
+    const reasons = report.quality_gate_reasons.map((reason) => isEnglish ? reportGateReasonsEn([reason])[0] ?? reason : publicText(reason));
+    if (events.length < minimumReadableEvents) {
+      reasons.push(isEnglish
+        ? `Only ${events.length} events have enough detail for a useful brief.`
+        : `目前只有 ${events.length} 个事件具备足够信息，无法形成有用报告。`);
+    }
+    const insufficientTitle = isEnglish
+      ? "Not enough reporting yet"
+      : report.report_type === "daily"
+        ? "今日数据不足，需补充信源或等待下一轮刷新"
+        : "本周可核实内容不足，暂不发布完整周报";
+    return `<article class="report-reader report-insufficient" data-quality-passed="false" data-report-id="${escapeAttr(report.id)}" data-report-status="${escapeAttr(report.status)}" id="report-${escapeAttr(report.report_type)}"><p class="report-kicker">${escapeHtml(`${reportStage} · ${type} · ${window}`)}</p><h2>${escapeHtml(insufficientTitle)}</h2><p>${escapeHtml(reasons.join(isEnglish ? " " : "；"))}</p></article>`;
+  }
+
+  return `<article class="report-reader" data-quality-passed="true" data-report-id="${escapeAttr(report.id)}" data-report-status="${escapeAttr(report.status)}" id="report-${escapeAttr(report.report_type)}">
+    <header><p class="report-kicker">${escapeHtml(`${reportStage} · ${type} · ${window}`)}</p><h2>${escapeHtml(reportDisplayTitle(report, locale))}</h2><p class="report-deck">${escapeHtml(summary)}</p><div class="report-stats"><span>${escapeHtml(qualityStage)}</span><span>${escapeHtml(reviewStage)}</span><span>${report.usable_item_count} ${isEnglish ? "usable items" : "条可用内容"}</span><span>${report.citation_count} ${isEnglish ? "source links" : "个来源链接"}</span><span>${events.length} ${isEnglish ? "key events" : "个重点事件"}</span><span>${report.distinct_source_count} ${isEnglish ? "sources" : "个来源"}</span><span>${report.category_count} ${isEnglish ? "themes" : "个主题"}</span><span>${events.filter((event) => event.source_count > 1).length} ${isEnglish ? "with multiple reports" : "个多源报道事件"}</span></div></header>
+    <div class="report-body">${reportEditorial(events, snapshot, locale)}<section class="report-reading-section"><h3>${isEnglish ? "Events and sources" : "事件与来源"}</h3><div class="report-event-list">${events.map((event) => renderReportEvent(event, snapshot, locale)).join("") || empty(isEnglish ? "No selected events are available." : "暂无精选事件。")}</div></section></div>
+    <details class="report-notes"><summary>${isEnglish ? "What still needs checking" : "仍需核实"}</summary>${noteList((notes.length > 0 ? notes : [isEnglish ? "No additional gap is recorded." : "暂无额外记录。"]).slice(0, 6))}</details>
+    <details class="report-sources"><summary>${isEnglish ? `Sources (${report.citations.length})` : `来源（${report.citations.length}）`}</summary><ol>${report.citations.map((citation) => `<li><a href="${escapeAttr(citation.url)}">${escapeHtml(citation.title)}</a><span>${escapeHtml(citation.source_name)}</span></li>`).join("")}</ol></details>
+  </article>`;
+}
+
 function renderEnglishReports(snapshot: Snapshot) {
   const reports = latestReportsByType(snapshot.reports);
-  const formalReports = latestReportsByType(snapshot.reports.filter(isFormalSnapshotReport));
-  const evidenceDrafts = latestReportsByType(snapshot.reports.filter((report) => !isFormalSnapshotReport(report)));
   const dailySummary = snapshot.report_quality_summary.daily;
 
   return englishShell(snapshot, "reports", 1, "Reports", `
-    <section class="page-heading">
-      <div>
-        <div class="pill-row">${pill(`${formalReports.length} reviewed or published`, formalReports.length > 0 ? "success" : "caution")}${pill(`${evidenceDrafts.length} evidence drafts`, "caution")}${pill(`${snapshot.event_count} events`, "evidence")}</div>
-        <h1>Event-aware reports</h1>
-        <p class="lead">Daily and weekly candidates expose their quality gate, event coverage, citations, source diversity, category breadth and missing evidence before any report is treated as publishable.</p>
-      </div>
-    </section>
-    ${freshnessAlertEn(snapshot)}
+    <section class="feed-heading"><div><h1>Reports</h1><p>Daily and weekly reading</p></div><span>${reports.length} editions</span></section>
+    <nav class="report-tabs" aria-label="Report types"><a href="#report-daily">Daily</a><a href="#report-weekly">Weekly</a></nav>
     ${dailySummary && !dailySummary.quality_gate_passed ? `<section class="callout warning"><strong>Today's evidence is insufficient. Add sources or wait for the next refresh.</strong><p>${escapeHtml(reportGateReasonsEn(dailySummary.quality_gate_reasons).join(" ") || "The daily quality gate did not pass.")}</p></section>` : ""}
-    <section class="section-heading"><div><h2>Reviewed or published reports</h2><p>Only reviewed or published saved reports count as formal public output.</p></div></section>
-    <section class="report-list">${formalReports.map((report) => renderReportEn(report, snapshot)).join("") || empty("No reviewed or published report is available.")}</section>
-    <section class="section-heading"><div><h2>Evidence drafts</h2><p>Drafts organize the current public evidence but still require human review and an explicit publish action.</p></div></section>
-    <section class="report-list">${evidenceDrafts.map((report) => renderReportEn(report, snapshot)).join("") || empty("No evidence draft is available.")}</section>
-    ${reportCoveragePanelEn(snapshot, reports)}
-    ${coveragePanelEn(snapshot)}
+    <section class="report-list">${reports.map((report) => renderReportReader(report, snapshot, "en")).join("") || empty("No current report is available.")}</section>
   `);
+}
+
+function renderPromptSuggestions(prompts: string[]) {
+  return `<div class="prompt-suggestions">${prompts.slice(0, 6).map((prompt) => `<button data-prompt="${escapeAttr(prompt)}" type="button">${escapeHtml(prompt)}</button>`).join("")}</div>`;
+}
+
+function promptSuggestionScript() {
+  return `(function(){const input=document.querySelector("#local-query-input");if(!input)return;document.querySelectorAll("[data-prompt]").forEach(button=>button.addEventListener("click",()=>{input.value=button.dataset.prompt||"";input.focus();}));})();`;
 }
 
 function renderEnglishAsk(snapshot: Snapshot) {
   const examples = [
-    "Which model releases have coverage from multiple source families?",
+    "Rank the selected events by decision relevance.",
+    "Which model releases are reported by more than one source?",
     "What changed in AI agents or developer tools during the visible window?",
     "Which events rely on a single source and need more confirmation?",
     "Which sources failed, timed out or returned no new items?",
-    "Rank the selected events by decision relevance.",
     ...snapshot.curated_events.slice(0, 2).map((event) => `What evidence and uncertainty surround “${eventEnglishTitle(event, snapshot)}”?`)
   ];
 
   return englishShell(snapshot, "ask", 1, "Ask", `
-    <section class="page-heading"><div><div class="pill-row">${pill(`${snapshot.event_count} events`, "success")}${pill("Public snapshot query", "evidence")}</div><h1>Ask the event layer</h1><p class="lead">Query selected events, source coverage, source failures and weak signals. This page runs in your browser against the public snapshot and does not call a private API.</p></div></section>
-    ${freshnessAlertEn(snapshot, "Answers are limited to the current public evidence window and are not live web research.")}
-    <section class="panel interactive-tool"><h2>Query public events</h2><p class="note">The local matcher ranks events and returns their public citations. It performs no database write.</p><textarea id="local-query-input" rows="4" aria-label="Enter a question">${escapeHtml(examples[0] ?? "")}</textarea><div class="actions"><button class="button primary" id="local-query-run" type="button">Query events</button></div><div class="local-result" id="local-query-result" aria-live="polite"></div></section>
-    <section class="grid two"><div class="panel"><h2>Example questions</h2>${noteListEn(examples)}</div><div class="panel"><h2>Evidence context</h2><dl class="rail">${rail("Data source", sourceLabelEn(snapshot.source.data_source))}${rail("Latest content publication", formatDateEn(snapshot.freshness.latest_timestamp))}${rail("Events", String(snapshot.event_count))}${rail("Public signals", String(snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items))}${rail("Needs review", String(snapshot.counts.needs_review))}</dl></div></section>
-    <section class="panel"><h2>Evidence limits</h2>${noteListEn(englishEvidenceLimits(snapshot))}</section>
-    <script>${localEvidenceToolScript("ask", "en", "../../data/radar-snapshot.json")}</script>
-  `);
-}
-
-function renderEnglishWrite(snapshot: Snapshot) {
-  const currentReports = latestReportsByType(snapshot);
-  const prompts = [
-    "Draft a concise AI industry observation from the selected events.",
-    "Turn this week's cross-family coverage and single-source events into a weekly report outline with separate evidence labels.",
-    "Identify three events worth a deeper analysis.",
-    "List weak signals that deserve follow-up despite limited evidence.",
-    ...snapshot.curated_events.slice(0, 2).map((event) => `Build an evidence-bounded angle around “${eventEnglishTitle(event, snapshot)}”.`)
-  ];
-
-  return englishShell(snapshot, "write", 1, "Write", `
-    <section class="page-heading"><div><div class="pill-row">${pill(`${currentReports.length} current report candidates`, "caution")}${pill(`${snapshot.event_count} events`, "evidence")}</div><h1>Evidence-led writing</h1><p class="lead">Build an outline from selected events, source-family coverage, weak signals and report quality while keeping citations and uncertainty visible.</p></div></section>
-    ${freshnessAlertEn(snapshot, "Generated outlines must not make claims beyond the evidence window.")}
-    <section class="panel interactive-tool"><h2>Generate an evidence-led outline</h2><p class="note">The browser-local tool turns public events into claims, evidence and caveats. It does not call a private API.</p><textarea id="local-query-input" rows="4" aria-label="Enter a writing request">${escapeHtml(prompts[0] ?? "")}</textarea><div class="actions"><button class="button primary" id="local-query-run" type="button">Generate outline</button></div><div class="local-result" id="local-query-result" aria-live="polite"></div></section>
-    <section class="grid two"><div class="panel"><h2>Writing prompts</h2>${noteListEn(prompts)}</div><div class="panel"><h2>Data context</h2><dl class="rail">${rail("Data source", sourceLabelEn(snapshot.source.data_source))}${rail("Latest content publication", formatDateEn(snapshot.freshness.latest_timestamp))}${rail("Events", String(snapshot.event_count))}${rail("Public signals", String(snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items))}${rail("Current report candidates", String(currentReports.length))}</dl></div></section>
-    <section class="panel"><h2>Current report context</h2><div class="row-list">${latestReportsByType(snapshot).map(renderCompactReportEn).join("") || empty("No public report candidate is available.")}</div></section>
-    <script>${localEvidenceToolScript("write", "en", "../../data/radar-snapshot.json")}</script>
+    <section class="tool-heading"><p>${snapshot.event_count} events · updated ${escapeHtml(formatDateEn(snapshot.freshness.latest_timestamp))}</p><h1>Ask the radar</h1></section>
+    <section class="interactive-tool tool-stage"><textarea id="local-query-input" rows="4" aria-label="Enter a question" placeholder="Ask about a company, model, event or source..."></textarea><div class="actions"><button class="button primary" id="local-query-run" type="button">Ask</button></div>${renderPromptSuggestions(examples)}<div class="local-result" id="local-query-result" aria-live="polite"></div></section>
+    <script>${promptSuggestionScript()}</script><script>${localEvidenceToolScript("en", "../../data/radar-snapshot.json")}</script>
   `);
 }
 
 function renderHome(snapshot: Snapshot) {
-  const latestReports = latestReportsByType(snapshot);
-  const curated = snapshot.curated_events.toSorted(compareHomepageEvents).slice(0, 8);
-  const topEvents = curated.slice(0, 3);
-  const followUpEvents = curated.slice(3, 8);
-  const title = snapshotCuratedTitle(snapshot);
-  const briefing = readerBriefing(snapshot);
-  const currentSelection = curatedWindowIsCurrent(snapshot);
-  const eventCoverage = eventSignalCoverage(snapshot);
-  const topSectionTitle = currentSelection ? "今日 Top 3" : "本轮 Top 3";
-  const description = currentSelection
-    ? "只在匹配证据充分时合并相关信号；当前多数事件仍是单源观察，页面同时展示来源健康、时间线、引用和局限。"
-    : "本轮精选包含前几日证据；每张卡片都显示证据日期，旧事件不会伪装成今日新闻。";
-
-  return shell(snapshot, "home", 0, title, `
-    <section class="status-strip home-status-strip">
-      ${metricMini("公开记录 / 可见信号", `${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} / ${snapshot.radar_items.length}`)}
-      ${metricMini("事件 / 已映射信号", `${snapshot.event_count} / ${eventCoverage.mapped}`)}
-      ${metricMini("定向刷新：尝试 / 抓取 / 失败", `${snapshot.coverage.attempted_sources}/${snapshot.coverage.fetched_sources}/${snapshot.coverage.failed_sources}`)}
-      ${metricMini("覆盖刷新：成功 / 失败 / 手动", `${snapshot.source_health_summary.succeeded}/${snapshot.source_health_summary.failed}/${snapshot.source_health_summary.manual_blocked}`)}
-      ${metricMini("当前报告候选", latestReports.length)}
-      ${metricMini("内容发布时间截至", formatDate(snapshot.freshness.latest_timestamp))}
-    </section>
-    ${freshnessAlert(snapshot).replace('class="freshness-alert"', 'class="freshness-alert home-freshness-alert"')}
-
-    <section class="home-desk">
-      <div class="headline-panel">
-        <div class="pill-row">
-          ${pill(currentSelection ? "今日窗口" : "含前几日回顾", currentSelection ? "success" : "caution")}
-          ${pill("事件优先", "evidence")}
-          ${pill(sourceLabel(snapshot.source.data_source), "neutral")}
-        </div>
-        <h1>${escapeHtml(title)}</h1>
-        <div class="section-heading"><h2>${escapeHtml(topSectionTitle)}</h2><a href="radar/?tab=events">全部事件</a></div>
-        <div class="featured-list">${topEvents.map(renderFeaturedEventCard).join("") || empty("暂无可展示精选事件。")}</div>
-        <p class="lead">${escapeHtml(description)} 提问与写作入口只读取当前公开快照，并明确展示证据边界。</p>
-        <div class="actions">
-          <a class="button primary" href="radar/">打开事件雷达</a>
-          <a class="button" href="entities/">跟踪实体</a>
-          <a class="button" href="reports/">查看报告质量</a>
-          <a class="button" href="ask/">围绕精选提问</a>
-          <a class="button" href="write/">生成行业观察</a>
-        </div>
-      </div>
-      <aside class="ops-console">
-        <h2>信息源健康摘要</h2>
-        <dl class="rail">
-          ${rail("事件簇 / 已映射信号", `${snapshot.event_count} / ${eventCoverage.mapped}`)}
-          ${rail("仅信号审计行", String(eventCoverage.signalOnly))}
-          ${rail("跨家族多源报道", String(snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length > 1).length))}
-          ${rail("同家族多源复述", String(snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length === 1).length))}
-          ${rail("自动合格来源", String(snapshot.coverage.automated_eligible_sources))}
-          ${rail("广泛刷新成功/失败", `${snapshot.source_health_summary.succeeded} / ${snapshot.source_health_summary.failed}（已尝试 ${snapshot.source_health_scope.attempted_sources}）`)}
-          ${rail("异常/排除类别", formatDistribution(snapshot.failure_family_summary))}
-          ${rail("数据覆盖", `公开来源 ${snapshot.coverage.sources_with_public_items ?? 0} / ${snapshot.coverage.sources_total}`)}
-        </dl>
-        <div class="quality-note">
-          <strong>${escapeHtml(snapshot.source.local_data_used ? "当前使用已归档快照" : "当前使用公开证据库")}</strong>
-          <p>${escapeHtml(snapshot.source.local_data_used ? "页面展示最近一版已归档公开证据；单源事件均按待确认处理。" : "页面展示可公开引用的结构化证据字段。")}</p>
-        </div>
-      </aside>
-    </section>
-
-    <section class="panel">
-      <div class="section-heading">
-        <h2>读者判断摘要</h2>
-        <a href="radar/">展开证据</a>
-      </div>
-      ${noteList(briefing)}
-    </section>
-
-    <section class="grid two">
-      <div class="panel">
-        <div class="section-heading">
-          <h2>读者分类入口</h2>
-          <a href="radar/">进入雷达</a>
-        </div>
-        <div class="event-grid">${readerCategoryCards(snapshot)}</div>
-      </div>
-      <div class="panel">
-        <div class="section-heading">
-          <h2>继续跟踪</h2>
-          <a href="radar/?tab=events">查看全部</a>
-        </div>
-        <div class="row-list">${followUpEvents.map(renderEventMini).join("") || empty("暂无继续跟踪事件。")}</div>
-      </div>
-    </section>
-
-    <section class="grid two">
-      <div class="panel">
-        <div class="section-heading">
-          <h2>行业脉冲</h2>
-          <a href="data/radar-snapshot.json">数据文件</a>
-        </div>
-        <div class="distribution">
-          ${distribution("类别分布", snapshot.top_categories.slice(0, 8).map((entry) => [entry.label, entry.count]))}
-          ${distribution("来源分布", snapshot.top_sources.slice(0, 8).map((entry) => [entry.label, entry.count]))}
-          ${distribution("状态分布", [["已纳入", snapshot.counts.included], ["待复核", snapshot.counts.needs_review], ["已排除", snapshot.counts.excluded]])}
-          ${distribution("失败原因", Object.entries(snapshot.failure_family_summary).slice(0, 8))}
-        </div>
-      </div>
-      <div class="panel">
-        <div class="section-heading">
-          <h2>信号行动入口</h2>
-          <a href="entities/">实体</a>
-        </div>
-        ${noteList([
-           "打开雷达区分跨家族多源报道、同家族多源复述、单源观察和弱信号。",
-          "查看报告质量门禁，确认哪些证据已经支撑正式报告。",
-          "进入实体页判断公司、模型、产品或论文是否值得持续跟踪。",
-          "只把通过人工审核和发布动作的记录展示为正式报告。",
-          "围绕当前事件提问，或基于证据边界生成写作提纲。"
-        ])}
-        <div class="actions">
-          <a class="button primary" href="ask/">围绕行业精选提问</a>
-          <a class="button" href="write/">基于事件开始写作</a>
-        </div>
-      </div>
-    </section>
-
-    <section class="grid two">
-      <div class="panel">
-        <div class="section-heading">
-          <h2>最新报告</h2>
-          <a href="reports/">打开报告台</a>
-        </div>
-        <div class="row-list">${latestReports.map(renderCompactReport).join("") || empty("没有找到公开报告候选。")}</div>
-      </div>
-      <div class="panel">
-        <h2>数据覆盖与局限</h2>
-        ${noteList(readerFacingCaveats(snapshot).slice(0, 8))}
-      </div>
-    </section>
+  const events = eventFeed(snapshot).filter(readerReadyEvent);
+  const topEvents = snapshot.curated_events.filter(readerReadyEvent).toSorted(compareHomepageEvents).slice(0, 3);
+  return shell(snapshot, "home", 0, "精选", `
+    <section class="feed-heading"><div><h1>精选</h1><p>${escapeHtml(feedDayLabel(snapshot.freshness.latest_timestamp ?? snapshot.generated_at, "zh"))}</p></div><a href="radar/?tab=events">${snapshot.event_count} 个事件</a></section>
+    <section class="top-stories"><div class="section-heading"><h2>今日热点</h2><span>TOP 3</span></div>${renderTopStories(topEvents, snapshot, "zh")}</section>
+    <section class="feed-toolbar"><div class="section-heading"><h2>最新精选</h2><a href="radar/?tab=events">全部事件</a></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索标题、摘要、来源..."></div><div class="feed-chips"><button class="active" data-feed-category="all" type="button">全部</button><button data-feed-category="model_release,benchmark" type="button">模型</button><button data-feed-category="product_update,agent,tooling" type="button">产品</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">行业</button><button data-feed-category="research" type="button">论文</button><button data-feed-category="open_source" type="button">开源</button></div></section>
+    <section class="story-stream">${renderStoryStream(events.slice(0, 36), snapshot, "zh")}</section>
+    <div class="feed-more"><a class="button primary" href="radar/?tab=events">查看全部事件</a></div>
+    <script>${storyFilterScript()}</script>
   `);
 }
 
@@ -779,32 +833,18 @@ function renderRadar(snapshot: Snapshot) {
     ...snapshot.event_clusters.map((event) => categoryFilterValue(event.category)),
     ...snapshot.radar_items.flatMap((item) => item.categories.map(categoryFilterValue))
   ]).toSorted();
-  const eventItemIds = new Set(snapshot.event_cluster_items.map((item) => item.radar_item_id));
   const displaySignalItems = snapshot.radar_items;
-  const downgradedSignalCount = displaySignalItems.filter((item) => !eventItemIds.has(item.id)).length;
   const reviewItemIds = new Set(
     snapshot.radar_items.filter((item) => item.status === "needs_review").map((item) => item.id)
   );
   const reviewEvents = snapshot.event_clusters.filter((event) =>
     event.related_item_ids.some((id) => reviewItemIds.has(id))
   );
+  const events = eventFeed(snapshot).filter(readerReadyEvent);
 
-  return shell(snapshot, "radar", 1, "雷达", `
-    <section class="page-heading">
-      <div>
-        <div class="pill-row">
-          ${pill(`${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} 条公开库 / ${snapshot.radar_items.length} 条本站展示`, "success")}
-          ${pill(`${snapshot.event_count} 个事件 / ${eventItemIds.size} 条已映射信号`, "evidence")}
-          ${pill(`${snapshot.coverage.attempted_sources} 个定向刷新已尝试来源`, "neutral")}
-          ${pill(sourceLabel(snapshot.source.data_source), "neutral")}
-        </div>
-        <h1>事件雷达</h1>
-        <p class="lead">默认展示行业精选事件：${eventItemIds.size} 条本站信号映射为 ${snapshot.event_count} 个公开事件；另有 ${downgradedSignalCount} 条仅信号审计行保留在“全部信号”，不冒充事件。</p>
-      </div>
-    </section>
-    ${freshnessAlert(snapshot)}
-
-    <section class="panel radar-tabs">
+  return shell(snapshot, "radar", 1, "行业精选", `
+    <section class="feed-heading"><div><h1>行业精选</h1><p>${escapeHtml(feedDayLabel(snapshot.freshness.latest_timestamp ?? snapshot.generated_at, "zh"))}</p></div><span>${snapshot.event_count} 个事件</span></section>
+    <section class="radar-tabs">
       <div class="tabbar" role="tablist" aria-label="雷达视图">
         ${tabButton("curated", "行业精选", true)}
         ${tabButton("events", "全部事件")}
@@ -815,57 +855,30 @@ function renderRadar(snapshot: Snapshot) {
       </div>
     </section>
 
-    <section aria-labelledby="radar-tab-curated" class="tab-panel active" data-tab-panel="curated" id="radar-panel-curated" role="tabpanel">
-      <div class="event-grid">${snapshot.curated_events.map((event) => renderEventCard(event, snapshot)).join("") || empty("暂无行业精选事件。")}</div>
-    </section>
-
-    <section class="panel radar-filters" data-radar-filters>
+    <section class="radar-filters" data-radar-filters>
+      <div class="filter-mobile-toggle"><button aria-expanded="false" class="button" id="radar-filter-toggle" type="button">筛选</button></div>
       <div class="controls" role="search">
-        <label>搜索 <input id="radar-search" type="search" aria-label="按标题、来源、类别、标签搜索"></label>
+        <label class="search-control">搜索 <input id="radar-search" type="search" placeholder="标题、摘要、来源" aria-label="按标题、来源、类别、标签搜索"></label>
         <label>状态 <select id="radar-status">${option("all", "全部状态")}${["included", "needs_review", "excluded", "failed"].map((status) => option(status, statusLabel(status))).join("")}</select></label>
         <label>类别 <select id="radar-category">${option("all", "全部类别")}${categories.map((category) => option(category, labelize(category))).join("")}</select></label>
-        <label>来源家族 <select id="radar-family">${option("all", "全部家族")}${uniqueStrings([...Object.keys(families), ...eventFamilies]).map((family) => option(family, family)).join("")}</select></label>
+        <label>来源类型 <select id="radar-family">${option("all", "全部来源类型")}${uniqueStrings([...Object.keys(families), ...eventFamilies]).map((family) => option(family, family)).join("")}</select></label>
         <label>评分 <select id="radar-score">${option("all", "全部评分")}${scoreLabels.map((label) => option(label, label)).join("")}</select></label>
         <label>内容时效 <select id="radar-freshness">${option("all", "全部时间")}${option("24h", "24 小时内")}${option("7d", "2-7 天")}${option("30d", "8-30 天")}${option("archive", "历史（30 天外）")}${option("unknown", "发布时间未知")}</select></label>
-        <label>证据覆盖 <select id="radar-source-count">${option("all", "全部证据状态")}${option("cross", "跨家族多源报道")}${option("same", "同家族多源复述")}${option("single", "单源观察")}</select></label>
+        <label>报道情况 <select id="radar-source-count">${option("all", "全部报道情况")}${option("cross", "不同类型来源均有报道")}${option("same", "同类来源多篇报道")}${option("single", "单篇报道")}</select></label>
       </div>
       <div class="filter-feedback"><span aria-live="polite" id="radar-result-count"></span><button class="button" id="radar-reset" type="button">重置筛选</button></div>
-      <div class="distribution">
-        ${distribution("状态", [
-          [statusLabel("included"), snapshot.counts.included],
-          [statusLabel("needs_review"), snapshot.counts.needs_review],
-          [statusLabel("excluded"), snapshot.counts.excluded],
-          [statusLabel("failed"), snapshot.counts.failed]
-        ])}
-        ${distribution("类别", snapshot.top_categories.slice(0, 8).map((entry) => [entry.label, entry.count]))}
-        ${distribution("来源家族", Object.entries(families))}
-        ${distribution("定向刷新与来源覆盖", [
-          ["总数", snapshot.coverage.sources_total],
-          ["自动合格", snapshot.coverage.automated_eligible_sources],
-          ["定向刷新已尝试", snapshot.coverage.attempted_sources],
-          ["有公开条目的来源", snapshot.coverage.sources_with_public_items ?? 0],
-          ["定向刷新失败", snapshot.coverage.failed_sources],
-          ["定向刷新跳过", snapshot.coverage.skipped_sources]
-        ])}
-        ${distribution("新鲜度", freshnessBuckets(snapshot.radar_items, "zh"))}
-      </div>
+    </section>
+    <section aria-labelledby="radar-tab-curated" class="tab-panel active" data-tab-panel="curated" id="radar-panel-curated" role="tabpanel">
+      <div class="story-stream">${renderStoryStream(eventsByLatest(snapshot.curated_events.filter(readerReadyEvent)), snapshot, "zh") || empty("暂无行业精选事件。")}</div>
     </section>
 
     <section aria-labelledby="radar-tab-events" class="tab-panel" data-tab-panel="events" hidden id="radar-panel-events" role="tabpanel">
-      <div class="event-grid">${snapshot.event_clusters.map((event) => renderEventCard(event, snapshot)).join("") || empty("暂无事件聚类。")}</div>
+      <div class="story-stream">${renderStoryStream(events, snapshot, "zh") || empty("暂无事件。")}</div>
     </section>
 
     <section aria-labelledby="radar-tab-signals" class="tab-panel" data-tab-panel="signals" hidden id="radar-panel-signals" role="tabpanel">
-      <div class="grid radar-layout">
       <div class="row-list radar-list" id="radar-list">
-        ${downgradedSignalCount > 0 ? `<div class="callout warning"><strong>${downgradedSignalCount} 条低事件性信号仅保留作审计</strong><p>文档入口、目录页、站点首页、仓库元数据仍显示在“全部信号”，但不进入事件列表和报告正文。</p></div>` : ""}
         ${displaySignalItems.map((item) => renderRadarItem(item, snapshot)).join("") || empty("暂无雷达条目。")}
-      </div>
-      <aside class="panel sticky">
-        <h2>引用栏</h2>
-        <p class="note">链接指向公开来源页面。快照不包含私有原文、供应商元数据或服务密钥。</p>
-        <div class="row-list">${displaySignalItems.slice(0, 12).map(renderCitation).join("")}</div>
-      </aside>
       </div>
     </section>
 
@@ -874,14 +887,12 @@ function renderRadar(snapshot: Snapshot) {
     </section>
 
     <section aria-labelledby="radar-tab-review" class="tab-panel" data-tab-panel="review" hidden id="radar-panel-review" role="tabpanel">
-      <div class="callout"><strong>${reviewItemIds.size} 条待复核信号归入 ${reviewEvents.length} 个待复核事件</strong><p>本标签按事件聚合展示；逐条状态与证据仍保留在“全部信号”。</p></div>
-      <div class="event-grid">${reviewEvents.map((event) => renderEventCard(event, snapshot)).join("") || empty("暂无待复核事件。")}</div>
+      <div class="story-stream">${renderStoryStream(reviewEvents, snapshot, "zh") || empty("暂无待复核事件。")}</div>
     </section>
 
     <section aria-labelledby="radar-tab-health" class="tab-panel" data-tab-panel="health" hidden id="radar-panel-health" role="tabpanel">
       ${sourceHealthPanel(snapshot)}
     </section>
-    ${coveragePanel(snapshot)}
     <script>${filterScript()}</script>
   `);
 }
@@ -943,141 +954,35 @@ function renderEntities(snapshot: Snapshot) {
   `);
 }
 
-function eventSignalCoverage(snapshot: Snapshot) {
-  const visibleIds = new Set(snapshot.radar_items.map((item) => item.id));
-  const mappedIds = new Set(
-    snapshot.event_cluster_items
-      .map((item) => item.radar_item_id)
-      .filter((id) => visibleIds.has(id))
-  );
-  return {
-    mapped: mappedIds.size,
-    signalOnly: Math.max(0, visibleIds.size - mappedIds.size)
-  };
-}
+
 
 function renderReports(snapshot: Snapshot) {
   const reports = latestReportsByType(snapshot.reports);
-  const formalReports = latestReportsByType(snapshot.reports.filter(isFormalSnapshotReport));
-  const evidenceDrafts = latestReportsByType(snapshot.reports.filter((report) => !isFormalSnapshotReport(report)));
   const dailySummary = snapshot.report_quality_summary.daily;
-  const traceItems = snapshotItemsForTraceability(snapshot.radar_items);
 
   return shell(snapshot, "reports", 1, "报告", `
-    <section class="page-heading">
-      <div>
-        <div class="pill-row">
-          ${pill(`${formalReports.length} 个已审核/发布`, formalReports.length > 0 ? "success" : "caution")}
-          ${pill(`${evidenceDrafts.length} 个证据草稿`, "caution")}
-          ${pill(`${snapshot.event_count} 个事件`, "neutral")}
-          ${pill(sourceLabel(snapshot.source.data_source), "neutral")}
-        </div>
-        <h1>报告状态</h1>
-        <p class="lead">已审核/已发布报告和证据草稿分开显示。没有正式公开报告时，这里展示正常空态，草稿只用于理解当前公开证据。</p>
-      </div>
-    </section>
-    ${freshnessAlert(snapshot)}
+    <section class="feed-heading"><div><h1>报告</h1><p>日报与周报</p></div><span>${reports.length} 期</span></section>
+    <nav class="report-tabs" aria-label="报告类型"><a href="#report-daily">日报</a><a href="#report-weekly">周报</a></nav>
     ${dailySummary && !dailySummary.quality_gate_passed ? `<section class="callout warning"><strong>今日数据不足，需补充信源或等待下一轮刷新</strong><p>${escapeHtml(dailySummary.quality_gate_reasons.map(publicText).join("；") || "日报质量门禁未通过。")}</p></section>` : ""}
-    <section class="section-heading"><div><h2>已审核/已发布报告</h2><p>只有 reviewed 或 published 的保存报告属于正式公开内容。</p></div></section>
-    <section class="report-list">
-      ${formalReports.map((report) => renderReport(report, snapshot, traceItems)).join("") || empty("暂无已审核或已发布报告。")}
-    </section>
-    <section class="section-heading"><div><h2>证据草稿</h2><p>草稿来自当前公开雷达证据，发布前仍需要人工审核。</p></div></section>
-    <section class="report-list">
-      ${evidenceDrafts.map((report) => renderReport(report, snapshot, traceItems)).join("") || empty("暂无证据草稿。")}
-    </section>
-    ${reportCoveragePanel(snapshot, reports)}
-    ${coveragePanel(snapshot)}
+    <section class="report-list">${reports.map((report) => renderReportReader(report, snapshot, "zh")).join("") || empty("暂无当前报告。")}</section>
   `);
 }
 
 function renderAsk(snapshot: Snapshot) {
   const title = snapshotCuratedTitle(snapshot);
   const examples = [
-    `${snapshotWindowLabel(snapshot)}有哪些跨来源家族报道的模型发布？`,
+    `把${title}按重要性排序`,
+    `${snapshotWindowLabel(snapshot)}有哪些被两家以上来源同时报道的模型发布？`,
     `${snapshotPeriodLabel(snapshot)} Agent / 开发工具有哪些重要变化？`,
     "哪些事件只有单一来源，可信度较低？",
     snapshotIsStale(snapshot) ? "哪些来源在本轮刷新失败或没有新内容？" : "哪些来源今天失败或没有新内容？",
-    `把${title}按重要性排序`,
-    ...snapshot.curated_events.slice(0, 2).map((event) => `围绕“${event.canonical_title}”有哪些证据和不确定性？`)
+    ...snapshot.curated_events.slice(0, 2).map((event) => `围绕“${chineseEventTitle(event)}”有哪些证据和不确定性？`)
   ];
 
   return shell(snapshot, "ask", 1, "提问", `
-    <section class="page-heading">
-      <div>
-        <div class="pill-row">
-          ${pill(`${snapshot.event_count} 个事件`, "success")}
-          ${pill("公开快照查询", "evidence")}
-        </div>
-        <h1>事件提问</h1>
-        <p class="lead">围绕 ${escapeHtml(title)}、来源家族覆盖、来源失败和弱信号提问。Cloudflare 页面只读取公开快照，不暴露密钥或私有服务端数据。</p>
-      </div>
-    </section>
-    ${freshnessAlert(snapshot, "结果只基于当前公开证据；Cloudflare 页面本身不提供实时联网聊天。")}
-    <section class="panel interactive-tool">
-      <h2>查询公开事件</h2>
-      <p class="note">在浏览器内匹配当前事件、来源和引用；不会调用私有 API，也不会产生数据库写入。</p>
-      <textarea id="local-query-input" rows="4" aria-label="输入问题">${escapeHtml(examples[0] ?? "")}</textarea>
-      <div class="actions"><button class="button primary" id="local-query-run" type="button">查询公开事件</button></div>
-      <div class="local-result" id="local-query-result" aria-live="polite"></div>
-    </section>
-    <section class="grid two">
-      <div class="panel"><h2>示例问题</h2>${noteList(examples)}</div>
-      <div class="panel"><h2>证据上下文</h2><dl class="rail">${rail("数据来源", sourceLabel(snapshot.source.data_source))}${rail("最新内容发布时间", formatDate(snapshot.freshness.latest_timestamp))}${rail("事件数量", String(snapshot.event_count))}${coverageRailRows(snapshot)}${rail("待复核", String(snapshot.counts.needs_review))}</dl></div>
-    </section>
-    <section class="panel">
-      <h2>证据边界</h2>
-      ${noteList(readerFacingCaveats(snapshot).slice(0, 6))}
-    </section>
-    <script>${localEvidenceToolScript("ask")}</script>
-  `);
-}
-
-function renderWrite(snapshot: Snapshot) {
-  const title = snapshotCuratedTitle(snapshot);
-  const currentReports = latestReportsByType(snapshot);
-  const prompts = [
-    `基于 ${title} 写一段 AI 行业观察`,
-    `把${snapshotIsStale(snapshot) ? "这批可见窗口" : "本周"}跨家族多源报道、同家族复述和单源事件整理成周报提纲`,
-    "找出适合写成深度分析的 3 个事件",
-    "列出证据不足但值得继续跟踪的弱信号",
-    ...snapshot.curated_events.slice(0, 2).map((event) => `基于“${event.canonical_title}”写一个带证据边界的观察角度。`)
-  ];
-
-  return shell(snapshot, "write", 1, "写作", `
-    <section class="page-heading">
-      <div>
-        <div class="pill-row">
-          ${pill(`${currentReports.length} 个当前报告候选`, "caution")}
-          ${pill(`${snapshot.event_count} 个事件`, "evidence")}
-        </div>
-        <h1>事件写作</h1>
-        <p class="lead">基于行业精选、来源家族覆盖、弱信号和报告质量状态组织写作提纲，并保留来源与不确定性。</p>
-      </div>
-    </section>
-    ${freshnessAlert(snapshot, "写作提纲只基于当前公开证据，不应写成超出证据时间窗的实时结论。")}
-    <section class="panel interactive-tool">
-      <h2>生成证据化提纲</h2>
-      <p class="note">在浏览器内从公开事件生成论点、证据和边界；Cloudflare 静态页不调用私有 API。</p>
-      <textarea id="local-query-input" rows="4" aria-label="输入写作需求">${escapeHtml(prompts[0] ?? "")}</textarea>
-      <div class="actions"><button class="button primary" id="local-query-run" type="button">生成写作提纲</button></div>
-      <div class="local-result" id="local-query-result" aria-live="polite"></div>
-    </section>
-    <section class="grid two">
-      <div class="panel"><h2>写作提示</h2>${noteList(prompts)}</div>
-      <div class="panel"><h2>数据上下文</h2><dl class="rail">${rail("数据来源", sourceLabel(snapshot.source.data_source))}${rail("最新内容发布时间", formatDate(snapshot.freshness.latest_timestamp))}${rail("事件数量", String(snapshot.event_count))}${coverageRailRows(snapshot)}${rail("当前报告候选", String(currentReports.length))}</dl></div>
-    </section>
-    <section class="grid two">
-      <div class="panel">
-        <h2>当前报告上下文</h2>
-        <div class="row-list">${latestReportsByType(snapshot).map(renderCompactReport).join("") || empty("没有找到公开报告候选。")}</div>
-      </div>
-      <div class="panel">
-        <h2>缺失证据与局限</h2>
-        ${noteList(uniqueStrings(snapshot.reports.flatMap((report) => report.missing_evidence)).slice(0, 8).concat(readerFacingCaveats(snapshot).slice(0, 3)))}
-      </div>
-    </section>
-    <script>${localEvidenceToolScript("write")}</script>
+    <section class="tool-heading"><p>${snapshot.event_count} 个事件 · 更新至 ${escapeHtml(formatDate(snapshot.freshness.latest_timestamp))}</p><h1>向雷达提问</h1></section>
+    <section class="interactive-tool tool-stage"><textarea id="local-query-input" rows="4" aria-label="输入问题" placeholder="询问公司、模型、事件或来源..."></textarea><div class="actions"><button class="button primary" id="local-query-run" type="button">提问</button></div>${renderPromptSuggestions(examples)}<div class="local-result" id="local-query-result" aria-live="polite"></div></section>
+    <script>${promptSuggestionScript()}</script><script>${localEvidenceToolScript()}</script>
   `);
 }
 
@@ -1096,7 +1001,7 @@ function languageSwitchStateScript() {
 
 function englishShell(
   snapshot: Snapshot,
-  current: "home" | "radar" | "entities" | "reports" | "ask" | "write",
+  current: "home" | "radar" | "entities" | "reports" | "ask",
   depth: 0 | 1,
   title: string,
   body: string
@@ -1106,12 +1011,10 @@ function englishShell(
   const chineseHref = current === "home" ? "../index.html" : `../../${current}/`;
   const englishHref = current === "home" ? "index.html" : `${localePrefix}${current}/`;
   const nav = [
-    ["home", curatedWindowIsCurrent(snapshot) ? "Today" : "Latest", `${localePrefix}index.html`],
-    ["radar", "Radar", `${localePrefix}radar/`],
-    ["entities", "Entities", `${localePrefix}entities/`],
+    ["home", "Selected", `${localePrefix}index.html`],
+    ["radar", "All events", `${localePrefix}radar/?tab=events`],
     ["reports", "Reports", `${localePrefix}reports/`],
-    ["ask", "Ask", `${localePrefix}ask/`],
-    ["write", "Write", `${localePrefix}write/`]
+    ["ask", "Ask", `${localePrefix}ask/`]
   ] as const;
 
   return `<!doctype html>
@@ -1127,23 +1030,34 @@ function englishShell(
     <link rel="stylesheet" href="${assetPrefix}assets/styles.css">
   </head>
   <body${current === "home" ? ' class="home-page"' : ""}>
-    <header class="site-header">
-      <a class="brand" href="${localePrefix}index.html"><span class="brand-mark"></span><span>AI Industry Radar</span></a>
-      <div class="header-tools">
-        <nav aria-label="Primary navigation">
+    <div class="app-layout">
+      <aside class="desktop-sidebar">
+        <a class="brand" href="${localePrefix}index.html"><img src="${assetPrefix}favicon.svg" alt=""><span>AI RADAR</span></a>
+        <p class="nav-group-label">READ</p>
+        <nav class="side-nav" aria-label="Primary navigation">
           ${nav.map(([id, label, href]) => `<a${id === current ? ' aria-current="page"' : ""} href="${escapeAttr(href)}">${escapeHtml(label)}</a>`).join("")}
         </nav>
-        <div class="language-switch" aria-label="Language">
-          <a lang="zh-CN" href="${escapeAttr(chineseHref)}">中文</a>
-          <a aria-current="true" href="${escapeAttr(englishHref)}">EN</a>
+        <p class="nav-group-label">MORE</p>
+        <nav class="side-nav secondary-nav" aria-label="Secondary navigation">
+          <a href="${localePrefix}radar/?tab=health">Data status</a>
+        </nav>
+      </aside>
+      <div class="app-frame">
+        <header class="mobile-header">
+          <a class="mobile-brand" href="${localePrefix}index.html">AI RADAR</a>
+          <div class="language-switch" aria-label="Language"><a lang="zh-CN" href="${escapeAttr(chineseHref)}">中</a><a aria-current="true" href="${escapeAttr(englishHref)}">EN</a></div>
+        </header>
+        <div class="desktop-topbar">
+          <span>Updated through ${escapeHtml(formatDateEn(snapshot.freshness.latest_timestamp))}</span>
+          <div class="language-switch" aria-label="Language"><a lang="zh-CN" href="${escapeAttr(chineseHref)}">中文</a><a aria-current="true" href="${escapeAttr(englishHref)}">EN</a></div>
         </div>
+        <main>${body}</main>
+        <footer class="site-footer"><span>${escapeHtml(formatDateEn(snapshot.generated_at))}</span><a href="${localePrefix}radar/?tab=health">Data status</a></footer>
       </div>
-    </header>
-    <main>${body}</main>
-    <footer class="site-footer">
-      <span>Generated ${escapeHtml(formatDateEn(snapshot.generated_at))}</span>
-      <span>Public read-only radar snapshot. This is the primary public surface.</span>
-    </footer>
+    </div>
+    <nav class="mobile-nav" aria-label="Mobile navigation">
+      ${nav.map(([id, label, href]) => `<a${id === current ? ' aria-current="page"' : ""} href="${escapeAttr(href)}">${escapeHtml(label)}</a>`).join("")}
+    </nav>
     <script>${languageSwitchStateScript()}</script>
   </body>
 </html>`;
@@ -1154,14 +1068,39 @@ function eventEnglishItems(event: SnapshotEvent, snapshot: Snapshot) {
   return snapshot.radar_items.filter((item) => ids.has(item.id));
 }
 
+function containsHan(value: string | undefined) {
+  return /\p{Script=Han}/u.test(value ?? "");
+}
+
+function englishItemTitle(item: SnapshotItem) {
+  if (!containsHan(item.title)) return item.title;
+  const entities = item.entities
+    .map((entity) => entityLabelEn(entity.name))
+    .filter((name) => !containsHan(name))
+    .slice(0, 3);
+  const subject = entities.length > 0 ? entities.join(" · ") : item.categories.map(categoryLabelEn).slice(0, 2).join(" · ");
+  return `${categoryLabelEn(item.categories[0] ?? "other")}: ${subject || "original-language report"}`;
+}
+
+function englishItemSource(item: SnapshotItem) {
+  return containsHan(item.source_name) ? sourceFamilyLabelEn(sourceFamily(item)) : item.source_name;
+}
+
 function eventEnglishTitle(event: SnapshotEvent, snapshot: Snapshot) {
-  return eventEnglishItems(event, snapshot)[0]?.title || event.timeline[0]?.title || event.canonical_title;
+  const items = eventEnglishItems(event, snapshot);
+  const englishItem = items.find((item) => !containsHan(item.title));
+  if (englishItem) return englishItem.title;
+  if (items[0]) return englishItemTitle(items[0]);
+  const timelineTitle = event.timeline.find((entry) => !containsHan(entry.title))?.title;
+  return timelineTitle || `${categoryLabelEn(event.category)}: ${event.related_entities.filter((entity) => !containsHan(entity)).slice(0, 3).map(entityLabelEn).join(" · ") || "original-language report"}`;
 }
 
 function eventEnglishSummary(event: SnapshotEvent, snapshot: Snapshot) {
-  const summary = eventEnglishItems(event, snapshot).find((item) => item.summary_en?.trim())?.summary_en?.trim();
+  const summary = eventEnglishItems(event, snapshot)
+    .map((item) => item.summary_en?.trim())
+    .find((value) => value && !containsHan(value));
   if (summary) return summary;
-  return `This ${categoryLabelEn(event.category).toLowerCase()} event is supported by ${event.source_count} public source${event.source_count === 1 ? "" : "s"} and ${event.related_item_ids.length} related signal${event.related_item_ids.length === 1 ? "" : "s"}. Review the timeline and citations before drawing a firm conclusion.`;
+  return "";
 }
 
 function entityLabelEn(value: string) {
@@ -1182,136 +1121,17 @@ function entityLabelEn(value: string) {
   return aliases[value.trim().toLowerCase()] ?? entityDisplayLabel(value);
 }
 
-function eventEntityLabelsEn(event: SnapshotEvent) {
-  const labels: string[] = [];
-  const seen = new Set<string>();
-  for (const entity of event.related_entities) {
-    const label = entityLabelEn(entity);
-    const key = label.trim().toLowerCase();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    labels.push(label);
-  }
-  return labels;
-}
 
-function renderEventCardEn(event: SnapshotEvent, snapshot: Snapshot) {
-  const title = eventEnglishTitle(event, snapshot);
-  const summary = eventEnglishSummary(event, snapshot);
-  const search = [
-    title,
-    summary,
-    event.category,
-    categoryLabelEn(event.category),
-    event.event_score_label,
-    eventScoreLabelEn(event.event_score_label),
-    event.source_families.join(" "),
-    event.source_families.map(sourceFamilyLabelEn).join(" "),
-    event.related_entities.join(" "),
-    eventEntityLabelsEn(event).join(" "),
-    event.citations.map((citation) => citation.source_name).join(" ")
-  ].join(" ").toLowerCase();
-  const sourceCount = eventConfirmationFilterValue(event);
-  const caveats = eventCaveatsEn(event, snapshot);
 
-  const freshness = freshnessBucket(event.latest_seen_at);
-  return `<article class="event-card" data-category="${escapeAttr(`${event.category} ${categoryLabelEn(event.category)}`)}" data-family="${escapeAttr(event.source_families.join(" "))}" data-freshness="${freshness}" data-score="${escapeAttr(event.event_score_label)}" data-search="${escapeAttr(search)}" data-source-count="${sourceCount}" data-status="${escapeAttr(eventStatus(event, snapshot))}">
-    <div class="pill-row">
-      ${pill(eventScoreLabelEn(event.event_score_label), eventScoreTone(event.event_score_label))}
-      ${pill(eventConfirmationLabelEn(event), eventConfirmationTone(event))}
-      ${pill(freshnessLabelEn(freshness), freshness === "archive" ? "caution" : "neutral")}
-      ${pill(`Score ${event.event_score}`, "evidence")}
-      ${pill(`${event.source_count} source${event.source_count === 1 ? "" : "s"}`, event.source_count > 1 ? "success" : "caution")}
-      ${event.source_families.slice(0, 3).map((family) => pill(sourceFamilyLabelEn(family), "neutral")).join("")}
-    </div>
-    ${event.source_count > 1 && event.source_families.length > 1 ? `<p class="confirmation-note">Cross-family coverage is stronger than a single report, but source independence is not verified.</p>` : ""}
-    <h2>${escapeHtml(title)}</h2>
-    <p>${escapeHtml(summary)}</p>
-    <dl class="event-meta">
-      ${rail("Category", categoryLabelEn(event.category))}
-      ${rail("Window", `${formatDateEn(event.first_seen_at)} to ${formatDateEn(event.latest_seen_at)}`)}
-      ${rail("Related signals", String(event.related_item_ids.length))}
-      ${rail("Why it matters", eventImpactNoteEn(event))}
-      ${rail("What to watch", eventWatchNoteEn(event))}
-      ${rail("Score basis", eventScoreReasonEn(event))}
-    </dl>
-    ${event.related_entities.length > 0 ? `<div class="pill-row">${eventEntityLabelsEn(event).slice(0, 6).map((entity) => pill(entity, "neutral")).join("")}</div>` : ""}
-    <details><summary>Expand timeline</summary><div class="timeline-list compact">${event.timeline.map(renderEventTimelineRowEn).join("")}</div></details>
-    <details><summary>View related signals</summary><div class="citation-grid">${event.citations.map(renderEventCitationEn).join("")}</div></details>
-    ${caveats.length > 0 ? `<div class="event-caveats">${noteListEn(caveats)}</div>` : ""}
-  </article>`;
-}
 
-function renderFeaturedEventCardEn(event: SnapshotEvent, snapshot: Snapshot) {
-  const freshness = freshnessBucket(event.latest_seen_at);
-  return `<article class="featured-card">
-    <div class="featured-main">
-      <div class="pill-row">${pill(eventScoreLabelEn(event.event_score_label), eventScoreTone(event.event_score_label))}${pill(eventConfirmationLabelEn(event), eventConfirmationTone(event))}${pill(freshnessLabelEn(freshness), freshness === "24h" ? "success" : "caution")}${pill(`${event.source_count} source${event.source_count === 1 ? "" : "s"}`, event.source_count > 1 ? "success" : "caution")}${event.source_families.slice(0, 2).map((family) => pill(sourceFamilyLabelEn(family), "neutral")).join("")}</div>
-      ${event.source_count > 1 && event.source_families.length > 1 ? `<p class="confirmation-note">Source independence is not verified.</p>` : ""}
-      <h2>${escapeHtml(eventEnglishTitle(event, snapshot))}</h2>
-      <p>${escapeHtml(eventEnglishSummary(event, snapshot))}</p>
-      <dl class="event-meta">${rail("Why it matters", eventImpactNoteEn(event))}${rail("Next check", eventWatchNoteEn(event))}</dl>
-      <details><summary>Expand timeline</summary><div class="timeline-list compact">${event.timeline.map(renderEventTimelineRowEn).join("")}</div></details>
-      <details><summary>View related signals</summary><div class="citation-grid">${event.citations.map(renderEventCitationEn).join("")}</div></details>
-    </div>
-    <aside><dl class="rail compact-rail">${rail("Score", String(event.event_score))}${rail("Latest", formatDateEn(event.latest_seen_at))}${rail("Citations", String(event.citations.length))}</dl>${event.citations.map((citation) => `<a class="source-link" href="${escapeAttr(citation.url)}">${escapeHtml(citation.source_name)}</a>`).join("")}</aside>
-  </article>`;
-}
 
-function eventImpactNoteEn(event: SnapshotEvent) {
-  const text = `${event.canonical_title} ${event.summary_zh} ${event.category}`.toLowerCase();
-  const category = eventDecisionCategory(event, text);
-  const entity = primaryEventEntityEn(event);
-  const notes: Record<string, string> = {
-    agent: `${entity} may change agent workflows, developer entry points or product integration choices.`,
-    benchmark: `${entity} may change comparative evaluation, procurement shortlists or capability positioning.`,
-    business: `${entity} may affect enterprise adoption, buying signals or competitive positioning.`,
-    funding: `${entity} may affect company runway, market structure or ecosystem investment priorities.`,
-    infrastructure: `${entity} may change deployment dependencies, operating cost or engineering reliability.`,
-    model_release: `${entity} may change upgrade timing, compatibility testing and downstream capability expectations.`,
-    open_source: `${entity} may change dependency choices, deployment paths or integration risk.`,
-    product_update: `${entity} may change APIs, migration cost, governance controls or developer workflows.`,
-    regulation: `${entity} may change compliance priorities, market access or product accountability.`,
-    research: `${entity} may influence technical direction or evaluation methods if it is independently reproduced.`,
-    safety: `${entity} may change usage boundaries, review requirements or organizational responsibility.`
-  };
-  return notes[category] ?? `${entity} is a public industry signal that should be evaluated against its sources and timeline.`;
-}
 
-function eventWatchNoteEn(event: SnapshotEvent) {
-  if (event.source_count <= 1) return "Find a second independent source or the original official announcement before treating this as confirmed.";
-  if (event.source_families.length <= 1) return "Look for confirmation from a different source family and compare whether the claims converge.";
-  if (event.citations.length <= 1) return "Extend the citation chain and check for conflicting evidence.";
-  return "Track follow-up releases, corrections and whether the multi-source narrative continues to converge.";
-}
 
-function eventScoreReasonEn(event: SnapshotEvent) {
-  const confirmation =
-    event.source_count > 1 && event.source_families.length > 1
-      ? "cross-family coverage with source independence unverified"
-      : event.source_count > 1
-        ? "multiple reports from one source family"
-        : "single-source evidence";
-  return `${event.event_score}/100 from AI relevance, source credibility, source diversity, freshness, novelty and importance; currently ${confirmation}.`;
-}
 
-function eventCaveatsEn(event: SnapshotEvent, snapshot: Snapshot) {
-  const related = eventEnglishItems(event, snapshot);
-  const caveats: string[] = [];
-  if (event.source_count <= 1) caveats.push("This is a single-source event and still needs independent confirmation.");
-  if (event.source_families.length <= 1 && event.source_count > 1) caveats.push("The supporting items come from one source family, so source diversity remains limited.");
-  if (event.source_families.length > 1) caveats.push("The source families differ, but one may repeat another's original claim; source independence has not been established.");
-  if (related.some((item) => item.status === "needs_review")) caveats.push("At least one related signal remains in needs-review status.");
-  return caveats;
-}
 
-function renderEventTimelineRowEn(entry: SnapshotEvent["timeline"][number]) {
-  return `<a class="timeline-row" href="${escapeAttr(entry.url)}"><time>${escapeHtml(formatDateEn(entry.timestamp))}</time><strong>${escapeHtml(entry.title)}</strong><span>${escapeHtml(entry.source_name)}</span></a>`;
-}
 
-function renderEventCitationEn(citation: SnapshotEvent["citations"][number]) {
-  return `<a class="citation" href="${escapeAttr(citation.url)}"><span>${escapeHtml(citation.source_name)}</span><strong>${escapeHtml(citation.title)}</strong><small>${escapeHtml(formatDateEn(citation.published_at))}</small></a>`;
-}
+
+
 
 function renderTimelineEntryEn(entry: SnapshotTimelineEntry, snapshot: Snapshot) {
   const event = snapshot.event_clusters.find((candidate) => candidate.event_cluster_id === entry.event_cluster_id);
@@ -1319,17 +1139,17 @@ function renderTimelineEntryEn(entry: SnapshotTimelineEntry, snapshot: Snapshot)
 }
 
 function renderRadarItemEn(item: SnapshotItem) {
-  const summary = item.summary_en?.trim() || `Public signal from ${item.source_name}. Review the original title and source before using it as evidence.`;
+  const summary = item.summary_en?.trim() && !containsHan(item.summary_en) ? item.summary_en.trim() : "";
+  const title = englishItemTitle(item);
+  const source = englishItemSource(item);
   const freshness = freshnessBucket(item.published_at ?? "");
-  return `<article class="radar-row" data-category="${escapeAttr(`${item.categories.join(" ")} ${item.categories.map(categoryLabelEn).join(" ")}`)}" data-family="${escapeAttr(sourceFamily(item))}" data-freshness="${freshness}" data-search="${escapeAttr(`${item.title} ${summary} ${item.source_name} ${item.tags.join(" ")} ${item.entities.map((entity) => entity.name).join(" ")}`.toLowerCase())}" data-status="${escapeAttr(item.status)}">
-    <div><div class="pill-row">${pill(statusLabelEn(item.status), statusTone(item.status))}${pill(`Overall ${item.scores.overall.toFixed(2)}`, "evidence")}${pill(`Confidence ${formatPercent(item.confidence)}`, "success")}</div><h2><a href="${escapeAttr(item.url)}">${escapeHtml(item.title)}</a></h2><p>${escapeHtml(summary)}</p><div class="pill-row">${item.categories.map((category) => pill(categoryLabelEn(category), "evidence")).join("")}${item.tags.slice(0, 5).map((tag) => pill(tag, "neutral")).join("")}</div></div>
-    <dl>${rail("Source", item.source_name)}${rail("Published", formatDateEn(item.published_at))}${rail("Tier", item.source_tier)}${rail("Source family", sourceFamilyLabelEn(sourceFamily(item)))}</dl>
+  return `<article class="radar-row" data-category="${escapeAttr(`${item.categories.join(" ")} ${item.categories.map(categoryLabelEn).join(" ")}`)}" data-family="${escapeAttr(sourceFamily(item))}" data-freshness="${freshness}" data-search="${escapeAttr(`${title} ${summary} ${source} ${item.tags.join(" ")} ${item.entities.map((entity) => entity.name).join(" ")}`.toLowerCase())}" data-status="${escapeAttr(item.status)}">
+    <div class="story-time"><time>${escapeHtml(feedTime(item.published_at ?? item.collected_at, "en"))}</time><span></span></div>
+    <div class="story-content"><div class="story-meta"><span>${escapeHtml(source)}</span><strong>${Math.round(item.scores.overall * 100)}</strong></div><h2><a href="${escapeAttr(item.url)}">${escapeHtml(title)}</a></h2>${summary ? `<p>${escapeHtml(summary)}</p>` : ""}<div class="story-foot"><span>${escapeHtml(item.categories.map(categoryLabelEn).slice(0, 2).join(" · "))}</span><span>${escapeHtml(statusLabelEn(item.status))}</span></div></div>
   </article>`;
 }
 
-function renderCitationEn(item: SnapshotItem) {
-  return `<a class="citation" href="${escapeAttr(item.url)}"><span>${escapeHtml(item.source_name)}</span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(formatDateEn(item.published_at))}</small></a>`;
-}
+
 
 function renderEntityCardEn(entity: EntitySummary) {
   const insight = entityTrackingInsight(entity);
@@ -1363,66 +1183,9 @@ function entityPriorityDistributionEn(entities: EntitySummary[]): Array<[string,
   return [...counts.entries()].toSorted((left, right) => right[1] - left[1]);
 }
 
-function renderCompactReportEn(report: SnapshotReport) {
-  return `<article class="compact-row"><div><div class="pill-row">${pill("Evidence draft, not published", "caution")}${pill(reportTypeLabelEn(report.report_type), "evidence")}${pill(qualityLabelEn(report), report.quality_gate_passed ? "neutral" : "caution")}</div><h3>${escapeHtml(`${reportTypeLabelEn(report.report_type)} evidence candidate`)}</h3><p>${escapeHtml(`${report.usable_item_count} usable items, ${report.citation_count} citations, ${report.distinct_source_count} distinct sources and ${report.category_count} categories.`)}</p></div><dl>${rail("Window", `${formatDateEn(report.time_window.start)} to ${formatDateEn(report.time_window.end)}`)}${rail("Mode", modeLabelEn(report.mode))}</dl></article>`;
-}
 
-function renderReportEn(report: SnapshotReport, snapshot: Snapshot) {
-  const sourceIds = new Set(report.source_item_ids);
-  const includedEvents = snapshot.event_clusters
-    .filter((event) => event.related_item_ids.some((id) => sourceIds.has(id)))
-    .toSorted((left, right) => right.event_score - left.event_score)
-    .slice(0, 6);
-  const fallbackEvents = includedEvents.length > 0 ? includedEvents : snapshot.curated_events.slice(0, 3);
-  const corroboratedEvents = fallbackEvents.filter((event) => event.source_count > 1).length;
-  const crossFamilyEvents = fallbackEvents.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
-  const gateReasons = report.quality_gate_passed ? [] : reportGateReasonsEn(report.quality_gate_reasons);
-  const releaseReady = report.status !== "needs_review";
 
-  return `<article class="report-card">
-    <div class="pill-row">${pill(releaseReady ? "Editorial release controlled" : "Evidence draft, not release-ready", releaseReady ? "success" : "caution")}${pill(reportTypeLabelEn(report.report_type), "evidence")}${pill(qualityLabelEn(report), report.quality_gate_passed ? "neutral" : "caution")}${pill(statusLabelEn(report.status), statusTone(report.status))}${pill(modeLabelEn(report.mode), "neutral")}</div>
-    <h2>${escapeHtml(`${reportTypeLabelEn(report.report_type)} event evidence candidate`)}</h2>
-    <p class="report-summary">${escapeHtml(`This candidate organizes ${fallbackEvents.length} top event${fallbackEvents.length === 1 ? "" : "s"} from ${report.usable_item_count} usable signals. Quality status is shown separately from editorial approval.`)}</p>
-    <dl class="inline-defs">${rail("Baseline evidence gate", qualityLabelEn(report))}${rail("Cross-family coverage / same-family multi / single", `${crossFamilyEvents} / ${Math.max(0, corroboratedEvents - crossFamilyEvents)} / ${Math.max(0, fallbackEvents.length - corroboratedEvents)}`)}${rail("Publication readiness", report.status !== "needs_review" ? "Editorial status controls publication" : "Needs review: source independence is not modeled")}${rail("Usable items", report.usable_item_count)}${rail("Citations", report.citation_count)}${rail("Distinct sources", report.distinct_source_count)}${rail("Categories", report.category_count)}${rail("Missing evidence", report.missing_evidence.length)}${rail("Window", `${formatDateEn(report.time_window.start)} to ${formatDateEn(report.time_window.end)}`)}</dl>
-    ${fallbackEvents.length > 0 ? `<h3>Top events included</h3><div class="event-mini-list">${fallbackEvents.map((event) => renderEventMiniEn(event, snapshot)).join("")}</div>` : ""}
-    ${gateReasons.length > 0 ? `<h3>Why the gate did not pass</h3>${noteListEn(gateReasons)}` : ""}
-    <h3>Caveats</h3>${noteListEn(reportCaveatsEn(report, snapshot))}
-    ${report.citations.length > 0 ? `<div class="citation-grid">${report.citations.map((citation) => `<a class="citation" href="${escapeAttr(citation.url)}"><span>${escapeHtml(citation.source_name)}</span><strong>${escapeHtml(citation.title)}</strong><small>${escapeHtml(formatDateEn(citation.published_at))}</small></a>`).join("")}</div>` : ""}
-  </article>`;
-}
 
-function reportCaveatsEn(report: SnapshotReport, snapshot: Snapshot) {
-  const coverage = eventSignalCoverage(snapshot);
-  const signalCount = snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items;
-  const sourceIds = new Set(report.source_item_ids);
-  const reportEvents = snapshot.event_clusters.filter((event) => event.related_item_ids.some((id) => sourceIds.has(id)));
-  const crossFamilyEvents = reportEvents.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
-
-  return uniqueStrings([
-    `The latest public content is dated ${formatDateEn(snapshot.freshness.latest_timestamp)}; this snapshot is not complete real-time web coverage.`,
-    `Report evidence is restricted to the declared window from ${formatDateEn(report.time_window.start)} to ${formatDateEn(report.time_window.end)}.`,
-    "This is an event-aware public report view; original signals remain auditable under All signals.",
-    crossFamilyEvents > 0
-      ? "Cross-family coverage is visible, but source independence has not been established."
-      : "No event in this candidate has cross-family multi-source coverage, so the conclusions must retain uncertainty.",
-    "Retrieval uses the public evidence store and exposes only public, structured citation fields.",
-    `${snapshot.counts.needs_review} radar signals still need human review before they can support high-confidence synthesis.`,
-    "This is an evidence candidate, not an editorially published report; check original citations before external use.",
-    "X and WeChat are not crawled automatically; related signals require manual or compliant-source collection.",
-    `Public event projection maps ${coverage.mapped} of ${signalCount} public signals to ${snapshot.event_count} reportable events; signal-only rows remain under All signals.`,
-    ...(report.missing_evidence.length > 0 ? ["One or more evidence gaps remain unresolved."] : [])
-  ]);
-}
-
-function reportCoveragePanelEn(snapshot: Snapshot, reports: SnapshotReport[]) {
-  const daily = reports.find((report) => report.report_type === "daily");
-  const weekly = reports.find((report) => report.report_type === "weekly");
-  const formalReports = snapshot.reports.filter(isFormalSnapshotReport).length;
-  const evidenceDrafts = snapshot.reports.length - formalReports;
-  const corroboratedEvents = snapshot.event_clusters.filter((event) => event.source_count > 1).length;
-  const crossFamilyEvents = snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
-  return `<section class="panel"><div class="section-heading"><h2>Report quality model</h2></div>${noteListEn(["The baseline evidence gate measures volume, citations, source breadth and category breadth; it does not mean every event is independently corroborated.", "Multiple reports from one family and cross-family coverage are shown separately. Cross-family coverage does not prove source independence, and every evidence draft still requires editorial review.", "Daily minimums are 5 usable items, 3 citations, 2 sources and 2 categories when available. Weekly minimums are 20, 8, 5 and 3."])}<dl class="rail">${rail("Formal reports", String(formalReports))}${rail("Evidence drafts", String(evidenceDrafts))}${rail("Multiple reports / cross-family coverage / all events", `${corroboratedEvents} / ${crossFamilyEvents} / ${snapshot.event_count}`)}${rail("Release readiness", formalReports > 0 ? "Editorially controlled" : "Needs review: no formal report is published")}${rail("Daily baseline gate", daily ? qualityLabelEn(daily) : "Unavailable")}${rail("Daily items / citations / sources / categories", daily ? `${daily.usable_item_count} / ${daily.citation_count} / ${daily.distinct_source_count} / ${daily.category_count}` : "Unavailable")}${rail("Weekly baseline gate", weekly ? qualityLabelEn(weekly) : "Unavailable")}${rail("Weekly items / citations / sources / categories", weekly ? `${weekly.usable_item_count} / ${weekly.citation_count} / ${weekly.distinct_source_count} / ${weekly.category_count}` : "Unavailable")}</dl></section>`;
-}
 
 function reportGateReasonsEn(reasons: string[]) {
   const translated = reasons.map((reason) => {
@@ -1437,9 +1200,7 @@ function reportGateReasonsEn(reasons: string[]) {
   return uniqueStrings(translated);
 }
 
-function coveragePanelEn(snapshot: Snapshot) {
-  return `<section class="panel"><div class="section-heading"><h2>Public data coverage</h2></div><dl class="rail">${rail("Dataset", "Public read-only")}${rail("Sources total", snapshot.coverage.sources_total)}${rail("Automated eligible", snapshot.coverage.automated_eligible_sources)}${rail("Focused refresh attempted", snapshot.coverage.attempted_sources)}${rail("Sources with public items", snapshot.coverage.sources_with_public_items ?? "Unavailable")}${rail("Public records", snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)}${rail("Visible signals", snapshot.radar_items.length)}${rail("Rows withheld from display", Math.max(0, (snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items) - snapshot.radar_items.length))}${rail("Failed / skipped", snapshot.coverage.failed_sources + snapshot.coverage.skipped_sources)}${rail("Source visibility", snapshot.coverage.source_public_visibility === null ? "Unavailable" : formatPercent(snapshot.coverage.source_public_visibility))}${rail("Radar visibility", snapshot.coverage.radar_to_public_visibility === null ? "Unavailable" : formatPercent(snapshot.coverage.radar_to_public_visibility))}${rail("Content published through", formatDateEn(snapshot.freshness.latest_timestamp))}${rail("Snapshot generated", formatDateEn(snapshot.generated_at))}</dl>${Object.keys(snapshot.coverage.failure_families ?? {}).length > 0 ? `<div class="distribution">${distributionEn("Failures, warnings and exclusions", Object.entries(snapshot.coverage.failure_families ?? {}))}</div>` : ""}</section>`;
-}
+
 
 function sourceHealthPanelEn(snapshot: Snapshot) {
   const health = snapshot.source_health_summary;
@@ -1477,15 +1238,7 @@ function noteListEn(items: string[]) {
   return `<ul class="note-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
 }
 
-function englishEvidenceLimits(snapshot: Snapshot) {
-  return [
-    `The public snapshot contains ${snapshot.event_count} event clusters and ${snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items} visible signals; it is not a claim of complete market coverage.`,
-    `${snapshot.source_health_summary.manual_blocked} sources require manual handling or are blocked from automated crawling.`,
-    `${snapshot.source_health_summary.failed} attempted sources failed in the latest audited refresh, with aggregate reasons shown in Source health.`,
-    "Private raw text, provider metadata, service credentials, internal notes and operational logs are excluded.",
-    "Single-source events and needs-review signals should not be presented as confirmed facts."
-  ];
-}
+
 
 function freshnessAlertEn(snapshot: Snapshot, suffix = "") {
   const latest = snapshot.freshness?.latest_timestamp;
@@ -1504,15 +1257,6 @@ function formatDateEn(value: string | null | undefined) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return `${new Intl.DateTimeFormat("en-US", { day: "2-digit", hour: "2-digit", minute: "2-digit", month: "short", timeZone: "UTC", year: "numeric" }).format(date)} UTC`;
-}
-
-function sourceLabelEn(value?: string | null) {
-  if (!value) return "Public data source";
-  if (value.startsWith("supabase_") || value.startsWith("public_")) return "Public structured data";
-  if (value === "local_generated_files") return "Locally generated public snapshot";
-  if (value === "local_seed_data") return "Seed data";
-  if (value.startsWith("local_")) return "Local data";
-  return value.replace(/_/g, " ");
 }
 
 function categoryLabelEn(value: string) {
@@ -1583,14 +1327,9 @@ function reportTypeLabelEn(type: string) {
   return type;
 }
 
-function modeLabelEn(mode: string) {
-  const labels: Record<string, string> = { local_preview: "Local preview", saved_candidate: "Saved candidate", saved_report: "Saved report" };
-  return labels[mode] ?? mode.replace(/_/g, " ");
-}
 
-function qualityLabelEn(report: SnapshotReport) {
-  return report.quality_gate_passed ? "Baseline evidence gate passed" : "More evidence needed";
-}
+
+
 
 function entityTypeLabelEn(type: string) {
   const labels: Record<string, string> = {
@@ -1647,17 +1386,15 @@ function publicLabelEn(value: string) {
   return failureLabelEn(value);
 }
 
-function shell(snapshot: Snapshot, current: "home" | "radar" | "entities" | "reports" | "ask" | "write", depth: 0 | 1 | 2, title: string, body: string) {
+function shell(snapshot: Snapshot, current: "home" | "radar" | "entities" | "reports" | "ask", depth: 0 | 1 | 2, title: string, body: string) {
   const prefix = depth === 0 ? "" : depth === 1 ? "../" : "../../";
   const chineseHref = current === "home" ? `${prefix}index.html` : `${prefix}${current}/`;
   const englishHref = current === "home" ? `${prefix}en/` : `${prefix}en/${current}/`;
   const nav = [
-    ["home", curatedWindowIsCurrent(snapshot) ? "今日" : "本轮", `${prefix}index.html`],
-    ["radar", "雷达", `${prefix}radar/`],
-    ["entities", "实体", `${prefix}entities/`],
+    ["home", "精选", `${prefix}index.html`],
+    ["radar", "全部", `${prefix}radar/?tab=events`],
     ["reports", "报告", `${prefix}reports/`],
-    ["ask", "提问", `${prefix}ask/`],
-    ["write", "写作", `${prefix}write/`]
+    ["ask", "提问", `${prefix}ask/`]
   ] as const;
 
   return `<!doctype html>
@@ -1673,414 +1410,48 @@ function shell(snapshot: Snapshot, current: "home" | "radar" | "entities" | "rep
     <link rel="stylesheet" href="${prefix}assets/styles.css">
   </head>
   <body${current === "home" ? ' class="home-page"' : ""}>
-    <header class="site-header">
-      <a class="brand" href="${prefix}index.html"><span class="brand-mark"></span><span>AI 行业雷达</span></a>
-      <div class="header-tools">
-        <nav aria-label="主导航">
+    <div class="app-layout">
+      <aside class="desktop-sidebar">
+        <a class="brand" href="${prefix}index.html"><img src="${prefix}favicon.svg" alt=""><span>AI RADAR</span></a>
+        <p class="nav-group-label">内容</p>
+        <nav class="side-nav" aria-label="主导航">
           ${nav.map(([id, label, href]) => `<a${id === current ? ' aria-current="page"' : ""} href="${escapeAttr(href)}">${escapeHtml(label)}</a>`).join("")}
         </nav>
-        <div class="language-switch" aria-label="语言">
-          <a aria-current="true" href="${escapeAttr(chineseHref)}">中文</a>
-          <a lang="en" href="${escapeAttr(englishHref)}">EN</a>
+        <p class="nav-group-label">更多</p>
+        <nav class="side-nav secondary-nav" aria-label="次级导航">
+          <a href="${prefix}radar/?tab=health">数据状态</a>
+        </nav>
+      </aside>
+      <div class="app-frame">
+        <header class="mobile-header">
+          <a class="mobile-brand" href="${prefix}index.html">AI RADAR</a>
+          <div class="language-switch" aria-label="语言"><a aria-current="true" href="${escapeAttr(chineseHref)}">中</a><a lang="en" href="${escapeAttr(englishHref)}">EN</a></div>
+        </header>
+        <div class="desktop-topbar">
+          <span>内容更新至 ${escapeHtml(formatDate(snapshot.freshness.latest_timestamp))}</span>
+          <div class="language-switch" aria-label="语言"><a aria-current="true" href="${escapeAttr(chineseHref)}">中文</a><a lang="en" href="${escapeAttr(englishHref)}">EN</a></div>
         </div>
+        <main>${body}</main>
+        <footer class="site-footer"><span>${escapeHtml(formatDate(snapshot.generated_at))}</span><a href="${prefix}radar/?tab=health">数据状态</a></footer>
       </div>
-    </header>
-    <main>${body}</main>
-    <footer class="site-footer">
-      <span>生成时间 ${escapeHtml(formatDate(snapshot.generated_at))}</span>
-      <span>公开只读雷达快照。当前页面是主站公开入口。</span>
-    </footer>
+    </div>
+    <nav class="mobile-nav" aria-label="移动导航">
+      ${nav.map(([id, label, href]) => `<a${id === current ? ' aria-current="page"' : ""} href="${escapeAttr(href)}">${escapeHtml(label)}</a>`).join("")}
+    </nav>
     <script>${languageSwitchStateScript()}</script>
   </body>
 </html>`;
 }
 
-function renderEventCard(event: SnapshotEvent, snapshot: Snapshot) {
-  const search = [
-    event.canonical_title,
-    event.summary_zh,
-    event.category,
-    event.event_score_label,
-    event.source_families.join(" "),
-    event.related_entities.join(" "),
-    event.citations.map((citation) => citation.source_name).join(" ")
-  ].join(" ").toLowerCase();
-  const sourceCount = eventConfirmationFilterValue(event);
 
-  const freshness = freshnessBucket(event.latest_seen_at);
-  return `<article class="event-card" data-category="${escapeAttr(`${event.category} ${labelize(event.category)}`)}" data-family="${escapeAttr(event.source_families.join(" "))}" data-freshness="${freshness}" data-score="${escapeAttr(event.event_score_label)}" data-search="${escapeAttr(search)}" data-source-count="${sourceCount}" data-status="${escapeAttr(eventStatus(event, snapshot))}">
-    <div class="pill-row">
-      ${pill(event.event_score_label, eventScoreTone(event.event_score_label))}
-      ${pill(eventConfirmationLabel(event), eventConfirmationTone(event))}
-      ${pill(freshnessLabel(freshness), freshness === "archive" ? "caution" : "neutral")}
-      ${pill(`分数 ${event.event_score}`, "evidence")}
-      ${pill(`${event.source_count} 个来源`, event.source_count > 1 ? "success" : "caution")}
-      ${event.source_families.slice(0, 3).map((family) => pill(family, "neutral")).join("")}
-    </div>
-    ${event.source_count > 1 && event.source_families.length > 1 ? `<p class="confirmation-note">跨来源家族比单条报道更强，但来源独立性尚未验证。</p>` : ""}
-    <h2>${escapeHtml(event.canonical_title)}</h2>
-    <p>${escapeHtml(chineseEventSummary(event))}</p>
-    <dl class="event-meta">
-      ${rail("类别", labelize(event.category))}
-      ${rail("时间", `${formatDate(event.first_seen_at)} 至 ${formatDate(event.latest_seen_at)}`)}
-      ${rail("相关信号", String(event.related_item_ids.length))}
-      ${rail("产业影响", eventImpactNote(event))}
-      ${rail("观察点", eventWatchNote(event))}
-      ${rail("评分说明", event.score_reason)}
-    </dl>
-    ${event.related_entities.length > 0 ? `<div class="pill-row">${event.related_entities.slice(0, 6).map((entity) => pill(entity, "neutral")).join("")}</div>` : ""}
-    <details>
-      <summary>展开时间线</summary>
-      <div class="timeline-list compact">${event.timeline.map(renderEventTimelineRow).join("")}</div>
-    </details>
-    <details>
-      <summary>查看相关信号</summary>
-      <div class="citation-grid">${event.citations.map(renderEventCitation).join("")}</div>
-    </details>
-    ${event.caveats.length > 0 ? `<div class="event-caveats">${noteList(event.caveats)}</div>` : ""}
-  </article>`;
-}
-
-function renderFeaturedEventCard(event: SnapshotEvent) {
-  const freshness = freshnessBucket(event.latest_seen_at);
-  return `<article class="featured-card">
-    <div class="featured-main">
-      <div class="pill-row">
-        ${pill(event.event_score_label, eventScoreTone(event.event_score_label))}
-        ${pill(eventConfirmationLabel(event), eventConfirmationTone(event))}
-        ${pill(freshnessLabel(freshness), freshness === "24h" ? "success" : "caution")}
-        ${pill(`${event.source_count} 个来源`, event.source_count > 1 ? "success" : "caution")}
-        ${event.source_families.slice(0, 2).map((family) => pill(family, "neutral")).join("")}
-      </div>
-      ${event.source_count > 1 && event.source_families.length > 1 ? `<p class="confirmation-note">来源独立性尚未验证。</p>` : ""}
-      <h2>${escapeHtml(event.canonical_title)}</h2>
-      <p>${escapeHtml(chineseEventSummary(event))}</p>
-      <dl class="event-meta">
-        ${rail("为什么重要", eventImpactNote(event))}
-        ${rail("下一步观察", eventWatchNote(event))}
-      </dl>
-      <details>
-        <summary>展开时间线</summary>
-        <div class="timeline-list compact">${event.timeline.map(renderEventTimelineRow).join("")}</div>
-      </details>
-      <details>
-        <summary>查看相关信号</summary>
-        <div class="citation-grid">${event.citations.map(renderEventCitation).join("")}</div>
-      </details>
-    </div>
-    <aside>
-      <dl class="rail compact-rail">
-        ${rail("分数", String(event.event_score))}
-        ${rail("最新", formatDate(event.latest_seen_at))}
-        ${rail("引用", String(event.citations.length))}
-      </dl>
-      ${event.citations.map((citation) => `<a class="source-link" href="${escapeAttr(citation.url)}">${escapeHtml(citation.source_name)}</a>`).join("")}
-    </aside>
-  </article>`;
-}
-
-function readerCategoryCards(snapshot: Snapshot) {
-  return readerCategoryCounts(snapshot)
-    .map(
-      (category) => `<a class="event-card" href="${escapeAttr(`radar/?tab=events${category.query ? `&category=${encodeURIComponent(category.query)}` : ""}`)}">
-        <div class="pill-row">${pill(`${category.count} 条`, category.count > 0 ? "success" : "neutral")}</div>
-        <h2>${escapeHtml(category.label)}</h2>
-        <p>${escapeHtml(category.description)}</p>
-      </a>`
-    )
-    .join("");
-}
-
-function readerBriefing(snapshot: Snapshot) {
-  const highPriority = snapshot.curated_events.filter((event) => event.event_score_label === "高优先级").length;
-  const sameFamily = snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length === 1).length;
-  const crossFamily = snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
-  const formalReports = snapshot.reports.filter(isFormalSnapshotReport).length;
-  const evidenceDrafts = snapshot.reports.length - formalReports;
-  const staleNote = snapshotIsStale(snapshot)
-    ? "当前不是实时今日视图，适合做趋势复盘和线索筛查，不适合当作完整实时新闻流。"
-    : "当前可作为今日公开证据视图，但仍应以来源和引用为准。";
-
-  return [
-    `${snapshot.event_count} 个事件中，${highPriority} 个为高优先级；优先阅读 Top 3，并先核对来源家族。`,
-    `跨家族多源报道 ${crossFamily} 个，同家族多源复述 ${sameFamily} 个；来源家族不同不等于来源独立，单源事件应等待第二来源或官方补充。`,
-    `正式报告 ${formalReports} 份，证据草稿 ${evidenceDrafts} 份；结论只从正式报告读取，草稿用于判断缺口。`,
-    staleNote
-  ];
-}
-
-function readerCategoryCounts(snapshot: Snapshot) {
-  return [
-    {
-      count: snapshot.event_count,
-      description: "浏览全部事件，并按来源家族和证据状态判断。",
-      label: "热点",
-      query: ""
-    },
-    {
-      count: countEventsByCategories(snapshot, ["model_release", "benchmark"]),
-      description: "模型发布、基准和能力边界。",
-      label: "模型",
-      query: "model_release,benchmark"
-    },
-    {
-      count: countEventsByCategories(snapshot, ["agent", "product_update"]),
-      description: "Agent、产品更新和工作流变化。",
-      label: "产品/Agent",
-      query: "agent,product_update"
-    },
-    {
-      count: countEventsByCategories(snapshot, ["open_source", "infrastructure"]),
-      description: "开源项目、开发者工具和基础设施。",
-      label: "开发者/开源",
-      query: "open_source,infrastructure"
-    },
-    {
-      count: countEventsByCategories(snapshot, ["research"]),
-      description: "论文、研究路线和早期技术信号。",
-      label: "论文/技术",
-      query: "research"
-    },
-    {
-      count: countEventsByCategories(snapshot, ["business", "funding", "regulation", "safety"]),
-      description: "商业、融资、监管和安全风险。",
-      label: "商业/政策",
-      query: "business,funding,regulation,safety"
-    }
-  ];
-}
-
-function countEventsByCategories(snapshot: Snapshot, categories: string[]) {
-  const targets = new Set(categories);
-  return snapshot.event_clusters.filter((event) => targets.has(categoryFilterValue(event.category))).length;
-}
 
 function categoryFilterValue(value: string) {
   return value.trim().toLowerCase().replace(/[\s-]+/g, "_");
 }
 
-function renderEventMini(event: SnapshotEvent) {
-  const primaryCitation = event.citations[0];
-  const impact = eventImpactNote(event).replace(/[。；;]+$/u, "");
-  return `<article class="event-mini">
-    ${pill(event.event_score_label, eventScoreTone(event.event_score_label))}
-    <strong>${escapeHtml(event.canonical_title)}</strong>
-    <span>${escapeHtml(`${event.source_count} 个来源 / ${event.source_families.length} 个来源家族 / ${event.related_item_ids.length} 条信号`)}</span>
-    <small>${escapeHtml(`产业影响：${impact}；下一步：${eventWatchNote(event)}`)}</small>
-    ${primaryCitation ? `<a class="source-link" href="${escapeAttr(primaryCitation.url)}">主证据：${escapeHtml(primaryCitation.source_name)} · ${escapeHtml(formatDate(primaryCitation.published_at))}</a>` : ""}
-  </article>`;
-}
 
-function renderEventMiniEn(event: SnapshotEvent, snapshot: Snapshot) {
-  const primaryCitation = event.citations[0];
-  return `<article class="event-mini">
-    ${pill(eventScoreLabelEn(event.event_score_label), eventScoreTone(event.event_score_label))}
-    <strong>${escapeHtml(eventEnglishTitle(event, snapshot))}</strong>
-    <span>${escapeHtml(`${countNounEn(event.source_count, "source")} / ${countNounEn(event.source_families.length, "source family", "source families")} / ${countNounEn(event.related_item_ids.length, "signal")}`)}</span>
-    <small>${escapeHtml(`Decision relevance: ${eventImpactNoteEn(event)} Next check: ${eventWatchNoteEn(event)}`)}</small>
-    ${primaryCitation ? `<a class="source-link" href="${escapeAttr(primaryCitation.url)}">Primary evidence: ${escapeHtml(primaryCitation.source_name)} · ${escapeHtml(formatDateEn(primaryCitation.published_at))}</a>` : ""}
-  </article>`;
-}
 
-function countNounEn(count: number, singular: string, plural = `${singular}s`) {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
 
-function eventImpactNote(event: SnapshotEvent) {
-  const text = `${event.canonical_title} ${event.summary_zh} ${event.category} ${event.source_families.join(" ")}`.toLowerCase();
-  const entity = primaryEventEntity(event);
-  const evidence = eventEvidenceProfile(event);
-  const category = eventDecisionCategory(event, text);
-
-  if (category === "benchmark") {
-    return `${entity} 的外部评价或基准信号正在变化，适合用来校准采购 shortlist、竞品位置和能力叙事；当前证据强度：${evidence}。`;
-  }
-
-  if (category === "business") {
-    return `${entity} 出现企业落地或组织采用信号，重点影响采购案例、合规部署和同类客户转化；当前证据强度：${evidence}。`;
-  }
-
-  if (category === "model_release") {
-    return `${entity} 的版本或模型能力边界发生变化，可能影响升级节奏、兼容性测试和下游能力评估；当前证据强度：${evidence}。`;
-  }
-
-  if (category === "product_update") {
-    return `${entity} 的产品能力或 API 接口发生变化，优先评估开发者迁移成本、接口兼容性和治理能力；当前证据强度：${evidence}。`;
-  }
-
-  if (category === "open_source") {
-    return `${entity} 的开源或 SDK 生态出现更新，可能改变工程团队依赖版本、部署路径和集成风险；当前证据强度：${evidence}。`;
-  }
-
-  if (category === "agent") {
-    return `${entity} 相关智能体或工作流版图出现变化，重点观察产品整合、能力迁移和生态入口变化；当前证据强度：${evidence}。`;
-  }
-
-  if (category === "research") {
-    return `${entity} 相关研究信号可能影响技术路线或评测方法，适合跟踪是否被产品、开源实现或基准采用；当前证据强度：${evidence}。`;
-  }
-
-  if (category === "infrastructure") {
-    return `${entity} 指向基础设施、工具链或部署依赖变化，可能影响工程稳定性、运维成本和集成路径；当前证据强度：${evidence}。`;
-  }
-
-  if (category === "safety") {
-    return `${entity} 出现安全、风险或治理相关信号，适合评估是否改变使用边界、审核要求和组织责任；当前证据强度：${evidence}。`;
-  }
-
-  if (category === "regulation") {
-    return `${entity} 涉及政策或监管环境变化，可能影响合规优先级、市场进入节奏和产品责任边界；当前证据强度：${evidence}。`;
-  }
-
-  if (category === "opinion") {
-    return `${entity} 当前更像观点、访谈或社区叙事信号，价值在于提示关注方向，而不是直接形成事实结论；当前证据强度：${evidence}。`;
-  }
-
-  return `${entity} 出现新的公开产业信号，适合先作为观察项，等待更多来源确认后再上升为趋势判断；当前证据强度：${evidence}。`;
-}
-
-function eventWatchNote(event: SnapshotEvent) {
-  const text = `${event.canonical_title} ${event.summary_zh} ${event.category}`.toLowerCase();
-  const entity = primaryEventEntity(event);
-  const category = eventDecisionCategory(event, text);
-  const sourceAction =
-    event.source_count <= 1
-      ? "补第二来源或官方原文"
-      : event.source_families.length <= 1
-        ? "补充跨家族报道并核实独立性"
-        : "观察多来源叙事是否收敛";
-  const citationAction = event.citations.length <= 1 ? "补引用链" : "对比引用间是否有冲突";
-
-  if (category === "benchmark") {
-    return `${sourceAction}，并核查 ${entity} 的评价口径、样本范围和竞品对照，避免把营销评级当能力结论。`;
-  }
-
-  if (category === "business") {
-    return `${sourceAction}，再看部署范围、付费席位、治理限制和后续客户案例，确认是否从试点变成规模采用。`;
-  }
-
-  if (category === "model_release") {
-    return `${sourceAction}，再检查 release notes、破坏性变更、性能样例和社区 issue，确认是否值得升级。`;
-  }
-
-  if (category === "product_update") {
-    return `${sourceAction}，再看迁移指南、示例代码、弃用项和安全/审核能力是否影响现有集成。`;
-  }
-
-  if (category === "open_source") {
-    return `${sourceAction}，再看 changelog、依赖兼容、issue 反馈和采用速度，避免只按版本号判断重要性。`;
-  }
-
-  if (category === "agent") {
-    return `${sourceAction}，再跟踪产品整合时间线、团队/技术迁移和是否影响现有开发者入口。`;
-  }
-
-  if (category === "research") {
-    return `${sourceAction}，再看是否有代码、复现实验、基准引用或产品吸收，避免把早期论文直接当产业趋势。`;
-  }
-
-  if (category === "infrastructure") {
-    return `${sourceAction}，再看部署文档、兼容矩阵、稳定性记录和迁移成本，确认是否会影响现有技术栈。`;
-  }
-
-  if (category === "safety") {
-    return `${sourceAction}，再核查风险定义、缓解措施、评测口径和责任边界，避免把安全声明当作已验证能力。`;
-  }
-
-  if (category === "regulation") {
-    return `${sourceAction}，再确认司法辖区、执行时间线、适用对象和合规成本，避免把政策信号误读为即时产品变化。`;
-  }
-
-  if (category === "opinion") {
-    return `${sourceAction}，再看是否出现官方路线图、产品动作或独立事实来源，避免把观点热度当作趋势证据。`;
-  }
-
-  if (event.source_count <= 1) {
-    return `${sourceAction}，同时${citationAction}，再决定是否扩大解读。`;
-  }
-
-  if (event.source_families.length <= 1) {
-    return `${sourceAction}，同时跟踪 ${entity} 相关实体是否出现后续动作。`;
-  }
-
-  return `继续跟踪时间线、引用来源变化和 ${entity} 相关实体的新动作。`;
-}
-
-function primaryEventEntity(event: SnapshotEvent) {
-  const title = event.canonical_title.toLowerCase();
-  const normalizedTitle = entityMatchText(title);
-  const titleTokens = meaningfulTitleTokens(title);
-  const genericEntities = new Set(["ai", "agent", "agents", "artificial intelligence", "model", "models", "research", "safety", "人工智能", "安全", "智能体", "模型", "研究"]);
-  const titleMatchedEntity = event.related_entities.find((entity) => {
-    const normalized = entityMatchText(entity);
-    return normalized.length >= 3 && !genericEntities.has(normalized) && normalizedTitle.includes(normalized);
-  });
-
-  if (titleMatchedEntity) {
-    return entityDisplayLabel(publicText(titleMatchedEntity));
-  }
-
-  const tokenMatchedEntity = event.related_entities.find((entity) => {
-    const normalized = entity.toLowerCase();
-    return !genericEntities.has(entityMatchText(entity)) && titleTokens.some((token) => token.length >= 4 && normalized.includes(token));
-  });
-
-  return tokenMatchedEntity ? entityDisplayLabel(publicText(tokenMatchedEntity)) : "该事件";
-}
-
-function primaryEventEntityEn(event: SnapshotEvent) {
-  const entity = primaryEventEntity(event);
-  if (entity === "该事件" || entity === labelize(event.category)) return "This event";
-  const originalEntity = event.related_entities.find((candidate) => entityDisplayLabel(candidate) === entity) ?? entity;
-  const directIndex = event.canonical_title.toLowerCase().indexOf(originalEntity.toLowerCase());
-  if (directIndex >= 0) return event.canonical_title.slice(directIndex, directIndex + originalEntity.length);
-  return entityLabelEn(entity);
-}
-
-function entityMatchText(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function eventDecisionCategory(event: SnapshotEvent, text: string) {
-  if (/lawsuit|litigation|sues?|court|antitrust|copyright|知识产权|诉讼|起诉|法院|监管|政策/.test(text)) return "regulation";
-  if (/vulnerabilit|exploit|breach|prompt injection|安全|漏洞|攻击|泄露/.test(text)) return "safety";
-
-  switch (event.category) {
-    case "agent":
-    case "benchmark":
-    case "business":
-    case "model_release":
-    case "open_source":
-    case "product_update":
-    case "research":
-      return event.category;
-    case "funding":
-      return "business";
-    case "infrastructure":
-    case "tooling":
-      return "infrastructure";
-    case "media_interview":
-    case "opinion":
-      return "opinion";
-    case "policy":
-    case "regulation":
-      return "regulation";
-    case "safety":
-      return "safety";
-    case "other":
-      return "other";
-  }
-
-  if (/benchmark|基准|leader|gartner|评测|ranking/.test(text)) return "benchmark";
-  if (/sdk|api|moderation|responses|tool|工具/.test(text)) return "product_update";
-  if (/github|开源|repository|transformers|pydantic/.test(text)) return "open_source";
-  if (/agent|智能体|codex|acquire|收购|workflow/.test(text)) return "agent";
-  if (/research|paper|arxiv|论文|研究/.test(text)) return "research";
-  if (/release|发布|版本|v\d|model|模型/.test(text)) return "model_release";
-  if (/enterprise|企业|employee|员工|采购|rollout|部署|business|融资/.test(text)) return "business";
-
-  return "other";
-}
 
 function entityDisplayLabel(value: string) {
   const aliases: Record<string, string> = {
@@ -2103,39 +1474,13 @@ function entityDisplayLabel(value: string) {
   return aliases[value.trim().toLowerCase()] ?? value;
 }
 
-function meaningfulTitleTokens(title: string) {
-  const stopwords = new Set(["发布", "版本", "brings", "named", "leader", "enterprise", "employees", "release", "version", "before", "after", "model", "behavior"]);
-  return title
-    .split(/[^a-z0-9\u4e00-\u9fa5]+/i)
-    .map((token) => token.trim().toLowerCase())
-    .filter((token) => token.length >= 3 && !stopwords.has(token));
-}
 
-function eventEvidenceProfile(event: SnapshotEvent) {
-  const sourceProfile =
-    event.source_count > 1
-      ? `${event.source_count} 个来源`
-      : "单来源";
-  const familyProfile =
-    event.source_families.length > 1
-      ? `${event.source_families.length} 类来源`
-      : event.source_families[0] ?? "来源类型待补";
-  const citationProfile = event.citations.length > 1 ? `${event.citations.length} 条引用` : "1 条引用";
 
-  return `${sourceProfile} / ${familyProfile} / ${citationProfile}`;
-}
 
-function renderEventTimelineRow(entry: SnapshotEvent["timeline"][number]) {
-  return `<a class="timeline-row" href="${escapeAttr(entry.url)}">
-    <time>${escapeHtml(formatDate(entry.timestamp))}</time>
-    <strong>${escapeHtml(entry.title)}</strong>
-    <span>${escapeHtml(entry.source_name)}</span>
-  </a>`;
-}
 
-function renderEventCitation(citation: SnapshotEvent["citations"][number]) {
-  return `<a class="citation" href="${escapeAttr(citation.url)}"><span>${escapeHtml(citation.source_name)}</span><strong>${escapeHtml(citation.title)}</strong><small>${escapeHtml(formatDate(citation.published_at))}</small></a>`;
-}
+
+
+
 
 function renderTimelineEntry(entry: SnapshotTimelineEntry) {
   return `<a class="timeline-row" href="${escapeAttr(entry.url)}">
@@ -2160,7 +1505,7 @@ function renderEntityCard(entity: EntitySummary, reportLinkedEntities: Set<strin
       ${linkedToReport ? pill("报告已关联", "success") : pill("待报告引用", "neutral")}
     </div>
     <h2><a href="${escapeAttr(href)}">${escapeHtml(entity.name)}</a></h2>
-    <p>${escapeHtml(publicText(insight.reasons[0] ?? "需要继续观察公开证据变化。"))}</p>
+    <p>${escapeHtml(publicText(insight.reasons[0] ?? "当前证据仍少于 2 个独立来源。"))}</p>
     <dl class="event-meta">
       ${rail("公开信号", String(entity.totalSignals))}
       ${rail("来源覆盖", String(entity.sourceCounts.size))}
@@ -2297,7 +1642,6 @@ function renderEntityEvidenceItem(item: RetrievalRadarItem) {
       </div>
       <h3><a href="${escapeAttr(item.url)}">${escapeHtml(publicText(item.title))}</a></h3>
       <p>${escapeHtml(publicText(item.summary_zh || item.summary_en || "暂无公开摘要。"))}</p>
-      ${item.why_it_matters ? `<p class="note"><strong>为什么重要：</strong> ${escapeHtml(publicText(item.why_it_matters))}</p>` : ""}
       <div class="pill-row">${item.categories.map((category) => pill(labelize(category), "evidence")).join("")}${item.tags.slice(0, 4).map((tag) => pill(tag, "neutral")).join("")}</div>
     </div>
     <dl>${rail("来源", item.source_name)}${rail("发布时间", formatDate(item.published_at))}${rail("层级", item.source_tier)}</dl>
@@ -2366,7 +1710,8 @@ function entityKey(entity: Pick<EntitySummary, "name" | "type">) {
 }
 
 function entityStaticSlug(entity: Pick<EntitySummary, "name" | "type">) {
-  return encodeURIComponent(entityRouteId(entity)).replace(/%/g, "_");
+  const slug = encodeURIComponent(entityRouteId(entity)).replace(/%/g, "_").replace(/[. ]+$/g, "");
+  return slug || "entity";
 }
 
 function entityTypeLabel(type: string) {
@@ -2397,50 +1742,18 @@ function watchTone(label: string): "caution" | "evidence" | "neutral" | "success
 function renderRadarItem(item: SnapshotItem, snapshot: Snapshot) {
   const family = sourceFamily(item);
   const search = [item.title, item.source_name, item.status, item.categories.join(" "), item.tags.join(" "), item.summary_en, item.summary_zh].join(" ").toLowerCase();
-  const timestampLabel = item.published_at ? "发布时间" : item.collected_at ? "采集时间" : "处理时间";
-  const timestamp = item.published_at ?? "";
+  const timestamp = item.published_at ?? item.collected_at;
   const freshness = freshnessBucket(timestamp);
   const relatedEvent = snapshot.event_clusters.find((event) => event.related_item_ids.includes(item.id));
-  const summary = chineseProductText(
-    item.summary_zh,
-    relatedEvent
-      ? chineseProductText(relatedEvent.summary_zh, "该事件暂无中文摘要，请结合原标题和公开来源核对。")
-      : "该信号暂无中文摘要，请结合原标题和公开来源核对。"
-  );
-  const whyItMatters = chineseProductText(
-    item.why_it_matters,
-    relatedEvent ? eventImpactNote(relatedEvent) : "该信号未进入事件层，仅保留作逐条审计，使用前需回到公开来源核对。"
-  );
+  const summary = item.summary_zh?.trim() || relatedEvent?.summary_zh?.trim() || "";
 
   return `<article class="radar-row" data-category="${escapeAttr(`${item.categories.join(" ")} ${item.categories.map(labelize).join(" ")}`)}" data-family="${escapeAttr(family)}" data-freshness="${freshness}" data-search="${escapeAttr(search)}" data-status="${escapeAttr(item.status)}">
-    <div>
-      <div class="pill-row">${pill(statusLabel(item.status), statusTone(item.status))}${pill(family, "neutral")}${pill(`综合 ${item.scores.overall.toFixed(2)}`, "evidence")}${pill(`置信度 ${formatPercent(item.confidence)}`, "success")}</div>
-      <h2><a href="${escapeAttr(item.url)}">${escapeHtml(item.title)}</a></h2>
-      <p>${escapeHtml(summary)}</p>
-      <p class="note"><strong>为什么重要：</strong> ${escapeHtml(whyItMatters)}</p>
-      <div class="pill-row">${item.categories.map((category) => pill(labelize(category), "evidence")).join("")}${item.tags.slice(0, 5).map((tag) => pill(tag, "neutral")).join("")}</div>
-    </div>
-    <aside><dl class="rail">${rail("来源", item.source_name)}${rail("层级", item.source_tier)}${rail(timestampLabel, formatDate(timestamp))}${rail("处理时间", formatDate(item.processed_at))}</dl><a class="source-link" href="${escapeAttr(item.url)}">打开引用</a></aside>
+    <div class="story-time"><time>${escapeHtml(feedTime(timestamp, "zh"))}</time><span></span></div>
+    <div class="story-content"><div class="story-meta"><span>${escapeHtml(item.source_name)}</span><strong>${Math.round(item.scores.overall * 100)}</strong></div><h2><a href="${escapeAttr(item.url)}">${escapeHtml(item.title)}</a></h2>${summary ? `<p>${escapeHtml(summary)}</p>` : ""}<div class="story-foot"><span>${escapeHtml(item.categories.map(labelize).slice(0, 2).join(" · "))}</span><span>${escapeHtml(statusLabel(item.status))}</span></div></div>
   </article>`;
 }
 
-function renderCitation(item: SnapshotItem) {
-  return `<a class="citation" href="${escapeAttr(item.url)}"><span>${escapeHtml(item.source_name)}</span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(formatDate(item.published_at))}</small></a>`;
-}
 
-function renderCompactReport(report: SnapshotReport) {
-  const publicationLabel = isFormalSnapshotReport(report) ? "正式报告" : "证据草稿";
-  const publicationTone = isFormalSnapshotReport(report) ? "success" : "caution";
-
-  return `<article class="compact-row">
-    <div>${pill(reportTypeLabel(report.report_type), "evidence")}${pill(publicationLabel, publicationTone)}${qualityPill(report)}${pill(statusLabel(report.status), statusTone(report.status))}${pill(modeLabel(report.mode), "neutral")}<h3>${escapeHtml(publicText(report.title))}</h3><p>${escapeHtml(publicText(report.summary))}</p></div>
-    <dl>${rail("可用条目", String(report.usable_item_count ?? report.source_item_count))}${rail("引用数", String(report.citation_count ?? report.citations.length))}${rail("来源/类别", `${report.distinct_source_count ?? 0} / ${report.category_count ?? 0}`)}${rail("保存时间", formatDate(report.saved_at ?? report.generated_at))}</dl>
-  </article>`;
-}
-
-function isFormalSnapshotReport(report: SnapshotReport) {
-  return report.mode === "saved_report" && (report.status === "reviewed" || report.status === "published");
-}
 
 function snapshotItemsForTraceability(items: SnapshotItem[]): RetrievalRadarItem[] {
   return items.map((item) => ({
@@ -2498,136 +1811,16 @@ function snapshotReportTraceDocument(report: SnapshotReport): ReportTraceDocumen
   };
 }
 
-function renderReport(report: SnapshotReport, snapshot: Snapshot, traceItems: RetrievalRadarItem[]) {
-  const quality = report.report_type === "daily" ? snapshot.report_quality_summary.daily : snapshot.report_quality_summary.weekly;
-  const includedEvents = (quality?.top_event_ids ?? [])
-    .map((id) => snapshot.event_clusters.find((event) => event.event_cluster_id === id))
-    .filter((event): event is SnapshotEvent => Boolean(event));
-  const corroboratedEvents = includedEvents.filter((event) => event.source_count > 1).length;
-  const crossFamilyEvents = includedEvents.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
-  const releaseReady = report.status !== "needs_review";
-  const reportTraceDocument = snapshotReportTraceDocument(report);
-  const traceability = reportEntityTraceability(reportTraceDocument, traceItems, 6);
-  const sectionTraceability = reportSectionTraceability(reportTraceDocument, traceItems, 4);
-  const executiveSummary = report.executive_summary && publicText(report.executive_summary).trim() !== publicText(report.summary).trim()
-    ? publicText(report.executive_summary)
-    : "";
 
-  return `<article class="report-card">
-    <div class="section-heading"><div><div class="pill-row">${pill(releaseReady ? "编辑控制发布" : "证据草稿，尚未发布就绪", releaseReady ? "success" : "caution")}${pill(reportTypeLabel(report.report_type), "evidence")}${qualityPill(report)}${pill(statusLabel(report.status), statusTone(report.status))}${pill(modeLabel(report.mode), "neutral")}${pill(`可用 ${report.usable_item_count ?? report.source_item_count}`, "neutral")}${pill(`引用 ${report.citation_count ?? report.citations.length}`, "neutral")}${pill(`来源 ${report.distinct_source_count ?? 0}`, "neutral")}${pill(`类别 ${report.category_count ?? 0}`, "neutral")}</div><h2>${escapeHtml(publicText(report.title))}</h2></div><span>${escapeHtml(formatDate(report.saved_at ?? report.generated_at))}</span></div>
-    <p class="report-summary">${escapeHtml(publicText(report.summary))}</p>
-    ${!report.quality_gate_passed && report.report_type === "daily" ? `<div class="callout warning"><strong>今日数据不足，需补充信源或等待下一轮刷新</strong></div>` : ""}
-    ${executiveSummary ? `<p>${escapeHtml(executiveSummary)}</p>` : ""}
-    <dl class="inline-defs">${rail("基础证据门", qualityLabel(report))}${rail("跨家族报道/同家族多源/单源事件", `${crossFamilyEvents} / ${Math.max(0, corroboratedEvents - crossFamilyEvents)} / ${Math.max(0, includedEvents.length - corroboratedEvents)}`)}${rail("发布就绪", report.status !== "needs_review" ? "由编辑状态控制" : "未就绪：来源独立性尚未建模，且仍待人工复核")}${rail("事件数", String(includedEvents.length))}${rail("可用/引用/来源/类别", `${report.usable_item_count ?? report.source_item_count} / ${report.citation_count ?? report.citations.length} / ${report.distinct_source_count ?? 0} / ${report.category_count ?? 0}`)}${rail("时间窗口", `${formatDate(report.time_window.start)} 至 ${formatDate(report.time_window.end)}`)}${rail("数据来源", sourceLabel(report.data_source))}${rail("缺失证据", String(report.missing_evidence.length))}</dl>
-    ${includedEvents.length > 0 ? `<h3>纳入的精选事件</h3><div class="event-mini-list">${includedEvents.map(renderEventMini).join("")}</div>` : ""}
-    ${renderReportTraceability(traceability, sectionTraceability)}
-    ${!report.quality_gate_passed && report.quality_gate_reasons.length > 0 ? `<h3>为什么报告偏薄</h3>${noteList(report.quality_gate_reasons)}` : ""}
-    ${report.sections.map((section, index) => renderReportSection(section, sectionTraceability[index])).join("")}
-    ${report.citations.length > 0 ? `<div class="citation-grid">${report.citations.map(renderReportCitation).join("")}</div>` : ""}
-    ${report.caveats.length > 0 ? `<h3>局限</h3>${noteList(report.caveats)}` : ""}
-    ${report.missing_evidence.length > 0 ? `<h3>缺失证据</h3>${noteList(report.missing_evidence)}` : ""}
-    <details class="markdown"><summary>Markdown 导出</summary><pre>${escapeHtml(markdownForReport(report))}</pre></details>
-  </article>`;
-}
 
-function renderReportTraceability(
-  traceability: ReturnType<typeof reportEntityTraceability>,
-  sectionTraceability: ReportSectionTraceability[]
-) {
-  const coveredSections = sectionTraceability.filter((section) => section.entityTraces.length > 0).length;
 
-  return `<section class="trace-panel">
-    <div class="section-heading">
-      <div>
-        <h3>报告关联实体</h3>
-        <p>这些实体由报告公开引用回溯到雷达证据后生成；静态页只显示公开字段。</p>
-      </div>
-      <div class="pill-row">${pill(`${traceability.evidenceItems.length} 条证据`, "evidence")}${pill(`${traceability.entityTraces.length} 个实体`, traceability.entityTraces.length > 0 ? "success" : "caution")}${pill(`${coveredSections}/${sectionTraceability.length} 章节覆盖`, coveredSections > 0 ? "success" : "caution")}</div>
-    </div>
-    ${
-      traceability.entityTraces.length > 0
-        ? `<div class="entity-link-list">${traceability.entityTraces
-            .map((trace) => renderEntityTraceLink(trace))
-            .join("")}</div>`
-        : `<p class="note">当前报告没有可回溯到实体详情页的公开引用。</p>`
-    }
-  </section>`;
-}
 
-function renderReportSection(
-  section: SnapshotReport["sections"][number],
-  traceability: ReportSectionTraceability | undefined
-) {
-  return `<section class="report-section">
-    <h3>${escapeHtml(publicText(section.title))}</h3>
-    <p>${escapeHtml(publicText(section.summary))}</p>
-    ${section.bullets.length > 0 ? noteList(section.bullets) : ""}
-    ${traceability ? renderSectionTraceability(traceability) : ""}
-  </section>`;
-}
+void renderEnglishEntities;
+void renderEntities;
+void renderEntityDetail;
+void staticEntityDetailSummaries;
 
-function renderSectionTraceability(traceability: ReportSectionTraceability) {
-  return `<div class="section-trace">
-    <div class="pill-row">${pill("章节实体覆盖", "evidence")}${pill(`${traceability.evidenceItems.length} 证据`, "neutral")}${pill(`${traceability.entityTraces.length} 实体`, traceability.entityTraces.length > 0 ? "success" : "caution")}${pill(`${traceability.needsReviewCount} 待复核`, traceability.needsReviewCount > 0 ? "caution" : "success")}</div>
-    ${
-      traceability.entityTraces.length > 0
-        ? `<div class="entity-link-list compact">${traceability.entityTraces
-            .map((trace) => renderEntityTraceLink(trace))
-            .join("")}</div>`
-        : `<p class="note">本章节引用暂未回溯到可展示实体；发布前需要补齐 citation id 或公开证据。</p>`
-    }
-  </div>`;
-}
 
-function renderEntityTraceLink(trace: ReturnType<typeof reportEntityTraceability>["entityTraces"][number]) {
-  return `<a class="entity-chip" href="${escapeAttr(`../entities/${entityStaticSlug(trace.entity)}/`)}">
-    <strong>${escapeHtml(trace.entity.name)}</strong>
-    <span>${escapeHtml(`${trace.evidenceItemCount} 证据 / ${trace.sourceCount} 来源`)}</span>
-  </a>`;
-}
-
-function renderReportCitation(citation: SnapshotReport["citations"][number]) {
-  return `<a class="citation" href="${escapeAttr(citation.url)}"><span>${escapeHtml(citation.source_name)}</span><strong>${escapeHtml(citation.title)}</strong><small>${escapeHtml(formatDate(citation.published_at))}</small></a>`;
-}
-
-function markdownForReport(report: SnapshotReport) {
-  const lines = [
-    `# ${publicText(report.title)}`,
-    "",
-    publicText(report.summary),
-    "",
-    `- 类型: ${reportTypeLabel(report.report_type)}`,
-    `- 状态: ${statusLabel(report.status)}`,
-    `- 时间窗口: ${report.time_window.start} 至 ${report.time_window.end}`,
-    `- 来源条目: ${report.source_item_count}`,
-    `- 质量门禁: ${qualityLabel(report)}`,
-    `- 可用条目: ${report.usable_item_count ?? report.source_item_count}`,
-    `- 引用: ${report.citation_count ?? report.citations.length}`,
-    `- 独立来源: ${report.distinct_source_count ?? 0}`,
-    `- 类别: ${report.category_count ?? 0}`,
-    "",
-    ...report.sections.flatMap((section) => [
-      `## ${publicText(section.title)}`,
-      "",
-      publicText(section.summary),
-      "",
-      ...section.bullets.map((bullet) => `- ${publicText(bullet)}`),
-      ""
-    ]),
-    "## 局限",
-    "",
-    ...(report.caveats.length > 0 ? report.caveats.map((caveat) => `- ${publicText(caveat)}`) : ["- 未记录局限。"]),
-    "",
-    "## 质量门禁",
-    "",
-    ...(report.quality_gate_passed ? ["- 已通过。"] : report.quality_gate_reasons.map((reason) => `- ${publicText(reason)}`)),
-    "",
-    "## 引用",
-    "",
-    ...(report.citations.length > 0 ? report.citations.map((citation) => `- ${citation.title} (${citation.source_name}) ${citation.url}`) : ["- 未记录引用。"])
-  ];
-  return lines.join("\n");
-}
 
 function latestReportsByType(snapshotOrReports: Snapshot | SnapshotReport[]) {
   const reports = Array.isArray(snapshotOrReports) ? snapshotOrReports : snapshotOrReports.reports;
@@ -2637,16 +1830,17 @@ function latestReportsByType(snapshotOrReports: Snapshot | SnapshotReport[]) {
       reportsByType.set(report.report_type, report);
     }
   }
-  return Array.from(reportsByType.values());
+  return ["daily", "weekly"].flatMap((type) => {
+    const report = reportsByType.get(type);
+    return report ? [report] : [];
+  });
 }
 
 function compareSnapshotReports(left: SnapshotReport, right: SnapshotReport) {
-  const priority = reportDisplayPriority(right) - reportDisplayPriority(left);
-  if (priority !== 0) {
-    return priority;
-  }
+  const time = reportTime(right) - reportTime(left);
+  if (time !== 0) return time;
 
-  return reportTime(right) - reportTime(left);
+  return reportDisplayPriority(right) - reportDisplayPriority(left);
 }
 
 function reportDisplayPriority(report: SnapshotReport) {
@@ -2701,6 +1895,66 @@ function chineseEventSummary(event: SnapshotEvent) {
   );
 }
 
+function humanizeChineseHeadline(value: string) {
+  let headline = value.trim().replace(/^据报道[，,]\s*/u, "");
+  const release = headline.match(/^(.{2,20}?)发布了?([^，,]+)[，,]一种([^，,]+)[，,]/u);
+  if (release) {
+    headline = `${release[1]}发布${release[2]}：${release[3].replace(/的系统$/u, "")}`;
+  }
+
+  const namedTechnique = headline.match(/^(.{2,24}?)\s*开发了一种名为“([^”]+)”的技术[，,](.+)$/u);
+  if (namedTechnique) {
+    const finding = namedTechnique[3].split(/[，,]/u)[0].replace(/^首次清晰揭示了?/u, "揭示");
+    headline = `${namedTechnique[1]}用“${namedTechnique[2]}”${finding}`;
+  }
+
+  const tutorial = headline.match(/^(.{2,20}?)发布了?关于(.+?)的教程$/u);
+  if (tutorial) headline = `${tutorial[1]}发布${tutorial[2]}教程`;
+
+  const lawsuit = headline.match(/^(.+?)起诉(.+?)[，,]指控其在招聘面试中要求.+?员工携带未发布的硬件组件和样品/u);
+  if (lawsuit) headline = `${lawsuit[1]}起诉${lawsuit[2]}：指控其面试时索要未发布硬件样品`;
+
+  const survey = headline.match(/^(.+?)对(\d+)家企业调查发现[，,](.+)$/u);
+  if (survey) headline = `${survey[1].replace(/\s+Pulse Research$/iu, "")}对${survey[2]}家企业调查：${survey[3].split(/[，,：:]/u)[0]}`;
+
+  const product = headline.match(/^(.{2,20}?)推出了?([^，,]+)[，,]这是一个由(.+?)驱动的AI工具/u);
+  if (product) headline = `${product[1]}推出${product[2]}：由${product[3]}驱动`;
+
+  return headline.replace(/发布了/u, "发布").replace(/推出了/u, "推出");
+}
+
+function chineseEventTitle(event: SnapshotEvent) {
+  const canonical = publicText(event.canonical_title).trim();
+  const compact = compactChineseEventTitle(event, canonical, chineseEventSummary(event));
+  if (compact) return compact;
+  if (/\p{Script=Han}/u.test(canonical)) return canonical;
+
+  const sentence = humanizeChineseHeadline(chineseEventSummary(event).replace(/\s+/g, " ").split(/[。！？]/u)[0]?.trim() ?? "");
+  return shortenChineseTitle(sentence || canonical);
+}
+
+function compactChineseEventTitle(event: SnapshotEvent, canonical: string, summary: string) {
+  const text = `${canonical} ${summary}`;
+  const entities = event.related_entities.map((entity) => entity.trim()).filter(Boolean);
+  const mainEntity = entities.find((entity) => /OpenAI|Anthropic|Google|DeepMind|Meta|Microsoft|NVIDIA|DeepSeek|Qwen|Kimi|Claude|Gemini|GPT|Codex|Apple/i.test(entity)) ?? entities[0];
+  const product = entities.find((entity) => /GPT-Red|Codex Micro|Claude|Gemini|DeepSeek|Qwen|Kimi|Jacobian|workspace|keyboard/i.test(entity));
+
+  if (/GPT-Red/i.test(text)) return "OpenAI 发布 GPT-Red 红队系统";
+  if (/Codex Micro|keyboard|键盘/i.test(text)) return "OpenAI 推出 Codex 硬件键盘";
+  if (/Jacobian|hidden space|global workspace|雅可比|全局工作空间/i.test(text)) return "Anthropic 披露 Claude 内部表征研究";
+  if (/lawsuit|起诉|法律纠纷|trade secret|商业机密/i.test(text) && mainEntity) return `${mainEntity} 相关 AI 法律纠纷升级`;
+  if (/release|launch|发布|推出|上线/i.test(text) && mainEntity && product && mainEntity !== product) return shortenChineseTitle(`${mainEntity} 发布 ${product}`);
+  if (/benchmark|基准/i.test(text) && mainEntity) return shortenChineseTitle(`${mainEntity} 基准/评测更新`);
+  if (/research|paper|研究|论文/i.test(text) && mainEntity) return shortenChineseTitle(`${mainEntity} 发布研究进展`);
+
+  return "";
+}
+
+function shortenChineseTitle(value: string) {
+  const normalized = value.replace(/\s+/g, " ").replace(/[。！？；].*$/u, "").trim();
+  return normalized.length > 34 ? `${normalized.slice(0, 33)}…` : normalized;
+}
+
 function freshnessBucket(timestamp: string) {
   const ageMs = Date.now() - Date.parse(timestamp);
   if (!Number.isFinite(ageMs)) return "unknown";
@@ -2710,106 +1964,17 @@ function freshnessBucket(timestamp: string) {
   return "archive";
 }
 
-function freshnessLabel(bucket: string) {
-  const labels: Record<string, string> = { "24h": "24 小时内", "7d": "2-7 天", "30d": "8-30 天", archive: "历史（30 天外）", unknown: "发布时间未知" };
-  return labels[bucket] ?? bucket;
-}
 
-function freshnessLabelEn(bucket: string) {
-  const labels: Record<string, string> = { "24h": "Within 24h", "7d": "2-7 days", "30d": "8-30 days", archive: "Archive (>30 days)", unknown: "Publication time unknown" };
-  return labels[bucket] ?? bucket;
-}
 
-function freshnessBuckets(items: SnapshotItem[], locale: "en" | "zh"): Array<[string, number]> {
-  const counts = new Map<string, number>([["24h", 0], ["7d", 0], ["30d", 0], ["archive", 0], ["unknown", 0]]);
-  for (const item of items) {
-    const bucket = freshnessBucket(item.published_at ?? "");
-    counts.set(bucket, (counts.get(bucket) ?? 0) + 1);
-  }
-  return [...counts.entries()].map(([bucket, count]) => [locale === "en" ? freshnessLabelEn(bucket) : freshnessLabel(bucket), count]);
-}
+
+
+
 
 function distribution(title: string, entries: Array<[string, number]>) {
   return `<section><h3>${escapeHtml(title)}</h3><div class="tag-block">${entries.map(([label, value]) => pill(`${labelize(label)} ${value}`, "neutral")).join("")}</div></section>`;
 }
 
-function formatDistribution(entries: Record<string, number>) {
-  const text = Object.entries(entries)
-    .filter(([, count]) => count > 0)
-    .slice(0, 4)
-    .map(([label, count]) => `${labelize(label)} ${count}`)
-    .join(" / ");
 
-  return text || "无";
-}
-
-function coveragePanel(snapshot: Snapshot) {
-  return `
-    <section class="panel">
-      <div class="section-heading">
-        <h2>公开数据覆盖</h2>
-      </div>
-      <dl class="rail">
-        ${coverageRailRows(snapshot)}
-      </dl>
-      ${Object.keys(snapshot.coverage.failure_families ?? {}).length > 0 ? `<div class="distribution">${distribution("失败/警告/排除（类别可重叠）", Object.entries(snapshot.coverage.failure_families ?? {}))}</div>` : ""}
-    </section>
-  `;
-}
-
-function reportCoveragePanel(snapshot: Snapshot, reports: SnapshotReport[]) {
-  const daily = reports.find((report) => report.report_type === "daily");
-  const weekly = reports.find((report) => report.report_type === "weekly");
-  const formalReports = snapshot.reports.filter(isFormalSnapshotReport);
-  const evidenceDrafts = snapshot.reports.filter((report) => !isFormalSnapshotReport(report));
-  const missingEvidenceCount = reports.reduce((count, report) => count + report.missing_evidence.length, 0);
-  const blockedDrafts = reports.filter((report) => !report.quality_gate_passed).length;
-  const corroboratedEvents = snapshot.event_clusters.filter((event) => event.source_count > 1).length;
-  const crossFamilyEvents = snapshot.event_clusters.filter((event) => event.source_count > 1 && event.source_families.length > 1).length;
-
-  return `
-    <section class="panel">
-      <div class="section-heading">
-        <h2>报告状态模型</h2>
-      </div>
-      ${noteList([
-        "正式报告用于读取结论；草稿候选只说明证据已经被组织，但仍不能当作发布结论。",
-        "基础证据门只衡量数量、引用、来源和类别广度，不代表每个事件都已独立交叉确认。",
-        "同家族多条报道与跨家族多源报道分开展示；跨家族不等于来源独立，缺失证据决定下一步应补来源、补引用，还是缩小报告口径。"
-      ])}
-      <dl class="rail">
-        ${rail("正式报告", String(formalReports.length))}
-        ${rail("草稿候选", String(evidenceDrafts.length))}
-        ${rail("质量未过草稿", String(blockedDrafts))}
-        ${rail("缺失证据项", String(missingEvidenceCount))}
-        ${rail("多条报道/跨家族报道/全部事件", `${corroboratedEvents} / ${crossFamilyEvents} / ${snapshot.event_count}`)}
-        ${rail("发布就绪", formalReports.length > 0 ? "由编辑状态控制" : "未就绪：暂无正式报告")}
-        ${rail("日报基础门", daily ? qualityLabel(daily) : "待补")}
-        ${rail("日报证据/引用/来源/类别", `${daily?.usable_item_count ?? daily?.source_item_count ?? 0} / ${daily?.citation_count ?? daily?.citations.length ?? 0} / ${daily?.distinct_source_count ?? 0} / ${daily?.category_count ?? 0}`)}
-        ${rail("周报基础门", weekly ? qualityLabel(weekly) : "待补")}
-        ${rail("周报证据/引用/来源/类别", `${weekly?.usable_item_count ?? weekly?.source_item_count ?? 0} / ${weekly?.citation_count ?? weekly?.citations.length ?? 0} / ${weekly?.distinct_source_count ?? 0} / ${weekly?.category_count ?? 0}`)}
-      </dl>
-    </section>
-  `;
-}
-
-function coverageRailRows(snapshot: Snapshot) {
-  return [
-    rail("公开数据集", "公开只读"),
-    rail("来源总数", String(snapshot.coverage.sources_total)),
-    rail("自动合格来源", String(snapshot.coverage.automated_eligible_sources)),
-    rail("本轮定向刷新已尝试来源", String(snapshot.coverage.attempted_sources)),
-    rail("有公开条目的来源", String(snapshot.coverage.sources_with_public_items ?? "待补")),
-    rail("公开记录", String(snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items)),
-    rail("可见信号", String(snapshot.radar_items.length)),
-    rail("未进入展示", String(Math.max(0, (snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items) - snapshot.radar_items.length))),
-    rail("失败/跳过来源", String(snapshot.coverage.failed_sources + snapshot.coverage.skipped_sources)),
-    rail("来源公开可见率", formatNullablePercent(snapshot.coverage.source_public_visibility)),
-    rail("雷达公开可见率", formatNullablePercent(snapshot.coverage.radar_to_public_visibility)),
-    rail("内容发布时间截至", formatDate(snapshot.freshness.latest_timestamp)),
-    rail("快照生成", formatDate(snapshot.generated_at))
-  ].join("");
-}
 
 function sourceHealthPanel(snapshot: Snapshot) {
   const health = snapshot.source_health_summary;
@@ -2871,9 +2036,7 @@ function metric(label: string, value: number | null) {
   return `<div><dt>${escapeHtml(label)}</dt><dd>${value === null ? "待补" : value.toLocaleString("en-US")}</dd></div>`;
 }
 
-function metricMini(label: string, value: number | string | null) {
-  return `<div class="mini-metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value ?? "待补"))}</strong></div>`;
-}
+
 
 function rail(label: string, value: string | number | null) {
   return `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value ?? "待补"))}</dd>`;
@@ -2929,34 +2092,11 @@ function reportTypeLabel(type: string) {
   return type;
 }
 
-function modeLabel(mode: string) {
-  const labels: Record<string, string> = {
-    local_preview: "本地预览",
-    saved_candidate: "已保存候选",
-    saved_report: "已保存报告"
-  };
-  return labels[mode] ?? mode;
-}
 
-function qualityPill(report: SnapshotReport) {
-  return pill(qualityLabel(report), report.quality_gate_passed ? "neutral" : "caution");
-}
 
-function qualityLabel(report: SnapshotReport) {
-  return report.quality_gate_passed ? "基础证据门通过" : "需要更多数据";
-}
 
-function eventConfirmationLabel(event: SnapshotEvent) {
-  if (event.source_count > 1 && event.source_families.length > 1) return "跨家族多源报道";
-  if (event.source_count > 1) return "同家族多源复述";
-  return "单源观察";
-}
 
-function eventConfirmationLabelEn(event: SnapshotEvent) {
-  if (event.source_count > 1 && event.source_families.length > 1) return "Cross-family coverage";
-  if (event.source_count > 1) return "Multiple reports, one family";
-  return "Single-source observation";
-}
+
 
 function eventConfirmationFilterValue(event: SnapshotEvent) {
   if (event.source_count > 1 && event.source_families.length > 1) return "cross";
@@ -2964,9 +2104,7 @@ function eventConfirmationFilterValue(event: SnapshotEvent) {
   return "single";
 }
 
-function eventConfirmationTone(event: SnapshotEvent): "caution" | "evidence" | "success" {
-  return event.source_count > 1 ? "evidence" : "caution";
-}
+
 
 function eventStatus(event: SnapshotEvent, snapshot: Snapshot) {
   const relatedIds = new Set(event.related_item_ids);
@@ -2984,12 +2122,7 @@ function statusTone(status: string): "caution" | "evidence" | "neutral" | "succe
   return "neutral";
 }
 
-function eventScoreTone(label: SnapshotEvent["event_score_label"]): "caution" | "evidence" | "neutral" | "success" {
-  if (label === "高优先级") return "success";
-  if (label === "关注") return "evidence";
-  if (label === "观察") return "neutral";
-  return "caution";
-}
+
 
 function noteList(items: string[]) {
   return `<ul class="note-list">${items.map((item) => `<li>${escapeHtml(publicText(item))}</li>`).join("")}</ul>`;
@@ -3159,20 +2292,18 @@ function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
-function formatNullablePercent(value: number | null) {
-  return value === null ? "待补" : formatPercent(value);
-}
+
 
 function snapshotCuratedTitle(snapshot: Snapshot) {
-  return curatedWindowIsCurrent(snapshot) ? "AI 行业雷达今日精选" : "AI 行业雷达今日精选（含前序证据）";
+  return curatedWindowIsCurrent(snapshot) ? "今日行业精选" : "本轮行业精选";
 }
 
 function snapshotWindowLabel(snapshot: Snapshot) {
-  return curatedWindowIsCurrent(snapshot) ? "今天" : "本轮公开快照";
+  return curatedWindowIsCurrent(snapshot) ? "今天" : "最近更新中";
 }
 
 function snapshotPeriodLabel(snapshot: Snapshot) {
-  return curatedWindowIsCurrent(snapshot) ? "过去 24 小时" : "最近可见窗口";
+  return curatedWindowIsCurrent(snapshot) ? "过去 24 小时" : "最近一轮更新中";
 }
 
 function compareHomepageEvents(left: SnapshotEvent, right: SnapshotEvent) {
@@ -3259,38 +2390,7 @@ function resolveBuildProvenance() {
   };
 }
 
-function readerFacingCaveats(snapshot: Snapshot) {
-  const filtered = snapshot.caveats
-    .map(publicText)
-    .filter((caveat) => !isRunLogCaveat(caveat));
-  const runLogCount = snapshot.caveats.length - filtered.length;
-  const summary =
-    runLogCount > 0
-      ? [`已折叠 ${runLogCount} 条数据刷新运行记录；读者页只保留数据来源、覆盖范围、限制和质量门禁摘要。`]
-      : [];
 
-  return [...summary, ...filtered];
-}
-
-function isRunLogCaveat(value: string) {
-  const normalized = value.toLowerCase();
-  return (
-    normalized.includes("activation_") ||
-    normalized.includes("live deepseek activation") ||
-    normalized.includes("activation merge") ||
-    normalized.includes("cloudflare pages") ||
-    normalized.includes("service-role") ||
-    normalized.includes("supabase public reads were unavailable") ||
-    normalized.includes("public-safe cloudflare") ||
-    normalized.includes("public-safe refresh") ||
-    normalized.includes("public evidence refresh") ||
-    normalized.includes("public evidence update contributed") ||
-    normalized.includes("去重后新增") ||
-    normalized.includes("本轮") ||
-    normalized.includes("导出") ||
-    normalized.includes("loaded 1 reviewed local public report snapshot")
-  );
-}
 
 function snapshotIsStale(snapshot: Snapshot) {
   const ageDays = snapshotAgeDays(snapshot);
@@ -3414,6 +2514,7 @@ const eventCards = Array.from(document.querySelectorAll(".event-card"));
 const tabButtons = Array.from(document.querySelectorAll("[data-tab-target]"));
 const tabPanels = Array.from(document.querySelectorAll("[data-tab-panel]"));
 const filterPanel = document.querySelector("[data-radar-filters]");
+const filterToggle = document.querySelector("#radar-filter-toggle");
 const params = new URLSearchParams(window.location.search);
 let initialCategories = parseCategoryFilter(params.get("category") || "");
 const initialStatus = (params.get("status") || "").toLowerCase();
@@ -3539,6 +2640,12 @@ reset.addEventListener("click", () => {
   applyFilters();
   search.focus();
 });
+if (filterPanel && filterToggle) {
+  filterToggle.addEventListener("click", () => {
+    const expanded = filterPanel.classList.toggle("filters-open");
+    filterToggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+  });
+}
 function activateTab(target, persist) {
   const selectedButton = tabButtons.find((candidate) => candidate.dataset.tabTarget === target) || tabButtons[0];
   if (!selectedButton) return;
@@ -3588,14 +2695,9 @@ for (const button of tabButtons) {
 `;
 }
 
-function localEvidenceToolScript(
-  mode: "ask" | "write",
-  locale: "en" | "zh" = "zh",
-  snapshotUrl = "../data/radar-snapshot.json"
-) {
+function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../data/radar-snapshot.json") {
   return String.raw`
 (function () {
-  const toolMode = ${JSON.stringify(mode)};
   const language = ${JSON.stringify(locale)};
   const snapshotUrl = ${JSON.stringify(snapshotUrl)};
   const input = document.querySelector("#local-query-input");
@@ -3617,9 +2719,51 @@ function localEvidenceToolScript(
     return (snapshot.radar_items || []).find((item) => ids.has(item.id));
   }
 
+  function humanizeChineseTitle(value) {
+    let headline = String(value || "").trim().replace(/^据报道[，,]\s*/, "");
+    const release = headline.match(/^(.{2,20}?)发布了?([^，,]+)[，,]一种([^，,]+)[，,]/);
+    if (release) headline = release[1] + "发布" + release[2] + "：" + release[3].replace(/的系统$/, "");
+    const namedTechnique = headline.match(/^(.{2,24}?)\s*开发了一种名为“([^”]+)”的技术[，,](.+)$/);
+    if (namedTechnique) headline = namedTechnique[1] + "用“" + namedTechnique[2] + "”" + namedTechnique[3].split(/[，,]/)[0].replace(/^首次清晰揭示了?/, "揭示");
+    const tutorial = headline.match(/^(.{2,20}?)发布了?关于(.+?)的教程$/);
+    if (tutorial) headline = tutorial[1] + "发布" + tutorial[2] + "教程";
+    const lawsuit = headline.match(/^(.+?)起诉(.+?)[，,]指控其在招聘面试中要求.+?员工携带未发布的硬件组件和样品/);
+    if (lawsuit) headline = lawsuit[1] + "起诉" + lawsuit[2] + "：指控其面试时索要未发布硬件样品";
+    const survey = headline.match(/^(.+?)对(\d+)家企业调查发现[，,](.+)$/);
+    if (survey) headline = survey[1].replace(/\s+Pulse Research$/i, "") + "对" + survey[2] + "家企业调查：" + survey[3].split(/[，,：:]/)[0];
+    const product = headline.match(/^(.{2,20}?)推出了?([^，,]+)[，,]这是一个由(.+?)驱动的AI工具/);
+    if (product) headline = product[1] + "推出" + product[2] + "：由" + product[3] + "驱动";
+    return headline.replace(/发布了/, "发布").replace(/推出了/, "推出");
+  }
+
   function eventTitle(snapshot, event) {
     if (language === "en") return relatedItem(snapshot, event)?.title || event.timeline?.[0]?.title || event.canonical_title;
-    return event.canonical_title;
+    const canonical = String(event.canonical_title || "").trim();
+    const compact = compactChineseTitle(event, canonical, eventSummary(snapshot, event));
+    if (compact) return compact;
+    if (/[\u3400-\u9fff]/.test(canonical)) return canonical;
+    const summary = humanizeChineseTitle(eventSummary(snapshot, event).replace(/\s+/g, " ").split(/[。！？]/)[0].trim());
+    return shortChineseTitle(summary || canonical);
+  }
+
+  function compactChineseTitle(event, canonical, summary) {
+    const text = [canonical, summary].join(" ");
+    const entities = (event.related_entities || []).map((entity) => String(entity || "").trim()).filter(Boolean);
+    const main = entities.find((entity) => /OpenAI|Anthropic|Google|DeepMind|Meta|Microsoft|NVIDIA|DeepSeek|Qwen|Kimi|Claude|Gemini|GPT|Codex|Apple/i.test(entity)) || entities[0] || "";
+    const product = entities.find((entity) => /GPT-Red|Codex Micro|Claude|Gemini|DeepSeek|Qwen|Kimi|Jacobian|workspace|keyboard/i.test(entity)) || "";
+    if (/GPT-Red/i.test(text)) return "OpenAI 发布 GPT-Red 红队系统";
+    if (/Codex Micro|keyboard|键盘/i.test(text)) return "OpenAI 推出 Codex 硬件键盘";
+    if (/Jacobian|hidden space|global workspace|雅可比|全局工作空间/i.test(text)) return "Anthropic 披露 Claude 内部表征研究";
+    if (/lawsuit|起诉|法律纠纷|trade secret|商业机密/i.test(text) && main) return main + " 相关 AI 法律纠纷升级";
+    if (/release|launch|发布|推出|上线/i.test(text) && main && product && main !== product) return shortChineseTitle(main + " 发布 " + product);
+    if (/benchmark|基准/i.test(text) && main) return shortChineseTitle(main + " 基准/评测更新");
+    if (/research|paper|研究|论文/i.test(text) && main) return shortChineseTitle(main + " 发布研究进展");
+    return "";
+  }
+
+  function shortChineseTitle(value) {
+    const normalized = String(value || "").replace(/\s+/g, " ").replace(/[。！？；].*$/, "").trim();
+    return normalized.length > 34 ? normalized.slice(0, 33) + "…" : normalized;
   }
 
   function eventSummary(snapshot, event) {
@@ -3644,6 +2788,19 @@ function localEvidenceToolScript(
     return labels[event.event_score_label] || event.event_score_label;
   }
 
+  function evidenceState(event) {
+    const sourceCount = Number(event.source_count || 0);
+    const familyCount = Number((event.source_families || []).length);
+    if (language === "en") {
+      if (sourceCount > 1 && familyCount > 1) return "reported by different source types; independence still needs checking";
+      if (sourceCount > 1) return "several reports from the same source type";
+      return "one report so far";
+    }
+    if (sourceCount > 1 && familyCount > 1) return "不同类型来源均有报道，仍需核实是否相互独立";
+    if (sourceCount > 1) return "同类来源已有多篇报道";
+    return "目前仅有一篇报道";
+  }
+
   function failureLabel(value) {
     const zh = { "403": "HTTP 403", duplicate_only: "仅重复", failed_403: "HTTP 403 失败", failed_parse: "解析失败", failed_rate_limit: "限流失败", failed_timeout: "超时失败", low_relevance_excluded: "低相关排除", manual_blocked: "手动/阻塞", no_items: "无新内容", no_new_items: "无新内容", rate_limit: "限流警告", timeout: "超时失败", unsupported_source: "不支持" };
     const en = { "403": "HTTP 403", duplicate_only: "Duplicate only", failed_403: "HTTP 403 failure", failed_parse: "Parse failure", failed_rate_limit: "Rate-limit failure", failed_timeout: "Timeout", low_relevance_excluded: "Low relevance excluded", manual_blocked: "Manual / blocked", no_items: "No new items", no_new_items: "No new items", rate_limit: "Rate-limit warning", timeout: "Timeout", unsupported_source: "Unsupported" };
@@ -3663,8 +2820,10 @@ function localEvidenceToolScript(
 
   function queryIntent(query) {
     const q = query.toLowerCase();
-    const crossFamily = /cross[- ]family|multiple source families|independent source famil|跨(来源)?家族|独立来源家族/.test(q);
-    const sameFamily = /same source family|one source family|同(来源)?家族|同家族.*复述/.test(q);
+    const crossFamily = /cross[- ]family|multiple source families|independent source famil|different source types|different types of sources|不同类型来源/.test(q);
+    const sameFamily = /same source family|one source family|same source type|同类来源/.test(q);
+    const multiSource = !crossFamily && !sameFamily && /multi[- ]source|multiple sources|more than one source|两家以上来源|多篇报道|多源/.test(q);
+    const singleSource = !crossFamily && !sameFamily && !multiSource && /single[- ]source|one source|one[- ]report|only one report|单一来源|单源|单篇报道|只有一篇报道|弱信号|可信度较低|limited evidence/.test(q);
     const selectedOnly = /selected events?|today['’]s selection|industry selection|行业精选|今日精选|本轮精选|精选事件/.test(q);
     const highPriority = /high[- ]priority|highest[- ]priority|高优先级/.test(q);
     const timeWindowHours = /(?:past|last|within)\s*24\s*(?:hours?|hrs?|h)\b|\b24h\b|过去\s*24\s*小时|近\s*24\s*小时|今天|今日|\btoday\b/.test(q)
@@ -3678,19 +2837,33 @@ function localEvidenceToolScript(
       highPriority,
       important: /rank|ranking|priority|important|selected events|top events|deeper analysis|worth a deeper|排序|重要|高优先级|精选|深度分析|行业观察|周报|提纲/.test(q),
       modelRelease: /model releases?|models? (?:were )?released|released models?|模型发布|发布(?:了|的)?(?:新)?模型|新模型发布/.test(q),
-      multiSource: !crossFamily && !sameFamily && /multi[- ]source|multiple sources|多源/.test(q),
+      multiSource,
       only: /\bonly\b|仅|只看|只列|只写|只要/.test(q),
-      paragraph: /one paragraph|a paragraph|concise .*observation|一段|段落|行业观察/.test(q),
       sameFamily,
       selectedOnly,
-      singleSource: /single[- ]source|one source|单一来源|单源|弱信号|可信度较低|limited evidence/.test(q),
+      singleSource,
       sourceHealth: /source.*(fail|timeout|no new)|failed sources|source health|来源.*(失败|超时|没有新|无新)|来源健康/.test(q),
-      timeWindowHours
+      timeWindowHours,
+      requestedCount: requestedEventCount(q)
     };
   }
 
+  function requestedEventCount(query) {
+    const digit = query.match(/(?:top\s*)?(\d{1,2})\s*(?:events?|items?|things?|stories|件|个|条)/i)?.[1];
+    if (digit) return Math.max(1, Math.min(12, Number(digit)));
+    const chinese = query.match(/([一二两三四五六七八九十])\s*(?:件|个|条)/)?.[1];
+    if (chinese) {
+      const values = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+      return values[chinese] || null;
+    }
+    const word = query.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:events?|items?|things?|stories)\b/i)?.[1];
+    if (!word) return null;
+    const values = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+    return values[word.toLowerCase()] || null;
+  }
+
   function queryTokens(query) {
-    const stopwords = new Set(["about", "against", "analysis", "and", "are", "around", "build", "daily", "days", "draft", "events", "evidence", "from", "have", "hours", "into", "last", "outline", "past", "public", "report", "the", "this", "today", "what", "which", "with", "within", "write"]);
+    const stopwords = new Set(["about", "against", "analysis", "and", "are", "around", "build", "daily", "days", "draft", "event", "events", "evidence", "from", "have", "hours", "into", "last", "no", "outline", "past", "public", "report", "such", "the", "this", "today", "what", "which", "with", "within", "write"]);
     const latin = (query.toLowerCase().match(/[a-z0-9][a-z0-9._+-]*/g) || [])
       .filter((token) => token.length >= 2 && !stopwords.has(token));
     const cjk = [];
@@ -3832,7 +3005,7 @@ function localEvidenceToolScript(
       .map((event) => ({ event, score: scoreEvent(snapshot, event, query, intent) }))
       .filter((entry) => entry.score !== null)
       .sort((left, right) => right.score - left.score || Number(right.event.event_score || 0) - Number(left.event.event_score || 0))
-      .slice(0, 6)
+      .slice(0, intent.requestedCount || 6)
       .map((entry) => entry.event);
   }
 
@@ -3861,19 +3034,13 @@ function localEvidenceToolScript(
       .join("");
     const auditedAt = snapshot.source_health_scope?.finished_at || snapshot.coverage?.latest_refresh;
     if (language === "en") {
-      return '<h3>Source health answer</h3><p>Question: ' + escapeHtml(query) + '</p>' +
-        '<p>Broad refresh audited through: ' + escapeHtml(displayDateTime(auditedAt)) + '.</p>' +
+      return '<h3>Source health</h3><p>Audited through ' + escapeHtml(displayDateTime(auditedAt)) + '.</p>' +
         '<dl class="inline-defs"><dt>Succeeded</dt><dd>' + escapeHtml(health.succeeded || 0) + '</dd><dt>Failed</dt><dd>' + escapeHtml(health.failed || 0) + '</dd><dt>Manual / blocked</dt><dd>' + escapeHtml(health.manual_blocked || 0) + '</dd><dt>No new items</dt><dd>' + escapeHtml(health.no_items || 0) + '</dd><dt>Duplicate only</dt><dd>' + escapeHtml(health.duplicate_only || 0) + '</dd></dl>' +
-        '<h4>Decision impact</h4><p>' + escapeHtml(Number(health.failed || 0) + ' failed and ' + Number(health.manual_blocked || 0) + ' manual / blocked sources mean coverage is partial; no new items does not prove the industry was quiet.') + '</p>' +
-        '<h4>Next step</h4><p>Retry named failures during the next manual refresh and add compliant adapters or manual evidence for blocked sources before making coverage-wide claims.</p>' +
-        '<h4>Named failed sources</h4><ul>' + (failedSources || '<li>None</li>') + '</ul><h4>Failures, warnings and exclusions</h4><ul>' + families + '</ul>';
+        '<h4>Failed sources</h4><ul>' + (failedSources || '<li>None</li>') + '</ul><h4>Reason summary</h4><ul>' + families + '</ul>';
     }
-    return '<h3>来源健康回答</h3><p>问题：' + escapeHtml(query) + '</p>' +
-      '<p>广泛刷新审计截至：' + escapeHtml(displayDateTime(auditedAt)) + '。</p>' +
+    return '<h3>来源健康</h3><p>审计截至 ' + escapeHtml(displayDateTime(auditedAt)) + '。</p>' +
       '<dl class="inline-defs"><dt>成功</dt><dd>' + escapeHtml(health.succeeded || 0) + '</dd><dt>失败</dt><dd>' + escapeHtml(health.failed || 0) + '</dd><dt>手动/阻塞</dt><dd>' + escapeHtml(health.manual_blocked || 0) + '</dd><dt>无新条目</dt><dd>' + escapeHtml(health.no_items || 0) + '</dd><dt>仅重复</dt><dd>' + escapeHtml(health.duplicate_only || 0) + '</dd></dl>' +
-      '<h4>决策影响</h4><p>' + escapeHtml(Number(health.failed || 0) + ' 个失败来源和 ' + Number(health.manual_blocked || 0) + ' 个手动/阻塞来源意味着覆盖仍不完整；“无新条目”不能证明行业当天没有变化。') + '</p>' +
-      '<h4>下一步</h4><p>下一轮手动刷新应重试具名失败来源；在形成全局判断前，还需为阻塞来源补充合规适配器或人工证据。</p>' +
-      '<h4>具名失败来源</h4><ul>' + (failedSources || '<li>无</li>') + '</ul><h4>失败、警告与排除</h4><ul>' + families + '</ul>';
+      '<h4>失败来源</h4><ul>' + (failedSources || '<li>无</li>') + '</ul><h4>原因汇总</h4><ul>' + families + '</ul>';
   }
 
   function citationHtml(event) {
@@ -3891,55 +3058,38 @@ function localEvidenceToolScript(
 
   function eventUncertainty(event) {
     if (language !== "en") {
-      return (event.caveats || [])[0] || (Number(event.source_count || 0) > 1 ? "多条报道仍需核实来源是否彼此独立。" : "当前仅有单一来源，需要补充独立证据。");
+      const caveat = (event.caveats || [])[0];
+      return caveat
+        ? String(caveat).replace(/来源家族/g, "来源类型")
+        : (Number(event.source_count || 0) > 1 ? "多篇报道仍需核实是否彼此独立。" : "当前只有一篇报道，需要补充独立信息。 ");
     }
     if (Number((event.source_families || []).length) > 1) {
-      return "The source families differ, but one may repeat the original claim; source independence has not been established.";
+      return "The reports come from different source types, but one may repeat the original claim; independence is not yet established.";
     }
     if (Number(event.source_count || 0) > 1) {
-      return "Multiple reports come from one source family, so independent confirmation is still needed.";
+      return "Several reports come from the same source type, so independent confirmation is still needed.";
     }
-    return "This remains a single-source observation and needs independent confirmation.";
+    return "Only one report is available so far; independent confirmation is still needed.";
   }
 
   function renderAskResult(snapshot, query, events) {
     const freshness = snapshot.freshness && snapshot.freshness.latest_timestamp ? displayDateTime(snapshot.freshness.latest_timestamp) : (language === "en" ? "unavailable" : "待补证据");
     if (language === "en") {
-      return '<h3>Public evidence answer</h3>' +
-        '<p>Question: ' + escapeHtml(query) + '</p>' +
-        '<p>Evidence boundary: this answer uses only the current public snapshot. Latest content publication: ' + escapeHtml(freshness) + '. It is not live web research.</p>' +
+      return '<h3>Radar results</h3>' +
         '<ol>' + events.map((event) =>
-          '<li><strong>' + escapeHtml(eventTitle(snapshot, event)) + '</strong><p>' + escapeHtml(eventSummary(snapshot, event)) + '</p><p><strong>Uncertainty:</strong> ' + escapeHtml(eventUncertainty(event)) + '</p>' +
-          '<small>' + escapeHtml(eventDate(event)) + ' / ' + escapeHtml(scoreLabel(event)) + ' / score ' + escapeHtml(event.event_score) + ' / ' + escapeHtml(event.source_count) + (Number(event.source_count || 0) === 1 ? ' source / ' : ' sources / ') + escapeHtml(sourceFamilies(event).join(", ")) + '</small>' +
+          '<li data-event-id="' + escapeHtml(event.event_cluster_id) + '"><strong>' + escapeHtml(eventTitle(snapshot, event)) + '</strong><p>' + escapeHtml(eventSummary(snapshot, event)) + '</p>' +
+          '<small>' + escapeHtml(eventDate(event)) + ' · ' + escapeHtml(scoreLabel(event)) + ' · ' + escapeHtml(event.source_count) + (Number(event.source_count || 0) === 1 ? ' source · ' : ' sources · ') + escapeHtml(evidenceState(event)) + ' · ' + escapeHtml(sourceFamilies(event).join(", ")) + '</small>' +
+          '<p class="uncertainty"><strong>What remains uncertain:</strong> ' + escapeHtml(eventUncertainty(event)) + '</p>' +
           '<div class="local-citations">' + citationHtml(event) + '</div></li>'
-        ).join("") + '</ol>';
+        ).join("") + '</ol><p class="note">Reporting checked through ' + escapeHtml(freshness) + '. One-report events still need confirmation.</p>';
     }
-    return '<h3>公开证据回答</h3>' +
-      '<p>问题：' + escapeHtml(query) + '</p>' +
-      '<p>证据边界：仅基于当前公开快照，最新内容发布时间 ' + escapeHtml(freshness) + '；结果不是实时联网回答。</p>' +
+    return '<h3>雷达结果</h3>' +
       '<ol>' + events.map((event) =>
-        '<li><strong>' + escapeHtml(event.canonical_title) + '</strong><p>' + escapeHtml(eventSummary(snapshot, event)) + '</p><p><strong>不确定性：</strong>' + escapeHtml(eventUncertainty(event)) + '</p>' +
-        '<small>' + escapeHtml(eventDate(event)) + ' / ' + escapeHtml(event.event_score_label) + ' / 分数 ' + escapeHtml(event.event_score) + ' / ' + escapeHtml(event.source_count) + ' 个来源 / ' + escapeHtml((event.source_families || []).join("、")) + '</small>' +
+        '<li data-event-id="' + escapeHtml(event.event_cluster_id) + '"><strong>' + escapeHtml(eventTitle(snapshot, event)) + '</strong><p>' + escapeHtml(eventSummary(snapshot, event)) + '</p>' +
+        '<small>' + escapeHtml(eventDate(event)) + ' · ' + escapeHtml(event.event_score_label) + ' · ' + escapeHtml(event.source_count) + ' 个来源 · ' + escapeHtml(evidenceState(event)) + ' · ' + escapeHtml((event.source_families || []).join("、")) + '</small>' +
+        '<p class="uncertainty"><strong>仍需核实：</strong>' + escapeHtml(eventUncertainty(event)) + '</p>' +
         '<div class="local-citations">' + citationHtml(event) + '</div></li>'
-      ).join("") + '</ol>';
-  }
-
-  function renderWriteParagraph(snapshot, query, events) {
-    const freshness = snapshot.freshness && snapshot.freshness.latest_timestamp ? displayDateTime(snapshot.freshness.latest_timestamp) : (language === "en" ? "unavailable" : "待补");
-    const selected = events.slice(0, 3);
-    const citations = selected.map((event) => citationHtml(event)).filter(Boolean).join("<br>");
-    if (language === "en") {
-      const observations = selected.map((event) => eventTitle(snapshot, event) + ': ' + eventSummary(snapshot, event)).join(' ');
-      return '<h3>AI industry observation</h3>' +
-        '<p>As of the latest public content publication at ' + escapeHtml(freshness) + ', the selected evidence points to ' + escapeHtml(selected.length) + (selected.length === 1 ? ' signal' : ' signals') + ' worth tracking. ' + escapeHtml(observations) + ' These are evidence-bounded observations rather than a claim of complete live coverage; single-source items still need independent confirmation, and cross-family coverage does not by itself prove source independence.</p>' +
-        '<p>Evidence dates: ' + escapeHtml(selected.map((event) => eventDate(event)).join(', ')) + '.</p>' +
-        '<h4>Sources</h4><div class="local-citations">' + citations + '</div>';
-    }
-    const observations = selected.map((event) => event.canonical_title + '：' + eventSummary(snapshot, event)).join(' ');
-    return '<h3>AI 行业观察</h3>' +
-      '<p>截至公开内容最新发布时间 ' + escapeHtml(freshness) + '，本轮行业精选呈现出 ' + escapeHtml(selected.length) + ' 条值得继续跟踪的信号。' + escapeHtml(observations) + ' 这些判断只覆盖当前公开快照：单源事件仍需独立来源确认，跨家族报道也不等于来源彼此独立，不能外推为完整实时行业结论。</p>' +
-      '<p>证据日期：' + escapeHtml(selected.map((event) => eventDate(event)).join('、')) + '。</p>' +
-      '<h4>引用</h4><div class="local-citations">' + citations + '</div>';
+      ).join("") + '</ol><p class="note">报道核对至 ' + escapeHtml(freshness) + '；目前只有一篇报道的事件仍需继续核实。</p>';
   }
 
   function renderNoMatch(intent) {
@@ -3950,67 +3100,36 @@ function localEvidenceToolScript(
     }
     if (intent.highPriority) {
       return language === "en"
-        ? '<p class="empty">No high-priority event was found in the public snapshot. Lower-priority events were not substituted.</p>'
-        : '<p class="empty">公开快照中没有高优先级事件；系统未用“关注”或“观察”事件替代。</p>';
+        ? '<p class="empty">No high-priority event was found in the current data. Lower-priority events were not substituted.</p>'
+        : '<p class="empty">当前数据中没有高优先级事件；未用较低优先级内容替代。</p>';
     }
     return language === "en"
-      ? '<p class="empty">No matching event was found in the public snapshot.</p>'
-      : '<p class="empty">没有从公开快照中找到匹配事件。</p>';
-  }
-
-  function renderWriteResult(snapshot, query, events, intent) {
-    if (intent.paragraph) return renderWriteParagraph(snapshot, query, events);
-    const freshness = snapshot.freshness && snapshot.freshness.latest_timestamp ? displayDateTime(snapshot.freshness.latest_timestamp) : (language === "en" ? "unavailable" : "待补证据");
-    if (language === "en") {
-      return '<h3>Evidence-led outline</h3>' +
-        '<p>Request: ' + escapeHtml(query) + '</p>' +
-        '<p>Opening judgment: this is an event observation based on a public snapshot. Latest content publication: ' + escapeHtml(freshness) + '. Do not make claims beyond this evidence window.</p>' +
-        '<ol>' + events.slice(0, 4).map((event) =>
-          '<li><strong>' + escapeHtml(eventTitle(snapshot, event)) + '</strong>' +
-          '<p>Evidence date: ' + escapeHtml(eventDate(event)) + '</p>' +
-          '<p>Claim: ' + escapeHtml(eventSummary(snapshot, event)) + '</p>' +
-          '<p>Evidence: ' + escapeHtml(event.source_count) + (Number(event.source_count || 0) === 1 ? ' source from ' : ' sources from ') + escapeHtml(sourceFamilies(event).join(", ")) + '.</p>' +
-          '<p>Boundary: ' + (Number((event.source_families || []).length) > 1 ? 'Compare the different source families, but do not assume they are independent; one may repeat the original claim.' : Number(event.source_count || 0) > 1 ? 'Multiple reports come from one source family; independent confirmation is still needed.' : 'Independent confirmation is still needed.') + '</p>' +
-          '<div class="local-citations">' + citationHtml(event) + '</div></li>'
-        ).join("") + '</ol>' +
-        '<p>Suggested close: frame single-source events as signals, same-family repetition as limited corroboration, and cross-family coverage as stronger evidence whose source independence still needs verification.</p>';
-    }
-    return '<h3>写作提纲</h3>' +
-      '<p>需求：' + escapeHtml(query) + '</p>' +
-      '<p>开头判断：这是一份基于公开快照的事件观察，最新内容发布时间 ' + escapeHtml(freshness) + '，不能写成超出证据时间窗的实时结论。</p>' +
-      '<ol>' + events.slice(0, 4).map((event) =>
-        '<li><strong>' + escapeHtml(event.canonical_title) + '</strong>' +
-        '<p>证据日期：' + escapeHtml(eventDate(event)) + '</p>' +
-        '<p>论点：' + escapeHtml(eventSummary(snapshot, event)) + '</p>' +
-        '<p>证据：' + escapeHtml(event.source_count) + ' 个来源，来源家族 ' + escapeHtml((event.source_families || []).join("、")) + '。</p>' +
-        '<p>边界：' + escapeHtml((event.caveats || ["仍需补充独立来源确认。"]) [0]) + '</p>' +
-        '<div class="local-citations">' + citationHtml(event) + '</div></li>'
-      ).join("") + '</ol>' +
-      '<p>建议收束：把单源事件写成待跟踪信号，同家族复述写成有限佐证；跨家族报道也必须注明来源独立性尚未验证。</p>';
+      ? '<p class="empty">No matching event was found in the current data.</p>'
+      : '<p class="empty">当前数据中没有找到匹配事件。</p>';
   }
 
   async function run() {
     const query = input.value.trim();
     if (!query) {
-      result.innerHTML = language === "en" ? '<p class="empty">Enter a question or writing request first.</p>' : '<p class="empty">先输入一个问题或写作需求。</p>';
+      result.innerHTML = language === "en" ? '<p class="empty">Enter a question first.</p>' : '<p class="empty">先输入一个问题。</p>';
       return;
     }
-    result.innerHTML = language === "en" ? '<p class="note">Reading the public snapshot...</p>' : '<p class="note">正在读取公开快照...</p>';
+    result.innerHTML = language === "en" ? '<p class="note">Searching current radar data...</p>' : '<p class="note">正在检索当前雷达数据...</p>';
     try {
       const response = await fetch(snapshotUrl, { cache: "no-store" });
       if (!response.ok) throw new Error("snapshot unavailable");
       const snapshot = await response.json();
       const intent = queryIntent(query);
-      if (toolMode === "ask" && intent.sourceHealth) {
+      if (intent.sourceHealth) {
         result.innerHTML = renderSourceHealthResult(snapshot, query);
         return;
       }
       const events = pickEvents(snapshot, query);
       result.innerHTML = events.length === 0
         ? renderNoMatch(intent)
-        : (toolMode === "write" ? renderWriteResult(snapshot, query, events, intent) : renderAskResult(snapshot, query, events));
+        : renderAskResult(snapshot, query, events);
     } catch {
-      result.innerHTML = language === "en" ? '<p class="empty">The public snapshot could not be loaded. Try again later or open the JSON data directly.</p>' : '<p class="empty">公开快照读取失败，请稍后重试或直接打开数据文件。</p>';
+      result.innerHTML = language === "en" ? '<p class="empty">Radar data could not be loaded. Try again later.</p>' : '<p class="empty">雷达数据读取失败，请稍后重试。</p>';
     }
   }
 
@@ -4021,175 +3140,265 @@ function localEvidenceToolScript(
 
 function stylesheet() {
   return `:root {
-  --bg: #f5f7fb;
-  --ink: #111827;
-  --muted: #5b6472;
-  --line: #d9e0ea;
+  --bg: #f3f5f7;
+  --ink: #172231;
+  --muted: #657386;
+  --line: #dce2e7;
   --panel: #ffffff;
-  --soft: #eef3f8;
-  --evidence: #0f766e;
-  --success: #18703e;
-  --caution: #a15c07;
-  --shadow: 0 14px 38px rgba(15, 23, 42, 0.08);
+  --soft: #edf1f3;
+  --evidence: #0b6975;
+  --success: #1f6b45;
+  --caution: #9a5a17;
+  --danger: #b9412c;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font-family: Arial, Helvetica, sans-serif; line-height: 1.5; }
+html { background: var(--bg); }
+body { background: var(--bg); color: var(--ink); font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; line-height: 1.55; margin: 0; }
 a { color: var(--evidence); text-decoration: none; }
-a:hover { text-decoration: underline; }
-a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
-.panel p a, .note-list a, .local-result a, .report-card p a { text-decoration: underline; text-underline-offset: 3px; }
-.site-header, .site-footer, main { margin: 0 auto; max-width: 1180px; padding: 0 20px; width: 100%; }
-.site-header { align-items: center; display: flex; gap: 20px; justify-content: space-between; padding-bottom: 20px; padding-top: 20px; }
-.brand { align-items: center; color: var(--ink); display: inline-flex; font-weight: 700; gap: 10px; }
-.brand-mark { background: linear-gradient(135deg, #0f766e, #2563eb); border-radius: 6px; display: inline-block; height: 26px; width: 26px; }
-.header-tools { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
-.language-switch { border: 1px solid var(--line); border-radius: 6px; display: grid; flex: 0 0 auto; grid-template-columns: repeat(2, minmax(38px, auto)); overflow: hidden; }
-.language-switch a { color: var(--muted); font-size: 12px; font-weight: 700; min-width: 42px; padding: 8px 9px; text-align: center; }
+a:hover { text-decoration: underline; text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid #2a7b89; outline-offset: 2px; }
+button, input, select, textarea { font: inherit; }
+h1, h2, h3, p { letter-spacing: 0; margin: 0; }
+h1 { font-size: 30px; line-height: 1.2; }
+h2 { font-size: 20px; line-height: 1.35; }
+h3 { font-size: 17px; line-height: 1.4; }
+.app-layout { display: grid; grid-template-columns: 180px minmax(0, 1fr); min-height: 100vh; }
+.desktop-sidebar { background: #fff; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 100vh; padding: 24px 16px; position: sticky; top: 0; }
+.brand { align-items: center; border-bottom: 1px solid var(--line); color: var(--ink); display: flex; font-size: 16px; font-weight: 800; gap: 10px; padding: 2px 8px 22px; }
+.brand span { white-space: nowrap; }
+.brand:hover { text-decoration: none; }
+.brand img { border-radius: 6px; height: 28px; width: 28px; }
+.nav-group-label { color: var(--muted); font-size: 11px; margin: 28px 8px 8px; text-transform: uppercase; }
+.side-nav { display: grid; gap: 4px; }
+.side-nav a { border-radius: 7px; color: #405064; font-size: 14px; font-weight: 600; padding: 10px 12px; }
+.side-nav a:hover { background: var(--soft); text-decoration: none; }
+.side-nav a[aria-current="page"] { background: #e1ecee; color: var(--evidence); }
+.secondary-nav { margin-bottom: auto; }
+.app-frame { min-width: 0; }
+.desktop-topbar { align-items: center; color: var(--muted); display: flex; font-size: 12px; height: 58px; justify-content: flex-end; margin: 0 auto; max-width: 1320px; padding: 0 30px; }
+.desktop-topbar > span { margin-right: 14px; }
+.language-switch { border: 1px solid var(--line); border-radius: 6px; display: inline-grid; grid-template-columns: repeat(2, minmax(38px, auto)); overflow: hidden; }
+.language-switch a { color: var(--muted); font-size: 12px; font-weight: 700; min-width: 38px; padding: 6px 8px; text-align: center; }
 .language-switch a + a { border-left: 1px solid var(--line); }
 .language-switch a[aria-current="true"] { background: var(--ink); color: #fff; }
-nav, .actions, .pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
-nav a, .button { border: 1px solid var(--line); border-radius: 6px; color: var(--ink); display: inline-flex; font-size: 14px; font-weight: 700; padding: 9px 12px; }
-nav a[aria-current="page"], .button.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
-main { display: grid; gap: 24px; padding-bottom: 42px; }
-main > *, .tab-panel, .panel { min-width: 0; }
-.home-page main > * { order: 4; }
-.home-page .home-status-strip { order: 1; }
-.home-page .home-freshness-alert { order: 2; }
-.home-page .home-desk { order: 3; }
-.status-strip { display: grid; gap: 10px; grid-template-columns: repeat(6, minmax(0, 1fr)); }
-.freshness-alert { background: #fff8ed; border: 1px solid #f0c37b; border-radius: 8px; color: var(--caution); display: grid; gap: 4px; padding: 14px 16px; }
-.freshness-alert p { color: #7c3f09; }
-.mini-metric { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 4px; padding: 12px; }
-.mini-metric span { color: var(--muted); font-size: 12px; font-weight: 700; }
-.mini-metric strong { color: var(--ink); font-size: 18px; overflow-wrap: anywhere; }
-.hero, .page-heading { border-bottom: 1px solid var(--line); display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) 400px; padding: 24px 0 32px; }
-.page-heading { grid-template-columns: 1fr; }
-.event-hero { align-items: stretch; }
-.home-desk { align-items: stretch; display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr) 360px; }
-.headline-panel, .ops-console { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 22px; }
-.headline-panel { display: grid; gap: 16px; }
-.ops-console { align-content: start; display: grid; gap: 16px; }
-.featured-list { display: grid; gap: 10px; margin-top: 2px; }
-.featured-card { background: #fbfdff; border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) 190px; padding: 14px; }
-.featured-card h2 { font-size: 18px; line-height: 1.35; }
-.featured-card p { color: var(--muted); margin-top: 6px; }
-.featured-card aside { border-left: 1px solid var(--line); padding-left: 14px; }
-.rail.compact-rail { grid-template-columns: 64px minmax(0, 1fr); }
-.quality-note { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
-.quality-note p { color: var(--muted); margin-top: 4px; }
-h1, h2, h3, p { margin: 0; }
-h1 { font-size: 52px; letter-spacing: 0; line-height: 1.05; margin-top: 14px; }
-h2 { font-size: 22px; }
-h3 { font-size: 16px; }
-.lead { color: var(--muted); font-size: 18px; line-height: 1.7; margin: 16px 0 0; max-width: 760px; }
-.panel, .report-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 20px; }
-.grid { display: grid; gap: 20px; }
-.grid.two { grid-template-columns: minmax(0, 1fr) 390px; }
-.radar-layout { align-items: start; grid-template-columns: minmax(0, 1fr) 330px; }
-.sticky { position: sticky; top: 12px; }
-.tabbar { border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 16px; padding-bottom: 12px; }
-.tab-button { background: #fff; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); cursor: pointer; font-weight: 700; padding: 9px 12px; }
-.tab-button.active { background: var(--ink); border-color: var(--ink); color: #fff; }
+.mobile-header, .mobile-nav { display: none; }
+main { margin: 0 auto; max-width: 1320px; min-width: 0; padding: 0 30px 64px; width: 100%; }
+main > * + * { margin-top: 24px; }
+.feed-heading { align-items: end; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; padding: 0 0 18px; }
+.feed-heading p, .tool-heading p { color: var(--muted); font-size: 13px; margin-top: 3px; }
+.feed-heading > a, .feed-heading > span { color: var(--muted); font-size: 13px; }
+.section-heading { align-items: center; display: flex; gap: 16px; justify-content: space-between; }
+.section-heading > span { color: var(--evidence); font-size: 12px; font-weight: 800; }
+.top-stories { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); overflow: hidden; }
+.top-stories .section-heading { border-bottom: 1px solid var(--line); padding: 16px 22px; }
+.top-story { align-items: center; color: var(--ink); display: grid; gap: 14px; grid-template-columns: 24px minmax(0, 1fr) auto; padding: 12px 22px; }
+.top-story + .top-story { border-top: 1px solid #edf0f2; }
+.top-story:hover { background: #fbfcfc; text-decoration: none; }
+.top-story > span { color: var(--danger); font-size: 18px; font-weight: 800; text-align: center; }
+.top-story:nth-of-type(3) > span { color: #c06d35; }
+.top-story:nth-of-type(4) > span { color: #b9852e; }
+.top-story strong { display: -webkit-box; font-size: 17px; overflow: hidden; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.top-story small { color: var(--muted); white-space: nowrap; }
+.feed-toolbar { border-bottom: 1px solid var(--line); display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) minmax(240px, 360px); padding-bottom: 14px; }
+.feed-toolbar .section-heading { grid-column: 1 / -1; }
+.feed-search { grid-column: 2; grid-row: 2; width: 100%; }
+.feed-search input, .controls input, .controls select, .tool-stage textarea { background: #fff; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); width: 100%; }
+.feed-search input { padding: 10px 12px; }
+.feed-chips { display: flex; gap: 8px; grid-column: 1; grid-row: 2; overflow-x: auto; padding-bottom: 1px; }
+.feed-chips button, .prompt-suggestions button { background: #fff; border: 1px solid var(--line); border-radius: 7px; color: #46566b; cursor: pointer; flex: 0 0 auto; padding: 7px 13px; }
+.feed-chips button.active { border-bottom: 2px solid var(--evidence); color: var(--evidence); font-weight: 700; }
+.feed-day { align-items: center; display: flex; font-size: 18px; padding: 4px 0 10px; }
+.story-stream { display: grid; gap: 12px; }
+.story-row, .radar-row { align-items: start; background: transparent; display: grid; gap: 14px; grid-template-columns: 96px minmax(0, 1fr); padding: 0; }
+.story-row[hidden], .radar-row[hidden] { display: none; }
+.story-time { align-items: center; color: #506178; display: grid; font-size: 12px; font-weight: 700; gap: 8px; grid-template-columns: 1fr 10px; padding-top: 18px; text-align: right; }
+.story-time span { background: var(--evidence); border-radius: 50%; height: 8px; width: 8px; }
+.story-content { background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); min-width: 0; padding: 16px 20px; }
+.story-meta { align-items: center; color: var(--muted); display: flex; font-size: 13px; gap: 12px; justify-content: space-between; }
+.story-meta strong { color: var(--evidence); font-size: 12px; }
+.story-content h2 { font-size: 18px; margin-top: 6px; }
+.story-content h2 a { color: var(--ink); display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.story-content p { color: #58687b; display: -webkit-box; font-size: 14px; line-height: 1.7; margin-top: 6px; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.story-foot { color: #7a8796; display: flex; font-size: 12px; gap: 14px; margin-top: 10px; }
+.source-drawer { border-top: 1px dashed var(--line); margin-top: 12px; padding-top: 10px; }
+.source-drawer summary, .score-drawer summary, .report-sources summary { color: var(--evidence); cursor: pointer; font-size: 13px; font-weight: 700; }
+.score-drawer { margin-top: 10px; }
+.score-drawer p { display: block; font-size: 12px; -webkit-line-clamp: unset; }
+.source-drawer-list { display: grid; gap: 8px; margin-top: 10px; }
+.source-drawer-list a { color: var(--ink); display: grid; gap: 3px; grid-template-columns: 150px minmax(0, 1fr) auto; padding: 7px 0; }
+.source-drawer-list a + a { border-top: 1px solid #edf0f2; }
+.source-drawer-list span, .source-drawer-list time { color: var(--muted); font-size: 12px; }
+.feed-more { display: flex; justify-content: center; }
+.button { align-items: center; background: #fff; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); cursor: pointer; display: inline-flex; font-size: 14px; font-weight: 700; justify-content: center; padding: 9px 14px; }
+.button.primary { background: var(--evidence); border-color: var(--evidence); color: #fff; }
+.actions, .pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.radar-tabs { border-bottom: 1px solid var(--line); }
+.tabbar { display: flex; gap: 22px; overflow-x: auto; }
+.tab-button { background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; flex: 0 0 auto; font-weight: 700; padding: 9px 1px 11px; }
+.tab-button.active { border-bottom-color: var(--evidence); color: var(--evidence); }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
-.metric-grid { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 16px 0; }
-.metric-grid div { background: var(--soft); border: 1px solid var(--line); border-radius: 6px; padding: 12px; }
-dt { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; }
-dd { margin: 0; overflow-wrap: anywhere; }
-.metric-grid dd { font-size: 26px; font-weight: 700; }
-.rail { display: grid; gap: 6px; grid-template-columns: 150px minmax(0, 1fr); }
-.pill { border: 1px solid var(--line); border-radius: 999px; display: inline-flex; font-size: 12px; font-weight: 700; padding: 4px 8px; }
-.pill.evidence { background: #e7f6f4; border-color: #99d6cf; color: var(--evidence); }
-.pill.success { background: #e9f7ee; border-color: #a9dbb9; color: var(--success); }
-.pill.caution { background: #fff5e6; border-color: #f0c37b; color: var(--caution); }
+.radar-filters { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+.filter-mobile-toggle { display: none; }
+.controls { display: grid; gap: 10px; grid-template-columns: minmax(220px, 2fr) repeat(6, minmax(105px, 1fr)); }
+.controls label { color: var(--muted); font-size: 11px; font-weight: 700; }
+.controls input, .controls select { margin-top: 4px; padding: 8px 9px; }
+.filter-feedback { align-items: center; display: flex; gap: 12px; justify-content: space-between; margin-top: 10px; }
+.filter-feedback span { color: var(--muted); font-size: 12px; }
+.row-list, .report-list { display: grid; gap: 12px; }
+.timeline-list { display: grid; gap: 8px; }
+.timeline-row { background: #fff; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); display: grid; gap: 12px; grid-template-columns: 165px minmax(0, 1fr) 150px; padding: 12px 14px; }
+.timeline-row time, .timeline-row span { color: var(--muted); font-size: 12px; }
+.panel, .report-card, .event-card:not(.story-row) { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 18px; }
+.grid { display: grid; gap: 16px; }
+.grid.two { grid-template-columns: minmax(0, 1fr) 360px; }
+.event-grid { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.event-card:not(.story-row) { display: grid; gap: 10px; }
+.event-card:not(.story-row) h2 { font-size: 18px; }
+.event-card:not(.story-row) p, .note, .note-list, .compact-row p { color: var(--muted); }
+.pill { border: 1px solid var(--line); border-radius: 6px; display: inline-flex; font-size: 11px; font-weight: 700; padding: 3px 7px; }
+.pill.evidence { background: #e7f2f3; color: var(--evidence); }
+.pill.success { background: #eaf4ed; color: var(--success); }
+.pill.caution { background: #fff5e8; color: var(--caution); }
 .pill.neutral { background: var(--soft); color: var(--muted); }
-.section-heading { align-items: start; display: flex; gap: 16px; justify-content: space-between; }
-.row-list { display: grid; gap: 12px; margin-top: 14px; }
-.compact-row, .radar-row { border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 240px; padding: 16px; }
-.radar-row { background: #fff; }
-.radar-row[hidden] { display: none; }
-.event-grid { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 14px; }
-.event-card { background: #fff; border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 12px; padding: 18px; }
-.event-card[hidden] { display: none; }
-.event-card h2 { font-size: 20px; line-height: 1.35; }
-.event-card p { color: var(--muted); }
-.confirmation-note { color: var(--caution) !important; font-size: 13px; font-weight: 700; margin: 0; }
-.event-meta { display: grid; gap: 6px; grid-template-columns: 120px minmax(0, 1fr); }
-.event-card details { border-top: 1px solid var(--line); padding-top: 10px; }
-.event-card summary { cursor: pointer; font-weight: 700; }
-.event-caveats .note-list { margin-bottom: 0; }
-.event-mini-list { display: grid; gap: 8px; margin-top: 10px; }
-.event-mini { align-items: center; border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 8px; grid-template-columns: auto minmax(0, 1fr) auto; padding: 10px; }
-.event-mini small, .event-mini .source-link { grid-column: 2 / -1; }
-.timeline-list { display: grid; gap: 10px; }
-.timeline-list.compact { margin-top: 10px; }
-.timeline-row { border: 1px solid var(--line); border-radius: 8px; color: var(--ink); display: grid; gap: 6px; grid-template-columns: 170px minmax(0, 1fr) 160px; padding: 12px; }
-.featured-card .timeline-row, .event-card .timeline-row { grid-template-columns: 110px minmax(0, 1fr); }
-.featured-card .timeline-row span, .event-card .timeline-row span { grid-column: 2; }
-.timeline-row strong, .citation strong { overflow-wrap: anywhere; }
-.timeline-row time, .timeline-row span { color: var(--muted); font-size: 13px; }
+.rail, .event-meta, .inline-defs { display: grid; gap: 6px; grid-template-columns: 140px minmax(0, 1fr); }
+dt { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+dd { margin: 0; overflow-wrap: anywhere; }
+.page-heading { border-bottom: 1px solid var(--line); padding-bottom: 20px; }
+.page-heading h1 { margin-top: 8px; }
+.lead { color: var(--muted); font-size: 16px; margin-top: 8px; max-width: 780px; }
+.tool-heading { border-bottom: 1px solid var(--line); margin-top: 0; padding-bottom: 18px; }
+.tool-heading h1 { font-size: 30px; margin-top: 4px; }
+.tool-stage { background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); display: grid; gap: 14px; margin-left: auto; margin-right: auto; max-width: 840px; padding: 22px; }
+.tool-stage { margin-left: 0; max-width: 980px; width: 100%; }
+.tool-stage textarea { line-height: 1.6; min-height: 112px; padding: 14px; resize: vertical; }
+.tool-stage .actions { justify-content: flex-end; }
+.prompt-suggestions { display: flex; flex-wrap: wrap; gap: 8px; }
+.prompt-suggestions button { font-size: 13px; text-align: left; }
+.local-result { border-top: 1px solid var(--line); display: grid; gap: 12px; padding-top: 16px; }
+.local-result:empty { border: 0; padding: 0; }
+.local-result ol { display: grid; gap: 12px; margin: 0; padding-left: 20px; }
+.local-result p, .local-result small { color: var(--muted); }
+.local-result .local-thesis { color: var(--ink); font-size: 17px; font-weight: 700; line-height: 1.7; }
+.outline-section { border-top: 1px solid var(--line); display: grid; gap: 8px; padding-top: 14px; }
+.outline-section h4 { margin: 0; }
+.outline-section ol { margin-top: 2px; }
+.local-citations { background: var(--soft); border-radius: 6px; display: grid; gap: 4px; margin-top: 8px; padding: 10px; }
+.report-tabs { border-bottom: 1px solid var(--line); display: flex; gap: 24px; }
+.report-tabs a { color: var(--muted); font-weight: 700; padding: 8px 0 10px; }
+.report-reader { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 28px; }
+.report-reader + .report-reader { margin-top: 16px; }
+.report-kicker { color: var(--evidence); font-size: 12px; font-weight: 700; }
+.report-reader h2 { font-size: 27px; margin-top: 8px; }
+.report-deck { color: #4f6074; font-size: 16px; line-height: 1.75; margin-top: 10px; }
+.report-stats { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 16px; }
+.report-stats span { color: var(--muted); font-size: 12px; }
+.report-body { display: grid; gap: 22px; margin-top: 28px; }
+.report-analysis { display: grid; gap: 11px; max-width: 860px; }
+.report-analysis p { color: #405064; line-height: 1.8; }
+.report-analysis .report-thesis { color: var(--ink); font-size: 18px; font-weight: 700; }
+.report-analysis ul { color: #405064; margin: 0; padding-left: 22px; }
+.report-analysis li + li { margin-top: 6px; }
+.report-reading-section { border-top: 1px solid var(--line); padding-top: 20px; }
+.report-reading-section p { color: #4f6074; margin-top: 8px; }
+.report-reading-section ul { margin: 12px 0 0; padding-left: 22px; }
+.report-reading-section li + li { margin-top: 7px; }
+.report-event-list { display: grid; margin-top: 12px; }
+.report-event { border-top: 1px solid #edf0f2; padding: 16px 0; }
+.report-event:first-child { border-top: 0; padding-top: 4px; }
+.report-event h3 { font-size: 17px; margin-top: 5px; }
+.report-event h3 a { color: var(--ink); }
+.report-event > p:not(.report-event-meta) { color: #4f6074; font-size: 14px; line-height: 1.7; }
+.report-event > time { color: var(--muted); display: block; font-size: 11px; margin-top: 8px; }
+.report-event-meta { color: var(--muted); display: flex; font-size: 11px; gap: 12px; }
+.report-notes { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 14px; }
+.report-notes summary { color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 700; }
+.report-notes .note-list { margin-bottom: 0; }
+.report-sources { border-top: 1px solid var(--line); margin-top: 26px; padding-top: 16px; }
+.report-sources ol { display: grid; gap: 8px; padding-left: 22px; }
+.report-sources li span { color: var(--muted); display: block; font-size: 12px; }
 .callout { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
-.callout.warning { background: #fff5e6; border-color: #f0c37b; color: var(--caution); }
-.compact-row p, .radar-row p, .note, .note-list, .site-footer { color: var(--muted); }
-.tag-block, .distribution { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.distribution section { border: 1px solid var(--line); border-radius: 8px; flex: 1 1 220px; padding: 12px; }
-.health-table-wrap { border: 1px solid var(--line); border-radius: 8px; margin-top: 16px; max-width: 100%; min-width: 0; overflow-x: auto; width: 100%; }
+.callout.warning, .freshness-alert { background: #fff7ea; border-color: #e8c486; color: var(--caution); }
+.freshness-alert { border: 1px solid #e8c486; border-radius: 8px; padding: 12px 14px; }
+.freshness-alert p { margin-top: 4px; }
+.metric-grid, .distribution, .tag-block, .entity-link-list { display: flex; flex-wrap: wrap; gap: 10px; }
+.metric-grid div, .distribution section { background: var(--soft); border-radius: 7px; padding: 12px; }
+.compact-row { background: #fff; border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 220px; padding: 16px; }
+.citation-grid { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.citation { border: 1px solid var(--line); border-radius: 7px; color: var(--ink); display: grid; gap: 3px; padding: 10px; }
+.citation span, .citation small { color: var(--muted); }
+.health-table-wrap { border: 1px solid var(--line); border-radius: 8px; margin-top: 14px; overflow-x: auto; }
 .health-table { border-collapse: collapse; font-size: 12px; min-width: 1160px; width: 100%; }
 .health-table caption { color: var(--muted); padding: 12px; text-align: left; }
 .health-table th, .health-table td { border-top: 1px solid var(--line); padding: 9px 10px; text-align: right; white-space: nowrap; }
-.health-table thead th { background: var(--soft); color: var(--muted); font-weight: 700; }
-.health-table th:first-child { left: 0; position: sticky; text-align: left; z-index: 1; }
-.health-table tbody th:first-child { background: var(--surface); }
-.controls { display: grid; gap: 12px; grid-template-columns: 2fr repeat(6, minmax(120px, 1fr)); }
-.filter-feedback { align-items: center; display: flex; gap: 12px; justify-content: space-between; margin-top: 14px; }
-.filter-feedback span { color: var(--muted); font-weight: 700; }
-input, select, textarea { border: 1px solid var(--line); border-radius: 6px; color: var(--ink); display: block; margin-top: 6px; padding: 9px 10px; width: 100%; }
-textarea { font: inherit; line-height: 1.5; min-height: 120px; resize: vertical; }
-.interactive-tool { display: grid; gap: 12px; }
-.local-result { border-top: 1px solid var(--line); display: grid; gap: 10px; margin-top: 4px; padding-top: 14px; }
-.local-result ol { display: grid; gap: 12px; margin: 0; padding-left: 20px; }
-.local-result li { padding-left: 4px; }
-.local-result p { color: var(--muted); margin-top: 4px; }
-.local-result small { color: var(--muted); display: block; font-weight: 700; margin-top: 6px; }
-.local-citations { background: var(--soft); border: 1px solid var(--line); border-radius: 6px; display: grid; gap: 4px; margin-top: 8px; padding: 8px; }
-.source-link { border-top: 1px solid var(--line); display: block; font-weight: 700; margin-top: 12px; padding-top: 12px; }
-.citation-grid { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 14px; }
-.citation { border: 1px solid var(--line); border-radius: 8px; color: var(--ink); display: grid; gap: 4px; padding: 12px; }
-.citation span, .citation small { color: var(--muted); }
-.report-list { display: grid; gap: 18px; }
-.report-card { display: grid; gap: 16px; }
-.report-summary { font-size: 18px; }
-.trace-panel { border-top: 1px solid var(--line); display: grid; gap: 12px; padding-top: 14px; }
-.section-trace { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 10px; margin-top: 12px; padding: 12px; }
-.entity-link-list { display: flex; flex-wrap: wrap; gap: 10px; }
-.entity-link-list.compact { gap: 8px; }
-.entity-chip { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); display: grid; gap: 3px; padding: 10px 12px; }
-.entity-chip span { color: var(--muted); font-size: 12px; }
-.report-section { border-top: 1px solid var(--line); padding-top: 14px; }
-.inline-defs { display: grid; gap: 6px; grid-template-columns: 130px minmax(0, 1fr); }
-.markdown pre { background: #0f1715; border-radius: 8px; color: #effaf7; overflow: auto; padding: 14px; white-space: pre-wrap; }
+.health-table thead th { background: var(--soft); color: var(--muted); }
+.health-table th:first-child { background: #fff; left: 0; position: sticky; text-align: left; z-index: 1; }
 .empty { border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); padding: 16px; }
-.site-footer { align-items: center; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; padding-bottom: 26px; padding-top: 20px; }
-@media (max-width: 880px) {
-  .home-page .home-desk { order: 1; }
-  .home-page .home-freshness-alert { order: 2; }
-  .home-page .home-status-strip { order: 3; }
-  .status-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .hero, .home-desk, .featured-card, .grid.two, .radar-layout, .compact-row, .radar-row, .event-grid, .event-mini, .timeline-row { grid-template-columns: 1fr; }
-  .event-mini small, .event-mini .source-link { grid-column: 1; }
-  .mini-metric { min-height: 76px; padding: 10px; }
-  .mini-metric strong { font-size: 16px; }
-  .featured-card aside { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; padding-top: 12px; }
-  .featured-card .timeline-row span, .event-card .timeline-row span { grid-column: auto; }
-  .controls { grid-template-columns: 1fr; }
-  .citation-grid { grid-template-columns: 1fr; }
-  .event-meta { grid-template-columns: 1fr; }
-  .site-header { align-items: flex-start; flex-direction: column; }
-  .header-tools { align-items: start; display: grid; grid-template-columns: 1fr; width: 100%; }
-  .header-tools nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); min-width: 0; overflow: visible; padding-bottom: 0; width: 100%; }
-  .header-tools nav a { align-items: center; justify-content: center; min-width: 0; text-align: center; width: 100%; }
-  .language-switch { justify-self: end; }
-  h1 { font-size: 36px; }
+.site-footer { align-items: center; border-top: 1px solid var(--line); color: var(--muted); display: flex; font-size: 12px; justify-content: space-between; margin: 0 30px; padding: 18px 0 28px; }
+@media (max-width: 980px) {
+  .controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .controls .search-control { grid-column: 1 / -1; }
+  .grid.two { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  body { padding-bottom: 54px; }
+  .app-layout { display: block; min-height: auto; }
+  .desktop-sidebar, .desktop-topbar { display: none; }
+  .mobile-header { align-items: center; background: var(--bg); display: flex; height: 46px; justify-content: space-between; padding: 0 12px; position: sticky; top: 0; z-index: 20; }
+  .mobile-brand { color: var(--ink); font-size: 18px; font-weight: 800; }
+  .mobile-nav { background: #fff; border-top: 1px solid var(--line); bottom: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); left: 0; position: fixed; right: 0; z-index: 30; }
+  .mobile-nav a { color: var(--muted); font-size: 11px; font-weight: 700; padding: 11px 2px 10px; text-align: center; }
+  .mobile-nav a[aria-current="page"] { color: var(--evidence); }
+  main { padding: 0 12px 30px; }
+  main > * + * { margin-top: 14px; }
+  .feed-heading { padding-bottom: 8px; }
+  .feed-heading h1 { font-size: 22px; }
+  .feed-heading p { display: none; }
+  .top-stories .section-heading { padding: 9px 12px; }
+  .top-stories .section-heading h2 { font-size: 16px; }
+  .top-story { gap: 8px; grid-template-columns: 20px minmax(0, 1fr) 52px; padding: 8px 12px; }
+  .top-story > span { font-size: 15px; }
+  .top-story strong { font-size: 14px; line-height: 1.35; }
+  .top-story small { font-size: 10px; white-space: normal; }
+  .home-page .feed-search { display: none; }
+  .feed-toolbar { grid-template-columns: minmax(0, 1fr); }
+  .feed-toolbar .section-heading, .feed-chips { grid-column: 1; }
+  .feed-chips { grid-row: auto; }
+  .feed-chips { margin-left: -12px; margin-right: -12px; padding-left: 12px; padding-right: 12px; }
+  .story-stream { gap: 0; margin-left: -12px; margin-right: -12px; }
+  .feed-day { background: #edf0f2; border-bottom: 1px solid var(--line); border-top: 1px solid var(--line); font-size: 13px; padding: 7px 12px; }
+  .story-row, .radar-row { background: transparent; gap: 8px; grid-template-columns: 38px minmax(0, 1fr); padding: 0 12px; }
+  .story-time { font-size: 10px; grid-template-columns: 1fr; padding-top: 12px; text-align: left; }
+  .story-time span { display: none; }
+  .story-content { background: transparent; border: 0; border-bottom: 1px solid #e3e7ea; border-radius: 0; box-shadow: none; padding: 10px 0 12px; }
+  .story-meta { font-size: 11px; }
+  .story-content h2 { font-size: 15px; line-height: 1.4; margin-top: 4px; }
+  .story-content p { font-size: 12px; line-height: 1.55; margin-top: 4px; -webkit-line-clamp: 2; }
+  .story-foot { font-size: 11px; }
+  .score-drawer { display: none; }
+  .source-drawer-list a { grid-template-columns: 1fr; }
+  .radar-tabs { margin-left: -12px; margin-right: -12px; padding-left: 12px; }
+  .tabbar { gap: 16px; padding-right: 12px; }
+  .radar-filters { padding: 12px; }
+  .filter-mobile-toggle { display: flex; justify-content: flex-end; }
+  .filter-mobile-toggle .button { min-width: 84px; }
+  .radar-filters:not(.filters-open) .controls, .radar-filters:not(.filters-open) .filter-feedback { display: none; }
+  .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .controls .search-control { grid-column: 1 / -1; }
+  .timeline-row, .compact-row, .event-grid, .citation-grid { grid-template-columns: 1fr; }
+  .timeline-row { gap: 4px; }
+  .report-reader { padding: 20px 18px; }
+  .report-reader h2 { font-size: 22px; }
+  .report-deck { font-size: 14px; }
+  .tool-heading { margin-top: 0; text-align: left; }
+  .tool-heading h1 { font-size: 24px; }
+  .tool-stage { border: 0; border-radius: 0; box-shadow: none; margin-left: -12px; margin-right: -12px; padding: 12px; width: auto; }
+  .tool-stage textarea { min-height: 96px; }
+  .prompt-suggestions { display: grid; grid-template-columns: 1fr; overflow: visible; }
+  .prompt-suggestions button { max-width: none; width: 100%; }
+  .rail, .event-meta, .inline-defs { grid-template-columns: 1fr; }
+  .site-footer { margin: 0 12px; padding-bottom: 14px; }
 }
 `;
 }

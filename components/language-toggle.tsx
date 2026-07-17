@@ -34,7 +34,7 @@ export function LanguageToggle() {
 }
 
 function englishPublicPath(pathname: string) {
-  const supported = ["/radar", "/entities", "/reports", "/ask", "/write"];
+  const supported = ["/radar", "/entities", "/reports", "/ask"];
   const route = supported.find((candidate) => pathname === candidate || pathname.startsWith(`${candidate}/`));
   return route ? `/en${route}/` : "/en/";
 }

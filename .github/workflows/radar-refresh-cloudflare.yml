@@ -174,7 +174,6 @@ jobs:
         run: |
           npm run lint
           npm run typecheck
-          npm run test
           npm run validate:data
           npm run sensitive:scan
           npm run supabase:public-contract
@@ -310,7 +309,7 @@ jobs:
         env:
           ENABLE_SUPABASE_WRITES: "false"
           SMOKE_REQUIRE_RELEASE_ARTIFACTS: "true"
-        run: npx tsx scripts/smoke-test.ts
+        run: npm run test
 
       - name: Deploy Cloudflare Pages
         id: cloudflare_deploy

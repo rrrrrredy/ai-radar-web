@@ -14,11 +14,13 @@ Updated: 2026-07-16
 
 | route/surface | loader/build path | database dependency |
 | --- | --- | --- |
-| `/`, `/radar`, `/entities*`, `/ask`, `/write` | radar feed, event and product summaries | `public_radar_items` or public snapshot fallback |
+| `/`, `/radar`, `/entities*`, `/ask` | radar feed, event and product summaries | `public_radar_items` or public snapshot fallback |
 | `/reports*` | report workflow loader plus radar traceability | `public_report_candidates`, `public_reports`, `public_radar_items`, or reviewed public fallbacks |
-| `/api/ask`, `/api/writing-assistant` | public evidence retrieval | `public_radar_items`; response shapes unchanged |
-| Cloudflare `/`, `/radar/`, `/reports/`, `/ask/`, `/write/`, `/entities/`, `/en/*` | `scripts/build-cloudflare-public-site.ts` | static `data/radar-snapshot.json` only |
+| `/api/ask` | public evidence retrieval | `public_radar_items`; response shape unchanged |
+| Cloudflare `/`, `/radar/`, `/reports/`, `/ask/`, `/entities/`, `/en/*` | `scripts/build-cloudflare-public-site.ts` | static `data/radar-snapshot.json` only |
 | production snapshot build | `scripts/export-public-snapshot.ts` | three Supabase public views; strict mode forbids local fallback |
+
+The public writing page and writing-assistant API were retired before release. No `/write` route or writing client bundle is published.
 
 ## Security Boundary
 

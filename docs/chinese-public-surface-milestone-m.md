@@ -13,9 +13,8 @@ Cloudflare Pages is Chinese by default and provides a complete English route tre
 | `/entities/` | `/en/entities/` |
 | `/reports/` | `/en/reports/` |
 | `/ask/` | `/en/ask/` |
-| `/write/` | `/en/write/` |
 
-English pages render the same event cards, all-signal rows, source health, report gates, citations, filters, timelines, report coverage caveats, and browser-local Ask/Write tools. Report cards explicitly disclose the public signal-to-event projection in both languages. Original source, company, model, article, and paper names remain unchanged where translation would reduce traceability.
+English pages render the same event cards, all-signal rows, source health, report gates, citations, filters, timelines, report coverage caveats, and browser-local Ask tool. Report cards explicitly disclose the public signal-to-event projection in both languages. Original source, company, model, article, and paper names remain unchanged where translation would reduce traceability.
 
 ## Information Architecture
 
@@ -25,11 +24,12 @@ English pages render the same event cards, all-signal rows, source health, repor
 - 244 mapped signals form 241 public events, while 54 signal-only audit rows are disclosed separately;
 - event filtering removes low-event records only from events, not from the audit view;
 - `/reports/` exposes event-aware quality and editorial status separately;
-- `/ask/` and `/write/` operate locally on public evidence and do not claim a live private server action;
+- `/ask/` operates locally on public evidence and does not claim a live private server action;
+- the public writing route and API are retired and absent from both language versions;
 - source health and failure-family summaries are visible in both languages;
 - desktop and mobile navigation expose the language switch without horizontal scrolling.
 
-The browser-local Ask/Write tools recognize explicit 24-hour and seven-day intent, filter on event publication time, show evidence dates and citations, and do not imply a live server-side model call. Exact event names narrow the result set, while mixed cross-family/single-source requests preserve both evidence states. Automated regressions also cover numeric zeroes and reader-facing source-health timestamps.
+The browser-local Ask tool recognizes explicit 24-hour and seven-day intent, filters on event publication time, shows evidence dates and citations, and does not imply a live server-side model call. Exact event names narrow the result set, while mixed cross-family/single-source requests preserve both evidence states. Automated regressions also cover numeric zeroes and reader-facing source-health timestamps.
 
 ## Current Public Data
 

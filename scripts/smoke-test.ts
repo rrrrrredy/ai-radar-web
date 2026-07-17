@@ -217,7 +217,7 @@ async function main() {
     "Section entity coverage must trace report-local citation ids through public citation metadata."
   );
 
-  console.log("Smoke test passed: event-aware Ask/Write, radar, entity, report, and public snapshot paths remain guarded.");
+  console.log("Smoke test passed: event-aware Ask, radar, entity, report, and public snapshot paths remain guarded.");
 }
 
 function blockExternalNetwork() {
@@ -319,11 +319,7 @@ function assertAssistantFeaturesPresent() {
   const requiredPaths = [
     "app/ask/page.tsx",
     "app/api/ask/route.ts",
-    "app/write/page.tsx",
-    "app/api/writing-assistant/route.ts",
     "components/ask-radar-client.tsx",
-    "components/write-radar-client.tsx",
-    "components/topic-candidate-card.tsx",
     "components/evidence-coverage-strip.tsx",
     "components/evidence-rail.tsx",
     "components/answer-section.tsx",
@@ -331,12 +327,7 @@ function assertAssistantFeaturesPresent() {
     "lib/qa/mock-answer.ts",
     "lib/qa/prompts.ts",
     "lib/qa/types.ts",
-    "lib/qa/validate.ts",
-    "lib/writing-assistant/generate.ts",
-    "lib/writing-assistant/mock-writing.ts",
-    "lib/writing-assistant/prompts.ts",
-    "lib/writing-assistant/types.ts",
-    "lib/writing-assistant/validate.ts"
+    "lib/qa/validate.ts"
   ];
 
   for (const file of requiredPaths) {
@@ -344,21 +335,26 @@ function assertAssistantFeaturesPresent() {
   }
 
   const nav = readSource("components/nav.tsx");
-  assert.equal(nav.includes('href: "/ask"') && nav.includes('href: "/write"'), true, "Public navigation must expose Ask and Write.");
+  assert.equal(nav.includes('href: "/ask"') && !nav.includes('href: "/write"'), true, "Public navigation must expose Ask and omit Write.");
 
   const homepage = readSource("app/page.tsx");
-  assert.equal(homepage.includes('href="/ask"') && homepage.includes('href="/write"'), true, "Homepage must expose event-aware Ask and Write entry points.");
+  assert.equal(homepage.includes('href="/ask"') && !homepage.includes('href="/write"'), true, "Homepage must expose event-aware Ask and omit Write.");
+
+  for (const retiredPath of [
+    "app/write/page.tsx",
+    "app/api/writing-assistant/route.ts",
+    "components/write-radar-client.tsx"
+  ]) {
+    assert.equal(fs.existsSync(path.join(process.cwd(), retiredPath)), false, `${retiredPath} must remain retired.`);
+  }
 
   const askValidation = readSource("lib/qa/validate.ts");
-  const writingValidation = readSource("lib/writing-assistant/validate.ts");
   assert.equal(
     askValidation.includes('if (value === undefined || value === null || value === "")') && askValidation.includes('return "mock";'),
     true,
     "Ask must default to mock generation."
   );
-  assert.equal(writingValidation.includes('? "mock" : value.generationMode'), true, "Writing must default to mock generation.");
-
-  for (const route of ["app/api/ask/route.ts", "app/api/writing-assistant/route.ts"]) {
+  for (const route of ["app/api/ask/route.ts"]) {
     const source = readSource(route);
     assert.equal(source.includes("stripModelMetadata"), true, `${route} must strip private model metadata.`);
   }
@@ -516,45 +512,41 @@ function assertTrustedPublishingSurfaces() {
 
   const cloudflareSite = readSource("scripts/build-cloudflare-public-site.ts");
   assert.equal(
-    cloudflareSite.includes("已审核/已发布报告") &&
-      cloudflareSite.includes("证据草稿") &&
-      cloudflareSite.includes("读者判断摘要") &&
-      cloudflareSite.includes("正式报告用于读取结论") &&
-      cloudflareSite.includes("本轮 Top 3") &&
-      cloudflareSite.includes("为什么重要") &&
-      cloudflareSite.includes("primaryEventEntity") &&
-      cloudflareSite.includes("eventEvidenceProfile") &&
-      cloudflareSite.includes("eventDecisionCategory") &&
-      cloudflareSite.includes("meaningfulTitleTokens") &&
-      cloudflareSite.includes("case \"infrastructure\"") &&
-      cloudflareSite.includes("case \"regulation\"") &&
-      cloudflareSite.includes("case \"safety\"") &&
-      cloudflareSite.includes("case \"other\"") &&
-      cloudflareSite.includes("encodeURIComponent(category.query)") &&
+    cloudflareSite.includes("function renderTopStories") &&
+      cloudflareSite.includes("function renderStoryStream") &&
+      cloudflareSite.includes("function readerReadyEvent") &&
+      cloudflareSite.includes("function humanizeChineseHeadline") &&
+      cloudflareSite.includes("function reportEvents") &&
+      cloudflareSite.includes("function renderReportEvent") &&
+      cloudflareSite.includes("今日热点") &&
+      cloudflareSite.includes("最新精选") &&
+      cloudflareSite.includes("重点与证据") &&
+      cloudflareSite.includes("Events and evidence") &&
+      cloudflareSite.includes("事件与来源") &&
+      cloudflareSite.includes("仍需核实") &&
+      cloudflareSite.includes("function requestedEventCount") &&
+      cloudflareSite.includes("function reportEditorial") &&
+      cloudflareSite.includes("language-switch") &&
+      cloudflareSite.includes("mobile-nav") &&
       cloudflareSite.includes("snapshot.event_clusters.map((event) => categoryFilterValue(event.category))") &&
       cloudflareSite.includes("model_release,benchmark") &&
-      cloudflareSite.includes("agent,product_update") &&
-      cloudflareSite.includes("business,funding,regulation,safety") &&
+      cloudflareSite.includes("product_update,agent,tooling") &&
+      cloudflareSite.includes("business,regulation,policy,funding,infrastructure,safety") &&
       cloudflareSite.includes("parseCategoryFilter") &&
       cloudflareSite.includes("matchesCategoryFilter") &&
-      cloudflareSite.includes("当前分组：") &&
-      cloudflareSite.includes("categoryDisplayLabel") &&
-      cloudflareSite.includes("singleCategoryOption") &&
-      cloudflareSite.includes("return parseCategoryFilter(category.value)") &&
-      cloudflareSite.includes('candidate !== "all"') &&
-      cloudflareSite.includes('<a href="../../radar/">打开雷达</a>') &&
-      !cloudflareSite.includes("category=all") &&
-      !cloudflareSite.includes("encodeURIComponent(labelize(category.query))") &&
-      !cloudflareSite.includes("option(entry.label, entry.label)") &&
-      !cloudflareSite.includes("可能影响模型选型、API 成本、能力评估或基准对比。") &&
-      !cloudflareSite.includes("等待第二来源、官方更新或社区复现实证后再扩大解读。") &&
-      cloudflareSite.includes("报告关联实体") &&
+      cloudflareSite.includes("来源健康") &&
+      cloudflareSite.includes("Source health") &&
       cloudflareSite.includes("source_health_by_family") &&
-      cloudflareSite.includes("最近一次广泛刷新按来源家族汇总") &&
-      cloudflareSite.includes("Latest broad refresh by source family") &&
-      cloudflareSite.includes("reportSectionTraceability"),
+      cloudflareSite.includes("localEvidenceToolScript") &&
+      !cloudflareSite.includes("category=all") &&
+      !cloudflareSite.includes("读者判断摘要") &&
+      !cloudflareSite.includes("正式报告用于读取结论") &&
+      !cloudflareSite.includes("为什么重要") &&
+      !cloudflareSite.includes("下一步观察") &&
+      !cloudflareSite.includes("重点验证新能力是否进入高频工作场景") &&
+      !cloudflareSite.includes("继续观察"),
     true,
-    "Cloudflare static site must separate formal reports from evidence drafts and show reader decision guidance plus report-to-entity traceability."
+    "Cloudflare static site must use the compact event-feed IA, bilingual navigation, current reports, and public source-health/query surfaces."
   );
 
   const homepage = readSource("app/page.tsx");
@@ -587,29 +579,28 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   const cloudflareSite = readSource("scripts/build-cloudflare-public-site.ts");
   assert.equal(
       cloudflareSite.includes("renderAsk") &&
-      cloudflareSite.includes("renderWrite") &&
+      !cloudflareSite.includes("renderWrite") &&
+      cloudflareSite.includes("renderPromptSuggestions") &&
       cloudflareSite.includes("localEvidenceToolScript") &&
-      cloudflareSite.includes("renderEntities") &&
-      cloudflareSite.includes("renderEntityDetail") &&
-      cloudflareSite.includes("entities\", \"实体\"") &&
-      cloudflareSite.includes("公开只读情报快照") &&
-      cloudflareSite.includes("围绕行业精选提问") &&
-      cloudflareSite.includes("基于事件开始写作") &&
-      cloudflareSite.includes("buildEntitySummaries") &&
-      cloudflareSite.includes("buildEntityEvidenceGraph") &&
-      cloudflareSite.includes("entityTrackingInsight") &&
-      cloudflareSite.includes("实体档案") &&
-      cloudflareSite.includes("报告状态模型") &&
-      cloudflareSite.includes("readerFacingCaveats") &&
-      cloudflareSite.includes("AI 行业雷达今日精选（含前序证据）") &&
+      !cloudflareSite.includes("fs.writeFile(path.join(outputDir, \"entities\", \"index.html\")") &&
+      !cloudflareSite.includes("fs.mkdir(path.join(outputDir, \"entities\")") &&
+      cloudflareSite.includes("向雷达提问") &&
+      !cloudflareSite.includes("基于雷达写作") &&
+      cloudflareSite.includes("reportDisplayTitle") &&
+      cloudflareSite.includes("function retiredRouteRedirects") &&
+      cloudflareSite.includes("function retiredRouteWorker") &&
+      cloudflareSite.includes("function retiredRouteWorkerRoutes") &&
+      cloudflareSite.includes("/write/ /404.html 404") &&
+      cloudflareSite.includes("/api/writing-assistant /404.html 404") &&
+      cloudflareSite.includes('"/api/writing-assistant"') &&
+      cloudflareSite.includes("/entities/* /404.html 404") &&
+      cloudflareSite.includes('"/write/*"') &&
+      cloudflareSite.includes("env.ASSETS.fetch") &&
       cloudflareSite.includes("resolveBuildProvenance") &&
       cloudflareSite.includes('commitSource: "git_worktree"') &&
-      cloudflareSite.includes("path.join(entityDir, \"index.html\")") &&
-      cloudflareSite.includes("../entities/${entityStaticSlug(trace.entity)}/") &&
-      cloudflareSite.includes("fs.writeFile(path.join(outputDir, \"entities\", \"index.html\")") &&
       cloudflareSite.includes("fs.writeFile(path.join(outputDir, \"version.json\")"),
     true,
-    "Cloudflare static site must expose Ask/Write, entity index/detail pages, and a public version marker."
+    "Cloudflare static site must expose Ask, omit Write, retire public entity pages, and include a public version marker."
   );
   assert.equal(
     cloudflareSite.includes("timeWindowHours") &&
@@ -619,10 +610,12 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       cloudflareSite.includes("系统未用“关注”或“观察”事件替代") &&
       cloudflareSite.includes("function eventDate(event)") &&
       cloudflareSite.includes('[event.canonical_title || "", ...(event.related_entities || [])]') &&
-      cloudflareSite.includes("仅信号审计行") &&
-      cloudflareSite.includes("Signal-only audit rows"),
+      cloudflareSite.includes('tabButton("signals", "全部信号")') &&
+      cloudflareSite.includes('tabButton("signals", "All signals")') &&
+      cloudflareSite.includes("function renderRadarItem") &&
+      cloudflareSite.includes('data-status="${escapeAttr(item.status)}"'),
     true,
-    "Cloudflare Ask/Write and radar UI must enforce evidence windows, avoid category-only Agent matches, and disclose signal-only rows."
+    "Cloudflare Ask and radar UI must enforce evidence windows, avoid category-only Agent matches, and disclose signal-only rows."
   );
 
   const snapshotExporter = readSource("scripts/export-public-snapshot.ts");
@@ -653,6 +646,13 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
     true,
     "The production Cloudflare workflow must read authoritative completeness data with writes disabled."
   );
+  assert.equal(
+    refreshWorkflow.indexOf("npm run test") > refreshWorkflow.indexOf("Build Cloudflare public snapshot") &&
+      refreshWorkflow.indexOf("npm run test") > refreshWorkflow.indexOf("Validate built Cloudflare artifact") &&
+      !/\n\s+schedule:/m.test(refreshWorkflow),
+    true,
+    "The manual refresh workflow must stay dispatch-only and run static-output tests after building the Cloudflare artifact."
+  );
   assertSupabasePublicContractCheckScript(supabasePublicContract);
   assertPublicRadarViewSqlContract(publicEntityMigration);
   assertPublicViewSecurityMigration(publicViewSecurityMigration, privateGrantMigration);
@@ -680,14 +680,22 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
     true,
     "Cloudflare static output must include a real 404 page so unknown routes do not soft-200 the homepage."
   );
+  assert.equal(
+    fs.existsSync(path.join(process.cwd(), "dist/cloudflare-pages/_worker.js")),
+    true,
+    "Cloudflare static output must include a Pages worker that hard-404s retired legacy routes."
+  );
+  assert.equal(
+    fs.existsSync(path.join(process.cwd(), "dist/cloudflare-pages/_routes.json")),
+    true,
+    "Cloudflare static output must scope its Pages worker to retired legacy routes only."
+  );
 
   for (const pagePath of [
     "dist/cloudflare-pages/index.html",
     "dist/cloudflare-pages/radar/index.html",
-    "dist/cloudflare-pages/entities/index.html",
     "dist/cloudflare-pages/reports/index.html",
-    "dist/cloudflare-pages/ask/index.html",
-    "dist/cloudflare-pages/write/index.html"
+    "dist/cloudflare-pages/ask/index.html"
   ]) {
     assert.equal(fs.existsSync(path.join(process.cwd(), pagePath)), true, `${pagePath} must exist after the release build.`);
     const page = readSource(pagePath);
@@ -718,6 +726,9 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   for (const forbiddenDir of ["dist/cloudflare-pages/clusters", "dist/github-pages"]) {
     assert.equal(fs.existsSync(path.join(process.cwd(), forbiddenDir)), false, `${forbiddenDir} must not remain in static output.`);
   }
+  for (const retiredPath of ["dist/cloudflare-pages/write", "dist/cloudflare-pages/en/write", "dist/cloudflare-pages/entities", "dist/cloudflare-pages/en/entities"]) {
+    assert.equal(fs.existsSync(path.join(process.cwd(), retiredPath)), false, `${retiredPath} must not exist in static output.`);
+  }
 }
 
 function assertBilingualStaticContract() {
@@ -727,10 +738,8 @@ function assertBilingualStaticContract() {
   const routePairs = [
     ["dist/cloudflare-pages/index.html", "dist/cloudflare-pages/en/index.html"],
     ["dist/cloudflare-pages/radar/index.html", "dist/cloudflare-pages/en/radar/index.html"],
-    ["dist/cloudflare-pages/entities/index.html", "dist/cloudflare-pages/en/entities/index.html"],
     ["dist/cloudflare-pages/reports/index.html", "dist/cloudflare-pages/en/reports/index.html"],
-    ["dist/cloudflare-pages/ask/index.html", "dist/cloudflare-pages/en/ask/index.html"],
-    ["dist/cloudflare-pages/write/index.html", "dist/cloudflare-pages/en/write/index.html"]
+    ["dist/cloudflare-pages/ask/index.html", "dist/cloudflare-pages/en/ask/index.html"]
   ] as const;
 
   for (const [chinesePath, englishPath] of routePairs) {
@@ -746,14 +755,18 @@ function assertBilingualStaticContract() {
   const chineseHome = readSource("dist/cloudflare-pages/index.html");
   const englishHome = readSource("dist/cloudflare-pages/en/index.html");
   assert.equal(
-    chineseHome.includes("<summary>展开时间线</summary>") && chineseHome.includes("<summary>查看相关信号</summary>"),
+    (chineseHome.match(/class="top-story"/g) ?? []).length === 3 &&
+      chineseHome.includes('class="story-stream"') &&
+      chineseHome.includes("<summary>来源与时间线</summary>"),
     true,
-    "Chinese homepage featured events must expose their timeline and complete related-signal citations."
+    "Chinese homepage must expose a Top 3, chronological event stream, and expandable source timeline."
   );
   assert.equal(
-    englishHome.includes("<summary>Expand timeline</summary>") && englishHome.includes("<summary>View related signals</summary>"),
+    (englishHome.match(/class="top-story"/g) ?? []).length === 3 &&
+      englishHome.includes('class="story-stream"') &&
+      englishHome.includes("<summary>Sources & timeline</summary>"),
     true,
-    "English homepage featured events must expose their timeline and complete related-signal citations."
+    "English homepage must expose a Top 3, chronological event stream, and expandable source timeline."
   );
 
   const englishRadar = readSource("dist/cloudflare-pages/en/radar/index.html");
@@ -770,9 +783,9 @@ function assertBilingualStaticContract() {
   assert.equal(englishRadar.includes('data-status="included"') && englishRadar.includes('card.dataset.status === selectedStatus'), true, "English event cards must participate in the status filter.");
   assert.equal(englishRadar.includes('params.get("tab")') && englishRadar.includes('["ArrowLeft", "ArrowRight", "Home", "End"]'), true, "English radar must persist tab state and support keyboard tab navigation.");
   assert.equal(englishRadar.includes('id="radar-freshness"') && englishRadar.includes('data-freshness="'), true, "English radar must expose and apply the freshness filter.");
-  assert.equal(englishRadar.includes("public store / ") && englishRadar.includes(" displayed") && englishRadar.includes("Rate-limit warnings (may overlap)"), true, "English radar must distinguish store/display counts and overlapping rate-limit warnings.");
+  assert.equal(englishRadar.includes("Source health summary") && englishRadar.includes("Broad refresh attempted") && englishRadar.includes("Rate-limit warnings (may overlap)"), true, "English radar must expose audited source-health totals and overlapping rate-limit warnings.");
   assert.equal(englishRadar.includes('>苹果<'), false, "English radar must not render Chinese entity aliases when an English alias is available.");
-  assert.equal(englishRadar.includes("Single-source observation") && englishRadar.includes("Multiple reports, one family") && englishRadar.includes("Cross-family coverage"), true, "English radar must distinguish cross-family coverage, same-family repetition, and single-source observations.");
+  assert.equal(englishRadar.includes("One report") && englishRadar.includes("Several reports of one type") && englishRadar.includes("Reported by different source types"), true, "English radar must distinguish reporting coverage without exposing pipeline terminology.");
   assert.equal(englishRadar.includes('value="cross"') && englishRadar.includes('value="same"') && englishRadar.includes('id="radar-result-count"') && englishRadar.includes('id="radar-reset"'), true, "English radar must expose evidence-state filters, live result counts, and reset.");
   assert.equal(englishRadar.includes('value="regulation"') && englishRadar.includes('value="media_interview"'), true, "English radar must expose all public event categories, including regulation and media/interview.");
 
@@ -782,28 +795,39 @@ function assertBilingualStaticContract() {
     snapshot.radar_items.length,
     "Chinese 全部信号 must render every public-safe snapshot signal, including low-event audit rows."
   );
-  assert.equal(chineseRadar.includes("单源观察") && chineseRadar.includes("同家族多源复述") && chineseRadar.includes("跨家族多源报道"), true, "Chinese radar must distinguish cross-family coverage, same-family repetition, and single-source observations.");
+  assert.equal(chineseRadar.includes("单篇报道") && chineseRadar.includes("同类来源多篇报道") && chineseRadar.includes("不同类型来源均有报道"), true, "Chinese radar must distinguish reporting coverage in reader-facing language.");
   assert.equal(chineseRadar.includes('id="radar-result-count"') && chineseRadar.includes('id="radar-reset"') && chineseRadar.includes('value="regulation"') && chineseRadar.includes('>监管<'), true, "Chinese radar must expose complete localized filters with count/reset controls.");
-  assert.equal(chineseRadar.includes('data-status="included"') && chineseRadar.includes('id="radar-freshness"') && chineseRadar.includes("条公开库 /") && chineseRadar.includes("条本站展示") && chineseRadar.includes("限流警告（可重叠）"), true, "Chinese radar must filter event status/freshness and explain count/failure semantics.");
-
-  const englishEntities = readSource("dist/cloudflare-pages/en/entities/index.html");
-  assert.equal(englishEntities.includes("持续跟踪") || englishEntities.includes("观察中"), false, "English entities must localize tracking-priority labels.");
-  const chineseEntities = readSource("dist/cloudflare-pages/entities/index.html");
-  assert.equal(chineseEntities.includes('href="../radar/"') && chineseEntities.includes('href="../reports/"'), true, "Chinese entity index links must resolve from /entities/ to sibling routes.");
-  assert.equal(chineseEntities.includes('href="radar/"') || chineseEntities.includes('href="reports/"'), false, "Chinese entity index must not generate nested /entities/radar or /entities/reports links.");
+  assert.equal(chineseRadar.includes('data-status="included"') && chineseRadar.includes('id="radar-freshness"') && chineseRadar.includes("信息源健康摘要") && chineseRadar.includes("广泛刷新尝试源") && chineseRadar.includes("限流警告（可重叠）"), true, "Chinese radar must filter event status/freshness and expose audited source-health totals.");
 
   const englishReports = readSource("dist/cloudflare-pages/en/reports/index.html");
-  assert.equal(englishReports.includes("Event-aware reports") && englishReports.includes("Baseline evidence gate"), true, "English reports must expose event and quality-gate context.");
-  assert.equal(englishReports.includes("Baseline evidence gate") && englishReports.includes("Multiple reports / cross-family coverage / all events") && englishReports.includes("Release readiness"), true, "English reports must separate baseline evidence volume from event coverage and release readiness.");
-  assert.equal(englishReports.includes("Evidence draft, not release-ready"), true, "English reports must lead with the non-publication state when independent corroboration is insufficient.");
+  assert.equal(englishReports.includes("AI Industry Radar Daily") && englishReports.includes("AI Industry Radar Weekly") && englishReports.includes("Events and evidence") && englishReports.includes("Events and sources"), true, "English reports must present editorial daily and weekly event briefs.");
+  assert.equal(englishReports.includes("key events") && englishReports.includes("sources") && englishReports.includes("themes") && englishReports.includes("with multiple reports"), true, "English reports must show reader-facing coverage counts.");
+  assert.equal(englishReports.includes("Enough reporting to review") && englishReports.includes("Editorial check pending") && englishReports.includes("usable items") && englishReports.includes("source links"), true, "English report candidates must show quality and editorial status in reader-facing language.");
+  assert.equal(!englishReports.includes("Evidence ready") && !englishReports.includes("Editorial review") && !englishReports.includes("usable signals"), true, "English reports must not expose workflow status language.");
+  assert.equal(englishReports.includes("What still needs checking") && englishReports.includes("Sources ("), true, "English reports must keep caveats and citations available in compact disclosure sections.");
   const chineseReports = readSource("dist/cloudflare-pages/reports/index.html");
-  assert.equal(chineseReports.includes("来源家族覆盖与可信度") && chineseReports.includes("跨家族多源报道事件") && chineseReports.includes("同家族多源复述事件"), true, "Chinese report body and Markdown must use source-family-aware coverage language.");
-  assert.equal(chineseReports.includes("多源确认与可信度") || chineseReports.includes("个多源确认事件"), false, "Chinese reports must not present same-family repetition as independent multi-source confirmation.");
+  assert.equal(chineseReports.includes("AI 行业雷达日报") && chineseReports.includes("AI 行业雷达周报") && chineseReports.includes("重点与证据") && chineseReports.includes("事件与来源"), true, "Chinese reports must present editorial daily and weekly event briefs.");
+  assert.equal(chineseReports.includes("个重点事件") && chineseReports.includes("个来源") && chineseReports.includes("个主题") && chineseReports.includes("多源报道") && chineseReports.includes("仍需核实"), true, "Chinese reports must expose reader-facing coverage counts and compact caveats.");
+  assert.equal(chineseReports.includes("信息量达到审阅要求") && chineseReports.includes("编辑校对中") && chineseReports.includes("条可用内容") && chineseReports.includes("个来源链接"), true, "Chinese report candidates must show quality and editorial status in reader-facing language.");
+  assert.equal(!chineseReports.includes("证据达标") && !chineseReports.includes("待编辑复核") && !chineseReports.includes("条可用信号"), true, "Chinese reports must not expose workflow status language.");
+  assert.equal(
+    chineseReports.includes("事件预览") ||
+      chineseReports.includes("证据边界：") ||
+      chineseReports.includes("重点验证新能力是否进入高频工作场景") ||
+      chineseReports.includes("继续观察"),
+    false,
+    "Chinese reports must not render legacy preview labels or explanatory boilerplate in the reading path."
+  );
 
   const publicSnapshot = JSON.parse(readSource("dist/cloudflare-pages/data/radar-snapshot.json")) as {
     curated_events?: Array<{ event_score_label?: string; source_count?: number; source_families?: string[] }>;
+    report_quality_summary?: { daily?: { id?: string } | null; weekly?: { id?: string } | null };
     reports?: Array<{ mode?: string; report_type?: string; source_item_ids?: string[] }>;
   };
+  const visibleDailyId = chineseReports.match(/data-report-id="([^"]+)"[^>]*id="report-daily"/)?.[1];
+  const visibleWeeklyId = chineseReports.match(/data-report-id="([^"]+)"[^>]*id="report-weekly"/)?.[1];
+  assert.equal(visibleDailyId, publicSnapshot.report_quality_summary?.daily?.id, "Visible daily report and daily quality summary must reference the same candidate.");
+  assert.equal(visibleWeeklyId, publicSnapshot.report_quality_summary?.weekly?.id, "Visible weekly report and weekly quality summary must reference the same candidate.");
   for (const event of publicSnapshot.curated_events ?? []) {
     if (event.event_score_label === "高优先级") {
       assert.equal((event.source_count ?? 0) >= 2, true, "High-priority public events must have multi-source support.");
@@ -816,15 +840,9 @@ function assertBilingualStaticContract() {
   assert.equal(new Set(candidateSignatures).size, candidateSignatures.length, "Public snapshot must deduplicate saved report candidates by stable content signature.");
 
   const englishAsk = readSource("dist/cloudflare-pages/en/ask/index.html");
-  const englishWrite = readSource("dist/cloudflare-pages/en/write/index.html");
-  assert.equal(englishAsk.includes("Query public events") && englishAsk.includes("../../data/radar-snapshot.json"), true, "English Ask must query the public event snapshot locally.");
-  assert.equal(englishWrite.includes("Generate an evidence-led outline") && englishWrite.includes("../../data/radar-snapshot.json"), true, "English Write must generate from the public event snapshot locally.");
+  assert.equal(englishAsk.includes("Ask the radar") && englishAsk.includes("Radar results") && englishAsk.includes("../../data/radar-snapshot.json"), true, "English Ask must query the public event snapshot locally.");
   assert.equal(englishAsk.includes("filter((entry) => entry.score !== null)") && englishAsk.includes("multiple source families") && englishAsk.includes("No matching event"), true, "English Ask must apply bilingual intent matching and a real no-match threshold.");
-  assert.match(
-    englishReports,
-    /Public event projection maps \d+ of \d+ public signals to \d+ reportable events; signal-only rows remain under All signals\./,
-    "English report cards must disclose the same signal-to-event projection boundary as the Chinese report view."
-  );
+  assert.equal(englishReports.includes('class="report-event"') && englishReports.includes('class="report-sources"'), true, "English reports must render event-level evidence with expandable source citations.");
   const publicStyles = readSource("dist/cloudflare-pages/assets/styles.css");
   assert.equal(publicStyles.includes(":focus-visible") && publicStyles.includes("outline: 3px solid"), true, "Static public controls and links must expose a visible keyboard focus state.");
 }
@@ -837,48 +855,17 @@ function assertStaticCategoryFilterContract(pagePath: string) {
   assert.equal(page.includes('value="product_update"'), true, `${pagePath} must expose raw product_update option value.`);
   assert.equal(page.includes('value="model release"'), false, `${pagePath} must not expose display labels as category option values.`);
   assert.equal(page.includes('value="open source"'), false, `${pagePath} must not expose display labels as category option values.`);
-  assert.equal(page.includes("当前分组："), true, `${pagePath} must expose a selected grouped category option for multi-category entry links.`);
-  assert.equal(page.includes("categoryDisplayLabel"), true, `${pagePath} must label grouped category options for readers.`);
-  assert.equal(page.includes("singleCategoryOption"), true, `${pagePath} must expose a selected option for valid single-category deep links missing from top categories.`);
+  assert.equal(page.includes('id="radar-category"') && page.includes('data-category="') && page.includes("parseCategoryFilter") && page.includes("matchesCategoryFilter"), true, `${pagePath} must expose and apply category filters to event and signal rows.`);
+  assert.equal(page.includes('data-tab-panel="curated"') && page.includes('aria-selected="true"'), true, `${pagePath} must keep the curated event view selected by default.`);
 }
 
 function assertStaticCategoryLinkContract(pagePath: string) {
   assert.equal(fs.existsSync(path.join(process.cwd(), pagePath)), true, `${pagePath} must exist after the release build.`);
   const page = readSource(pagePath);
-  const snapshot = JSON.parse(readSource("dist/cloudflare-pages/data/radar-snapshot.json")) as {
-    event_clusters?: Array<{ category?: string }>;
-  };
-  const events = snapshot.event_clusters ?? [];
-  const expectations = [
-    ["", events.length],
-    ["model_release,benchmark", countEventsForStaticCategoryContract(events, ["model_release", "benchmark"])],
-    ["agent,product_update", countEventsForStaticCategoryContract(events, ["agent", "product_update"])],
-    ["open_source,infrastructure", countEventsForStaticCategoryContract(events, ["open_source", "infrastructure"])],
-    ["research", countEventsForStaticCategoryContract(events, ["research"])],
-    ["business,funding,regulation,safety", countEventsForStaticCategoryContract(events, ["business", "funding", "regulation", "safety"])]
-  ] as const;
-
-  for (const [query, expectedCount] of expectations) {
-    const href = `radar/?tab=events${query ? `&amp;category=${encodeURIComponent(query)}` : ""}`;
-    const start = page.indexOf(`<a class="event-card" href="${href}"`);
-    assert.equal(start >= 0, true, `${pagePath} must route the ${query || "all"} reader entry to the All events tab.`);
-    const end = page.indexOf("</a>", start);
-    const card = page.slice(start, end);
-    assert.equal(card.includes(`>${expectedCount} 条<`), true, `${pagePath} ${query || "all"} count must equal the landing event result count.`);
-  }
-  assert.equal(/category=model_release["&<]/.test(page), false, `${pagePath} must not link the model reader entry to model_release alone.`);
-  assert.equal(/category=agent["&<]/.test(page), false, `${pagePath} must not link the product reader entry to agent alone.`);
-  assert.equal(/category=open_source["&<]/.test(page), false, `${pagePath} must not link the developer reader entry to open_source alone.`);
-  assert.equal(/category=business["&<]/.test(page), false, `${pagePath} must not link the business reader entry to business alone.`);
-  assert.equal(page.includes("category=model%20release"), false, `${pagePath} must not link to display label model release.`);
-  assert.equal(page.includes("category=open%20source"), false, `${pagePath} must not link to display label open source.`);
-  assert.equal(page.includes("category=all"), false, `${pagePath} must not link to all as a concrete category.`);
-  assert.equal(page.includes("category=%E6"), false, `${pagePath} must not link to localized category labels.`);
-}
-
-function countEventsForStaticCategoryContract(events: Array<{ category?: string }>, categories: string[]) {
-  const targets = new Set(categories);
-  return events.filter((event) => targets.has(String(event.category ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_"))).length;
+  assert.equal((page.match(/class="top-story"/g) ?? []).length, 3, `${pagePath} must expose exactly three top stories.`);
+  assert.equal(page.includes('data-feed-category="all"') && page.includes('data-feed-category="model_release,benchmark"') && page.includes('data-feed-category="product_update,agent,tooling"') && page.includes('data-feed-category="research"') && page.includes('data-feed-category="open_source"'), true, `${pagePath} must expose compact reader category controls.`);
+  assert.equal(page.includes('class="story-stream"') && page.includes('href="radar/?tab=events"'), true, `${pagePath} must render the chronological stream and route readers to the full event radar.`);
+  assert.equal(page.includes("category=all") || page.includes("category=%E6"), false, `${pagePath} must not encode localized or synthetic category query values.`);
 }
 
 function assertSupabasePublicContractCheckScript(source: string) {
@@ -1423,46 +1410,11 @@ function staticHtmlJsonFiles(root: string): string[] {
 
 function assertStaticReportEntityLinksContract(reportPath: string) {
   const html = fs.readFileSync(path.join(process.cwd(), reportPath), "utf8");
-  const entityChipLinks = [...html.matchAll(/class="entity-chip"\s+href="([^"]+)"/g)].map((match) => match[1]);
-  const reportDir = path.dirname(path.join(process.cwd(), reportPath));
-  const siteRoot = path.dirname(reportDir);
-  const detailViolations: string[] = [];
-
-  assert.equal(entityChipLinks.length > 0, true, `${reportPath} must render report-to-entity traceability links.`);
-  assert.deepEqual(
-    entityChipLinks.filter((href) => !href.startsWith("../entities/")),
-    [],
-    `${reportPath} entity chips must link to local static entity detail pages.`
-  );
-  assert.deepEqual(
-    entityChipLinks.filter((href) => href.includes("://") || href.includes("%2F") || href.includes("%2f")),
-    [],
-    `${reportPath} entity chips must not link to dynamic hosts or percent-encoded path separators.`
-  );
-
-  for (const href of [...new Set(entityChipLinks)]) {
-    const detailDir = path.resolve(reportDir, href);
-    const detailPath = path.join(detailDir, "index.html");
-    if (!detailDir.startsWith(siteRoot)) {
-      detailViolations.push(`${href} resolves outside the static site root`);
-      continue;
-    }
-    if (!fs.existsSync(detailPath)) {
-      detailViolations.push(`${href} does not resolve to an entity detail index.html`);
-      continue;
-    }
-
-    const detailHtml = fs.readFileSync(detailPath, "utf8");
-    if (!detailHtml.includes("Evidence timeline") && !detailHtml.includes("证据时间线")) {
-      detailViolations.push(`${href} detail page is missing an evidence timeline`);
-    }
-  }
-
-  assert.deepEqual(
-    detailViolations,
-    [],
-    `${reportPath} entity chips must resolve to local entity detail pages with evidence timelines.`
-  );
+  const sourceLinks = [...html.matchAll(/class="report-sources"[\s\S]*?<a href="([^"]+)"/g)].map((match) => match[1]);
+  assert.equal(html.includes('id="report-daily"') && html.includes('id="report-weekly"'), true, `${reportPath} must expose current daily and weekly report anchors.`);
+  assert.equal((html.match(/class="report-event"/g) ?? []).length > 0, true, `${reportPath} must render event-level report entries.`);
+  assert.equal(html.includes('class="report-notes"') && html.includes('class="report-sources"'), true, `${reportPath} must keep evidence gaps and source citations available.`);
+  assert.equal(sourceLinks.length > 0 && sourceLinks.every((href) => /^https?:\/\//.test(href)), true, `${reportPath} report citations must link to public HTTP(S) sources.`);
 }
 
 function assertTrustedPublishingReadiness() {
@@ -1547,10 +1499,11 @@ function assertTrustedPublishingRegressionGuards() {
 
   const cloudflareMirror = readSource("scripts/build-cloudflare-public-site.ts");
   assert.equal(
-    cloudflareMirror.includes("snapshot.reports.filter(isFormalSnapshotReport)") &&
-      !cloudflareMirror.includes("const reports = latestReportsByType(snapshot);"),
+    cloudflareMirror.includes("const reports = latestReportsByType(snapshot.reports);") &&
+      cloudflareMirror.includes("const time = reportTime(right) - reportTime(left);") &&
+      cloudflareMirror.includes('["daily", "weekly"].flatMap'),
     true,
-    "Cloudflare reports page must not let a newer evidence draft hide a formal reviewed/published report."
+    "Cloudflare reports page must select the latest daily and weekly candidates."
   );
 
   const opsSummaryWriter = readSource("scripts/write-ops-summary.ts");

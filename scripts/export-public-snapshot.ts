@@ -1208,7 +1208,14 @@ function reportQualitySummary(
   reportType: ReportPreviewType,
   events: PublicEventCluster[]
 ): ReportQualitySummary | null {
-  const report = reports.find((candidate) => candidate.report_type === reportType);
+  const report = reports
+    .filter((candidate) => candidate.report_type === reportType)
+    .toSorted((left, right) => {
+      const leftTime = Date.parse(left.saved_at ?? left.generated_at ?? left.time_window.end);
+      const rightTime = Date.parse(right.saved_at ?? right.generated_at ?? right.time_window.end);
+      return (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0) ||
+        reportSnapshotPriority(right) - reportSnapshotPriority(left);
+    })[0];
 
   if (!report) {
     return null;
@@ -1232,7 +1239,7 @@ function reportQualitySummary(
 
   return {
     category_count: report.category_count,
-    caveats: report.caveats,
+    caveats: publicSafeNotes(report.caveats),
     citation_count: report.citation_count,
     distinct_source_count: report.distinct_source_count,
     id: report.id,
@@ -1354,7 +1361,7 @@ function eventAwareReport(
       `报告证据严格限定在声明时间窗 ${declaredWindow}。`,
       "这是事件感知的公开报告视图；原始信号仍可在“全部信号”中审计。",
       crossFamilyEvents.length === 0 ? "当前没有跨来源家族多源报道事件，报告判断中需要保留不确定性。" : "",
-      ...report.caveats
+      ...report.caveats.filter((caveat) => !isStaleEventCountNote(caveat))
     ])),
     citation_count: citations.length,
     citations,
@@ -2589,7 +2596,11 @@ function publicSnapshotDataSource(value: string | null | undefined) {
 }
 
 function publicSafeNotes(values: string[]) {
-  return dedupe(values.map(publicSafeNote).filter((value) => value && !isInternalRunLogNote(value)));
+  return dedupe(values.map(publicSafeNote).filter((value) => value && !isInternalRunLogNote(value) && !isStaleEventCountNote(value)));
+}
+
+function isStaleEventCountNote(value: string) {
+  return /\b244\b|\b241\b|244\s*(?:mapped|条|signals)|241\s*(?:reportable|个|events)|mapped signals|reportable events/i.test(value);
 }
 
 function publicSourceWarnings(snapshot: PublicMirrorSnapshot) {
@@ -2623,6 +2634,11 @@ function publicSafeNote(value: string) {
     .replace(/local public report/g, "公开报告")
     .replace(/local repository snapshot/gi, "当前公开证据快照")
     .replace(/repository snapshot/gi, "公开证据快照")
+    .replace(/May affect model capability tracking and product benchmarking:/gi, "可能影响行业技术评估和产品选型：")
+    .replace(/model capability tracking and product benchmarking/gi, "行业技术评估和产品选型")
+    .replace(/AI writing/gi, "AI 辅助内容处理")
+    .replace(/AI写作/g, "AI 辅助内容处理")
+    .replace(/利用AI进行写作/g, "利用 AI 进行内容处理")
     .replace(
       "Cloudflare Pages is the primary public read surface. Auth, Admin, server actions, and write workflows remain outside this public Cloudflare surface.",
       "此页面是公开只读情报快照，不提供账号、后台操作或写入能力。"

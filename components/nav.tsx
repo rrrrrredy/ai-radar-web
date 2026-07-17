@@ -10,8 +10,7 @@ const publicNavItems = [
   { href: "/radar", label: "雷达" },
   { href: "/entities", label: "实体" },
   { href: "/reports", label: "报告" },
-  { href: "/ask", label: "提问" },
-  { href: "/write", label: "写作" }
+  { href: "/ask", label: "提问" }
 ];
 
 const adminNavItem = { href: "/admin", label: "运维" };

@@ -1289,7 +1289,7 @@ function eventWatchNote(event: PublicEventCluster) {
   }
 
   if (event.source_families.length <= 1) {
-    return "继续观察是否有跨来源家族确认，避免同源转载放大。";
+    return "尚缺跨来源家族确认，需避免同源转载放大。";
   }
 
   return "跟踪后续时间线、引用来源变化和相关实体的新动作。";

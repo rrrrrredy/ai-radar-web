@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
   buildEventLayer,
+  filterPublicDisplayEventLayer,
   sourceFamilyForEvent,
   type ClusterableRadarItem
 } from "@/lib/events/clustering";
@@ -35,6 +36,22 @@ function company(name: string) {
     confidence: 0.95,
     name,
     type: "company" as const
+  };
+}
+
+function product(name: string) {
+  return {
+    confidence: 0.95,
+    name,
+    type: "product" as const
+  };
+}
+
+function paper(name: string) {
+  return {
+    confidence: 0.95,
+    name,
+    type: "paper" as const
   };
 }
 
@@ -578,6 +595,230 @@ assert.equal(
   "broad company and model entities must not merge unrelated same-day research"
 );
 
+const techCrunchCodexKeyboard = radarItem({
+  categories: ["product_update"],
+  entities: [company("OpenAI"), product("OpenAI Codex")],
+  id: "techcrunch-openai-codex-micro-keyboard",
+  published_at: "2026-07-15T12:00:00Z",
+  source_name: "TechCrunch AI",
+  summary_en: "OpenAI released a $230 light-up mechanical keyboard for Codex users.",
+  tags: ["openai", "codex-micro", "keyboard", "hardware"],
+  title: "Amid hardware legal battle, OpenAI releases a $230 keyboard for Codex",
+  url: "https://techcrunch.com/2026/07/15/openai-codex-micro-keyboard"
+});
+const arsCodexKeyboard = radarItem({
+  categories: ["business"],
+  entities: [company("OpenAI"), product("Codex Micro")],
+  id: "ars-openai-codex-micro-keyboard",
+  published_at: "2026-07-15T16:00:00Z",
+  source_name: "Ars Technica AI",
+  summary_en: "OpenAI unveiled Codex Micro, its first branded light-up keyboard, priced at $230.",
+  tags: ["openai", "codex-micro", "keyboard", "hardware"],
+  title: "OpenAI's first branded hardware is... a light-up keyboard?",
+  url: "https://arstechnica.com/gadgets/2026/07/openai-codex-micro-keyboard"
+});
+const codexKeyboardLayer = buildEventLayer([techCrunchCodexKeyboard, arsCodexKeyboard]);
+const codexKeyboardEvent = codexKeyboardLayer.event_clusters.find((event) =>
+  event.related_item_ids.includes(techCrunchCodexKeyboard.id)
+);
+assert.ok(codexKeyboardEvent, "expected an OpenAI Codex Micro keyboard event");
+assert.deepEqual(
+  new Set(codexKeyboardEvent.related_item_ids),
+  new Set([techCrunchCodexKeyboard.id, arsCodexKeyboard.id]),
+  "same named product, concrete object, and launch action should merge within four hours despite title and category drift"
+);
+assert.equal(codexKeyboardEvent.source_count, 2);
+assert.equal(codexKeyboardLayer.event_count, 1);
+
+const namedProductNonMergeCases: Array<{
+  label: string;
+  items: [ClusterableRadarItem, ClusterableRadarItem];
+}> = [
+  {
+    label: "different named products",
+    items: [
+      radarItem({
+        categories: ["product_update"],
+        entities: [company("OpenAI"), product("Codex Micro")],
+        id: "codex-micro-keyboard-product-control",
+        published_at: "2026-07-15T12:00:00Z",
+        source_name: "TechCrunch AI",
+        summary_en: "OpenAI unveiled Codex Micro as a programmable light-up keyboard.",
+        title: "Codex Micro arrives as OpenAI's programmable keyboard",
+        url: "https://techcrunch.com/codex-micro-keyboard-control"
+      }),
+      radarItem({
+        categories: ["business"],
+        entities: [company("OpenAI"), product("Codex Studio")],
+        id: "codex-studio-keyboard-product-control",
+        published_at: "2026-07-15T15:00:00Z",
+        source_name: "Ars Technica AI",
+        summary_en: "OpenAI launched the separate Codex Studio programmable keyboard.",
+        title: "A second OpenAI hardware reveal: the Codex Studio keyboard",
+        url: "https://arstechnica.com/codex-studio-keyboard-control"
+      })
+    ]
+  },
+  {
+    label: "different companies",
+    items: [
+      radarItem({
+        categories: ["product_update"],
+        entities: [company("OpenAI"), product("Project Halo")],
+        id: "openai-project-halo-keyboard-control",
+        published_at: "2026-07-15T12:00:00Z",
+        source_name: "TechCrunch AI",
+        summary_en: "OpenAI unveiled Project Halo, a programmable keyboard for coding workflows.",
+        title: "OpenAI unveils a programmable keyboard under Project Halo",
+        url: "https://techcrunch.com/openai-project-halo-control"
+      }),
+      radarItem({
+        categories: ["business"],
+        entities: [company("Anthropic"), product("Project Halo")],
+        id: "anthropic-project-halo-keyboard-control",
+        published_at: "2026-07-15T15:00:00Z",
+        source_name: "Ars Technica AI",
+        summary_en: "Anthropic launched its unrelated Project Halo keyboard for Claude users.",
+        title: "Anthropic's newest Project Halo hardware is a keyboard",
+        url: "https://arstechnica.com/anthropic-project-halo-control"
+      })
+    ]
+  },
+  {
+    label: "different product versions",
+    items: [
+      radarItem({
+        categories: ["product_update"],
+        entities: [company("OpenAI"), product("Codex Micro")],
+        id: "codex-micro-v1-keyboard-control",
+        published_at: "2026-07-15T12:00:00Z",
+        source_name: "TechCrunch AI",
+        summary_en: "OpenAI released the Codex Micro v1.0 light-up keyboard.",
+        title: "OpenAI launches the Codex Micro v1.0 keyboard",
+        url: "https://techcrunch.com/codex-micro-v1-control"
+      }),
+      radarItem({
+        categories: ["product_update"],
+        entities: [company("OpenAI"), product("Codex Micro")],
+        id: "codex-micro-v2-keyboard-control",
+        published_at: "2026-07-15T15:00:00Z",
+        source_name: "Ars Technica AI",
+        summary_en: "OpenAI unveiled the separate Codex Micro v2.0 light-up keyboard.",
+        title: "Codex Micro v2.0 arrives as OpenAI's light-up keyboard",
+        url: "https://arstechnica.com/codex-micro-v2-control"
+      })
+    ]
+  },
+  {
+    label: "different launch partners",
+    items: [
+      radarItem({
+        categories: ["product_update"],
+        entities: [company("OpenAI"), company("Acme"), product("Codex Micro")],
+        id: "codex-micro-acme-partner-control",
+        published_at: "2026-07-15T12:00:00Z",
+        source_name: "TechCrunch AI",
+        summary_en: "OpenAI and Acme partner to launch the Codex Micro keyboard.",
+        title: "OpenAI and Acme partner to launch the Codex Micro keyboard",
+        url: "https://techcrunch.com/codex-micro-acme-control"
+      }),
+      radarItem({
+        categories: ["product_update"],
+        entities: [company("OpenAI"), company("Globex"), product("Codex Micro")],
+        id: "codex-micro-globex-partner-control",
+        published_at: "2026-07-15T15:00:00Z",
+        source_name: "Ars Technica AI",
+        summary_en: "OpenAI and Globex partner to unveil the Codex Micro keyboard.",
+        title: "OpenAI and Globex partner to unveil the Codex Micro keyboard",
+        url: "https://arstechnica.com/codex-micro-globex-control"
+      })
+    ]
+  },
+  {
+    label: "different product actions",
+    items: [
+      radarItem({
+        categories: ["product_update"],
+        entities: [company("OpenAI"), product("Codex Micro")],
+        id: "codex-micro-keyboard-launch-control",
+        published_at: "2026-07-15T12:00:00Z",
+        source_name: "TechCrunch AI",
+        summary_en: "OpenAI unveiled Codex Micro as a light-up keyboard for coding workflows.",
+        title: "OpenAI unveils the Codex Micro keyboard",
+        url: "https://techcrunch.com/codex-micro-keyboard-launch-control"
+      }),
+      radarItem({
+        categories: ["product_update"],
+        entities: [company("OpenAI"), product("Codex Micro")],
+        id: "codex-micro-keyboard-recall-control",
+        published_at: "2026-07-15T15:00:00Z",
+        source_name: "Ars Technica AI",
+        summary_en: "OpenAI recalled Codex Micro, the light-up keyboard it launched four hours earlier.",
+        title: "Safety recall hits OpenAI's light-up keyboard",
+        url: "https://arstechnica.com/codex-micro-keyboard-recall-control"
+      })
+    ]
+  },
+  {
+    label: "research papers",
+    items: [
+      radarItem({
+        categories: ["research"],
+        entities: [company("OpenAI"), product("TactileBench"), paper("TactileBench Evaluation")],
+        id: "tactilebench-evaluation-paper-control",
+        published_at: "2026-07-15T12:00:00Z",
+        source_name: "arXiv cs.AI",
+        summary_en: "OpenAI researchers introduce TactileBench, a keyboard interface for embodied AI evaluation.",
+        title: "TactileBench: A keyboard interface for embodied AI evaluation",
+        url: "https://arxiv.org/abs/2607.12345"
+      }),
+      radarItem({
+        categories: ["research"],
+        entities: [company("OpenAI"), product("TactileBench"), paper("TactileBench Transfer Study")],
+        id: "tactilebench-transfer-paper-control",
+        published_at: "2026-07-15T15:00:00Z",
+        source_name: "Independent Research Journal",
+        summary_en: "A separate OpenAI paper introduces a TactileBench keyboard study for transfer across robot hands.",
+        title: "TactileBench keyboard study tests transfer across robot hands",
+        url: "https://example.org/journal/tactilebench-transfer-control"
+      })
+    ]
+  },
+  {
+    label: "generic AI-agent mentions",
+    items: [
+      radarItem({
+        categories: ["agent"],
+        entities: [company("OpenAI"), product("AI agent device")],
+        id: "generic-code-review-agent-device-control",
+        published_at: "2026-07-15T12:00:00Z",
+        source_name: "TechCrunch AI",
+        summary_en: "OpenAI released a generic AI agent device for pull-request review.",
+        title: "OpenAI ships a desk device for reviewing code",
+        url: "https://techcrunch.com/generic-code-agent-device-control"
+      }),
+      radarItem({
+        categories: ["agent"],
+        entities: [company("OpenAI"), product("AI agent device")],
+        id: "generic-browser-agent-device-control",
+        published_at: "2026-07-15T15:00:00Z",
+        source_name: "Ars Technica AI",
+        summary_en: "OpenAI introduced a different generic AI agent device for browser automation.",
+        title: "Browser tasks move onto a new desktop device",
+        url: "https://arstechnica.com/generic-browser-agent-device-control"
+      })
+    ]
+  }
+];
+
+for (const { label, items } of namedProductNonMergeCases) {
+  assert.equal(
+    buildEventLayer(items).event_count,
+    2,
+    `${label} must not merge through named product, object, and action corroboration`
+  );
+}
+
 const publicationTimeItems = [
   radarItem({
     categories: ["model_release"],
@@ -655,5 +896,45 @@ const lowEventBoundaryLayer = buildEventLayer([
   })
 ]);
 assert.equal(lowEventBoundaryLayer.event_count, 0, "tutorial pages and non-AI interviews must remain in All signals only");
+
+const thinSummaryLayer = filterPublicDisplayEventLayer(buildEventLayer([
+  radarItem({
+    categories: ["product_update"],
+    entities: [company("Thinking Machines"), product("Inkling")],
+    id: "thinking-machines-inkling-thin-summary",
+    published_at: "2026-07-16T09:00:00Z",
+    source_name: "Example AI Media",
+    source_tier: "T1",
+    summary_zh: "未提供具体内容。",
+    title: "Thinking Machines launches Inkling",
+    url: "https://example.com/thinking-machines-inkling"
+  }),
+  radarItem({
+    categories: ["safety"],
+    entities: [company("OpenAI"), { confidence: 0.99, name: "GPT-Red", type: "model" as const }],
+    id: "reader-ready-gpt-red",
+    published_at: "2026-07-16T10:00:00Z",
+    source_name: "OpenAI News",
+    source_tier: "T1",
+    summary_zh: "OpenAI 公布 GPT-Red 安全研究进展，说明其用于红队评估和模型鲁棒性验证。",
+    title: "OpenAI details GPT-Red safety research",
+    url: "https://openai.com/index/gpt-red-safety"
+  })
+]));
+assert.equal(
+  thinSummaryLayer.event_clusters.some((event) => event.related_item_ids.includes("thinking-machines-inkling-thin-summary")),
+  false,
+  "thin generated summaries must stay out of the public event layer and curated cards"
+);
+assert.equal(
+  thinSummaryLayer.curated_events.some((event) => event.related_item_ids.includes("thinking-machines-inkling-thin-summary")),
+  false,
+  "curated events must not retain filtered thin-summary events"
+);
+assert.equal(
+  thinSummaryLayer.event_clusters.some((event) => event.related_item_ids.includes("reader-ready-gpt-red")),
+  true,
+  "reader-ready summaries should remain eligible for the public event layer"
+);
 
 console.log("Event clustering tests passed.");

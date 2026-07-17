@@ -57,12 +57,6 @@ export default async function HomePage() {
             >
               围绕精选提问
             </Link>
-            <Link
-              className="rounded-md border border-radar-line px-4 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
-              href="/write"
-            >
-              基于事件写作
-            </Link>
           </div>
         </div>
 

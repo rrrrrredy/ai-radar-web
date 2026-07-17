@@ -173,7 +173,7 @@ export function entityTrackingInsight(entity: EntitySummary): EntityTrackingInsi
   if (entity.totalSignals >= 3) {
     reasons.push(`出现 ${entity.totalSignals} 条公开信号，已超过单条新闻噪音。`);
   } else {
-    reasons.push(`当前只有 ${entity.totalSignals} 条公开信号，需要继续观察是否扩散。`);
+    reasons.push(`当前只有 ${entity.totalSignals} 条公开信号，尚缺独立来源扩散证据。`);
   }
 
   if (sourceCount >= 2) {
