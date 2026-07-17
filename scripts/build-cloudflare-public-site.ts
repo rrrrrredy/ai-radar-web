@@ -299,29 +299,39 @@ async function writeSite(snapshot: Snapshot) {
   await fs.rm(path.join(outputDir, "en"), { force: true, recursive: true });
   await fs.rm(path.join(outputDir, "entities"), { force: true, recursive: true });
   await fs.rm(path.join(outputDir, "ask"), { force: true, recursive: true });
+  await fs.rm(path.join(outputDir, "about"), { force: true, recursive: true });
+  await fs.rm(path.join(outputDir, "en", "about"), { force: true, recursive: true });
+  await fs.rm(path.join(outputDir, "en", "reports"), { force: true, recursive: true });
+  await fs.rm(path.join(outputDir, "en", "sources"), { force: true, recursive: true });
+  await fs.rm(path.join(outputDir, "reports"), { force: true, recursive: true });
+  await fs.rm(path.join(outputDir, "sources"), { force: true, recursive: true });
   await fs.rm(path.join(outputDir, "write"), { force: true, recursive: true });
   await Promise.all([
+    fs.mkdir(path.join(outputDir, "about"), { recursive: true }),
     fs.mkdir(path.join(outputDir, "ask"), { recursive: true }),
     fs.mkdir(path.join(outputDir, "assets"), { recursive: true }),
+    fs.mkdir(path.join(outputDir, "en", "about"), { recursive: true }),
     fs.mkdir(path.join(outputDir, "en", "ask"), { recursive: true }),
     fs.mkdir(path.join(outputDir, "en", "radar"), { recursive: true }),
-    fs.mkdir(path.join(outputDir, "en", "reports"), { recursive: true }),
+    fs.mkdir(path.join(outputDir, "en", "sources"), { recursive: true }),
     fs.mkdir(path.join(outputDir, "radar"), { recursive: true }),
-    fs.mkdir(path.join(outputDir, "reports"), { recursive: true })
+    fs.mkdir(path.join(outputDir, "sources"), { recursive: true })
   ]);
 
   await Promise.all([
     fs.copyFile(path.join(process.cwd(), "app", "icon.svg"), path.join(outputDir, "favicon.svg")),
+    fs.writeFile(path.join(outputDir, "about", "index.html"), renderAbout(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "ask", "index.html"), renderAsk(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "assets", "styles.css"), stylesheet(), "utf8"),
     fs.writeFile(path.join(outputDir, "404.html"), renderNotFound(snapshot), "utf8"),
+    fs.writeFile(path.join(outputDir, "en", "about", "index.html"), renderEnglishAbout(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "en", "ask", "index.html"), renderEnglishAsk(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "en", "index.html"), renderEnglishHome(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "en", "radar", "index.html"), renderEnglishRadar(snapshot), "utf8"),
-    fs.writeFile(path.join(outputDir, "en", "reports", "index.html"), renderEnglishReports(snapshot), "utf8"),
+    fs.writeFile(path.join(outputDir, "en", "sources", "index.html"), renderEnglishSources(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "index.html"), renderHome(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "radar", "index.html"), renderRadar(snapshot), "utf8"),
-    fs.writeFile(path.join(outputDir, "reports", "index.html"), renderReports(snapshot), "utf8"),
+    fs.writeFile(path.join(outputDir, "sources", "index.html"), renderSources(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "_redirects"), retiredRouteRedirects(), "utf8"),
     fs.writeFile(path.join(outputDir, "_routes.json"), retiredRouteWorkerRoutes(), "utf8"),
     fs.writeFile(path.join(outputDir, "_worker.js"), retiredRouteWorker(), "utf8"),
@@ -338,16 +348,22 @@ function retiredRouteRedirects() {
     "/entities /404.html 404",
     "/entities/ /404.html 404",
     "/entities/* /404.html 404",
+    "/reports /404.html 404",
+    "/reports/ /404.html 404",
+    "/reports/* /404.html 404",
     "/en/entities /404.html 404",
     "/en/entities/ /404.html 404",
     "/en/entities/* /404.html 404",
+    "/en/reports /404.html 404",
+    "/en/reports/ /404.html 404",
+    "/en/reports/* /404.html 404",
     "/api/writing-assistant /404.html 404",
     "/api/writing-assistant/ /404.html 404"
   ].join("\n") + "\n";
 }
 
 function retiredRouteWorker() {
-  return `const retiredPrefixes = ["/write", "/en/write", "/entities", "/en/entities", "/api/writing-assistant"];
+  return `const retiredPrefixes = ["/write", "/en/write", "/entities", "/en/entities", "/reports", "/en/reports", "/api/writing-assistant"];
 
 export default {
   async fetch(request, env) {
@@ -378,6 +394,10 @@ function retiredRouteWorkerRoutes() {
       "/entities/*",
       "/en/entities",
       "/en/entities/*",
+      "/reports",
+      "/reports/*",
+      "/en/reports",
+      "/en/reports/*",
       "/api/writing-assistant",
       "/api/writing-assistant/*"
     ],
@@ -485,21 +505,49 @@ function renderScoreReason(event: SnapshotEvent, locale: "en" | "zh") {
   return `<details class="score-drawer"><summary>${locale === "en" ? "Why this score" : "评分依据"}</summary><p>${escapeHtml(reason)}</p></details>`;
 }
 
+function eventReaderJudgment(event: SnapshotEvent, snapshot: Snapshot, locale: "en" | "zh") {
+  const relatedIds = new Set(event.related_item_ids);
+  const item = snapshot.radar_items.find((candidate) => relatedIds.has(candidate.id) && candidate.why_it_matters?.trim());
+  if (locale === "zh") {
+    const itemJudgment = item?.why_it_matters?.trim() ?? "";
+    if (containsHan(itemJudgment)) return publicText(itemJudgment);
+    if (containsHan(event.score_reason) && !/(?:综合分|AI\s*相关度|重要性|来源家族|来源家庭|来源覆盖|独立性未验证|单一来源)/u.test(event.score_reason)) {
+      return publicText(event.score_reason);
+    }
+    const judgments: Record<string, string> = {
+      agent: "这项变化可能重塑智能体的工作方式和自动化边界，值得评估对现有流程的实际影响。",
+      benchmark: "这组结果会影响能力判断与模型比较，但仍需要结合测试条件和独立复核解读。",
+      business: "这条变化反映了市场竞争、客户选择或商业模式正在调整，可能影响后续产品与合作判断。",
+      funding: "资金流向通常会提前暴露行业押注方向，但估值与实际交付能力仍需分开判断。",
+      infrastructure: "基础设施变化会直接影响推理成本、部署方式和产品可扩展性，值得持续跟踪。",
+      model_release: "新模型会改变能力边界、成本和产品选型，需要继续核对实际表现与使用限制。",
+      open_source: "开源进展可能降低使用门槛并加快生态扩散，适合评估能否进入现有技术栈。",
+      policy: "政策变化会影响产品上线、数据使用和合规边界，相关团队需要提前判断影响范围。",
+      product_update: "这项产品变化可能直接改变用户工作流和团队选型，值得关注真实可用性与迁移成本。",
+      regulation: "监管信号会改变产品责任和合规要求，企业需要结合正式文本继续核实。",
+      research: "这项研究可能改变对能力机制或技术路线的理解，但距离稳定产品化仍需更多验证。",
+      safety: "这条动态涉及模型风险与责任边界，值得结合原始证据判断其实际严重性。",
+      tooling: "工具能力的变化可能直接提升开发效率，也需要评估稳定性、兼容性和团队迁移成本。"
+    };
+    return judgments[categoryFilterValue(event.category)] ?? "这条动态可能影响产品判断、技术选型或后续行业走向，值得继续跟踪。";
+  }
+  return `This development may affect product decisions, technical choices or the direction of the AI market. ${event.source_count > 1 ? `${event.source_count} reports are available for comparison.` : "Only one public report is currently available."}`;
+}
+
 function renderStoryRow(event: SnapshotEvent, snapshot: Snapshot, locale: "en" | "zh") {
   const title = locale === "en" ? eventEnglishTitle(event, snapshot) : chineseEventTitle(event);
   const summary = locale === "en" ? eventEnglishSummary(event, snapshot) : chineseEventSummary(event);
   const sources = eventSources(event).join(" · ") || (locale === "en" ? "Public source" : "公开来源");
   const sourceCount = locale === "en" ? `${event.source_count} source${event.source_count === 1 ? "" : "s"}` : `${event.source_count} 个来源`;
   const category = locale === "en" ? categoryLabelEn(event.category) : labelize(event.category);
-  const score = locale === "en" ? eventScoreLabelEn(event.event_score_label) : event.event_score_label;
   return `<article class="event-card story-row" ${storyDataAttributes(event, snapshot, title, summary)}>
     <div class="story-time"><time>${escapeHtml(feedTime(event.latest_seen_at, locale))}</time><span></span></div>
     <div class="story-content">
-      <div class="story-meta"><span>${escapeHtml(sources)}</span><strong>${escapeHtml(score)} · ${event.event_score}</strong></div>
+      <div class="story-meta"><span>${escapeHtml(sources)}</span><strong>${escapeHtml(sourceCount)}</strong></div>
       <h2><a href="${escapeAttr(eventPrimaryUrl(event))}">${escapeHtml(title)}</a></h2>
       ${summary ? `<p>${escapeHtml(summary)}</p>` : ""}
+      <p class="story-judgment"><strong>${locale === "en" ? "Why it matters" : "为什么值得看"}</strong>${escapeHtml(eventReaderJudgment(event, snapshot, locale))}</p>
       <div class="story-foot"><span>${escapeHtml(category)}</span><span>${escapeHtml(sourceCount)}</span></div>
-      ${renderScoreReason(event, locale)}
       ${renderStorySources(event, locale)}
     </div>
   </article>`;
@@ -516,10 +564,18 @@ function renderStoryStream(events: SnapshotEvent[], snapshot: Snapshot, locale: 
 }
 
 function renderTopStories(events: SnapshotEvent[], snapshot: Snapshot, locale: "en" | "zh") {
-  return events.slice(0, 3).map((event, index) => {
+  return events.slice(0, 10).map((event, index) => {
     const title = locale === "en" ? eventEnglishTitle(event, snapshot) : chineseEventTitle(event);
+    const summary = locale === "en" ? eventEnglishSummary(event, snapshot) : chineseEventSummary(event);
     const sources = locale === "en" ? `${event.source_count} source${event.source_count === 1 ? "" : "s"}` : `${event.source_count} 个来源`;
-    return `<a class="top-story" href="${escapeAttr(eventPrimaryUrl(event))}"><span>${index + 1}</span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(sources)}</small></a>`;
+    const category = locale === "en" ? categoryLabelEn(event.category) : labelize(event.category);
+    const sourceNames = eventSources(event, 2).join(" · ") || (locale === "en" ? "Public source" : "公开来源");
+    return `<article class="top-story story-row" ${storyDataAttributes(event, snapshot, title, summary)}>
+      <span class="hot-rank">${String(index + 1).padStart(2, "0")}</span>
+      <div class="hot-meta"><time>${escapeHtml(feedTime(event.latest_seen_at, locale))}</time><span>${escapeHtml(sourceNames)}</span><small>${escapeHtml(category)}</small></div>
+      <div class="hot-copy"><h2><a href="${escapeAttr(eventPrimaryUrl(event))}">${escapeHtml(title)}</a></h2><p>${escapeHtml(summary)}</p></div>
+      <div class="hot-judgment"><strong>${locale === "en" ? "Why it matters" : "为什么值得看"}</strong><p>${escapeHtml(eventReaderJudgment(event, snapshot, locale))}</p><small>${escapeHtml(`${sources} · ${locale === "en" ? eventScoreLabelEn(event.event_score_label) : event.event_score_label}`)}</small></div>
+    </article>`;
   }).join("");
 }
 
@@ -527,34 +583,103 @@ function storyFilterScript() {
   return `(function(){
     const input=document.querySelector("#feed-search");
     const buttons=Array.from(document.querySelectorAll("[data-feed-category]"));
+    const familyButtons=Array.from(document.querySelectorAll("[data-feed-family]"));
     const rows=Array.from(document.querySelectorAll(".story-row"));
     if(!input||buttons.length===0)return;
     let category="all";
+    let family="all";
     function apply(){
       const query=input.value.trim().toLowerCase();
       const values=category==="all"?[]:category.split(",");
-      rows.forEach(row=>{const categoryText=(row.dataset.category||"").toLowerCase();const matchesCategory=values.length===0||values.some(value=>categoryText.includes(value));const matchesQuery=!query||(row.dataset.search||"").includes(query);row.hidden=!(matchesCategory&&matchesQuery);});
+      const familyValues=family==="all"?[]:family.split(",");
+      rows.forEach(row=>{const categoryText=(row.dataset.category||"").toLowerCase();const familyText=(row.dataset.family||"").toLowerCase();const matchesCategory=values.length===0||values.some(value=>categoryText.includes(value));const matchesFamily=familyValues.length===0||familyValues.some(value=>familyText.includes(value));const matchesQuery=!query||(row.dataset.search||"").includes(query);row.hidden=!(matchesCategory&&matchesFamily&&matchesQuery);});
     }
     input.addEventListener("input",apply);
     buttons.forEach(button=>button.addEventListener("click",()=>{category=button.dataset.feedCategory||"all";buttons.forEach(candidate=>{const active=candidate===button;candidate.classList.toggle("active",active);candidate.setAttribute("aria-pressed",active?"true":"false");});apply();}));
+    familyButtons.forEach(button=>button.addEventListener("click",()=>{family=button.dataset.feedFamily||"all";familyButtons.forEach(candidate=>{const active=candidate===button;candidate.classList.toggle("active",active);candidate.setAttribute("aria-pressed",active?"true":"false");});apply();}));
     buttons.forEach((button,index)=>button.setAttribute("aria-pressed",index===0?"true":"false"));
+    familyButtons.forEach((button,index)=>button.setAttribute("aria-pressed",index===0?"true":"false"));
   })();`;
+}
+
+function publicAccountEvents(snapshot: Snapshot) {
+  const accountPattern = /公众号|微信|wechat|卡兹克|AI沃茨|机器之心|量子位|新智元|极客公园|Founder Park|硅星人|歸藏|归藏|宝玉/i;
+  const events = eventFeed(snapshot).filter(readerReadyEvent);
+  const matched = events.filter((event) => event.citations.some((citation) => accountPattern.test(citation.source_name)));
+  return (matched.length >= 6 ? matched : events).slice(0, 30);
+}
+
+function renderSources(snapshot: Snapshot) {
+  const events = publicAccountEvents(snapshot);
+  const publishers = uniqueStrings(events.flatMap((event) => event.citations.map((citation) => citation.source_name))).slice(0, 24);
+  return shell(snapshot, "sources", 1, "公众号", `
+    <section class="reader-heading compact"><div><div class="reader-title-line"><h1>公众号</h1><span>${publishers.length} 个来源</span></div><p>把值得持续看的中文 AI 作者和媒体更新放在同一条时间线上。</p></div></section>
+    <section class="publisher-index" aria-label="公众号来源">${publishers.map((publisher) => `<span>${escapeHtml(publisher)}</span>`).join("")}</section>
+    <section class="latest-feed"><div class="section-heading"><h2>最近更新</h2><span>${events.length} 条</span></div><div class="story-stream">${renderStoryStream(events, snapshot, "zh")}</div></section>
+  `);
+}
+
+function renderEnglishSources(snapshot: Snapshot) {
+  const events = publicAccountEvents(snapshot).filter((event) => readerReadyEventForLocale(event, snapshot, "en"));
+  const publishers = uniqueStrings(events.flatMap((event) => event.citations.map((citation) => citation.source_name))).slice(0, 24);
+  return englishShell(snapshot, "sources", 1, "Publishers", `
+    <section class="reader-heading compact"><div><div class="reader-title-line"><h1>Publishers</h1><span>${publishers.length} sources</span></div><p>Chinese AI writers, publishers and public sources in one reading stream.</p></div></section>
+    <section class="publisher-index" aria-label="Publishers">${publishers.map((publisher) => `<span>${escapeHtml(publisher)}</span>`).join("")}</section>
+    <section class="latest-feed"><div class="section-heading"><h2>Latest updates</h2><span>${events.length} items</span></div><div class="story-stream">${renderStoryStream(events, snapshot, "en")}</div></section>
+  `);
+}
+
+function renderAbout(snapshot: Snapshot) {
+  return shell(snapshot, "about", 1, "关于", `
+    <article class="about-reader">
+      <header><h1>把真正值得看的 AI 动态留下来</h1><p>AI 行业雷达每天聚合公开来源，合并重复报道，补充中文摘要和判断，帮助你更快知道发生了什么、为什么值得看。</p></header>
+      <section><h2>我们怎么选</h2><p>先排除低相关和重复内容，再结合新鲜度、来源可信度、重要性与多源报道情况排序。单一来源不会被包装成已经确认的事实。</p></section>
+      <section><h2>你会看到什么</h2><p>模型与产品更新、开发工具、开源项目、研究论文、商业变化和政策动态。每条内容都保留原文入口，摘要只用于帮助判断是否值得继续阅读。</p></section>
+      <section><h2>内容边界</h2><p>本站是公开信息的聚合摘要与阅读索引。原文版权归各来源所有；引用数字、政策或原话前，请回到原文复核。</p></section>
+    </article>
+  `);
+}
+
+function renderEnglishAbout(snapshot: Snapshot) {
+  return englishShell(snapshot, "about", 1, "About", `
+    <article class="about-reader">
+      <header><h1>Keep the AI developments that are actually worth reading</h1><p>AI Industry Radar aggregates public sources, merges repeated coverage and adds concise summaries and editorial judgment.</p></header>
+      <section><h2>How items are selected</h2><p>Low-relevance and duplicate material is filtered first. Freshness, source credibility, importance and reporting breadth then shape the order. A single report is never presented as independent confirmation.</p></section>
+      <section><h2>What appears here</h2><p>Models, products, developer tools, open-source projects, research, business shifts and policy developments. Every item keeps a path back to the original source.</p></section>
+      <section><h2>Editorial boundary</h2><p>This site is a public-information summary and reading index. Original rights remain with each publisher; verify figures, policies and quotations in the linked source.</p></section>
+    </article>
+  `);
 }
 
 function renderEnglishHome(snapshot: Snapshot) {
   const events = eventFeed(snapshot).filter((event) => readerReadyEventForLocale(event, snapshot, "en"));
-  const topEvents = snapshot.curated_events.filter((event) => readerReadyEventForLocale(event, snapshot, "en")).toSorted(compareHomepageEvents).slice(0, 3);
+  const topEvents = events.toSorted(compareHomepageEvents).slice(0, 10);
+  const topIds = new Set(topEvents.map((event) => event.event_cluster_id));
+  const latestEvents = events.filter((event) => !topIds.has(event.event_cluster_id)).slice(0, 26);
   return englishShell(snapshot, "home", 0, "Selected", `
-    <section class="feed-heading"><div><h1>Selected</h1><p>${escapeHtml(feedDayLabel(snapshot.freshness.latest_timestamp ?? snapshot.generated_at, "en"))}</p></div><a href="radar/?tab=events">${snapshot.event_count} events</a></section>
-    <section class="top-stories"><div class="section-heading"><h2>Top stories</h2><span>TOP 3</span></div>${renderTopStories(topEvents, snapshot, "en")}</section>
-    <section class="feed-toolbar"><div class="section-heading"><h2>Latest</h2><a href="radar/?tab=events">All events</a></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search headlines, summaries, sources..."></div><div class="feed-chips"><button class="active" data-feed-category="all" type="button">All</button><button data-feed-category="model_release,benchmark" type="button">Models</button><button data-feed-category="product_update,agent,tooling" type="button">Products</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">Industry</button><button data-feed-category="research" type="button">Research</button><button data-feed-category="open_source" type="button">Open source</button></div></section>
-    <section class="story-stream">${renderStoryStream(events.slice(0, 36), snapshot, "en")}</section>
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>Today's hot topics</h1><time>${escapeHtml(feedDayLabel(snapshot.generated_at, "en"))}</time></div><p>Noise filtered out. Only the AI developments worth reading remain.</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search updates, companies or products" aria-label="Search headlines, summaries and sources"></div></section>
+    <section class="feed-toolbar"><div class="feed-chips"><button class="active" data-feed-category="all" type="button">All</button><button data-feed-category="model_release,benchmark" type="button">Models</button><button data-feed-category="product_update,agent,tooling" type="button">Products</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">Industry</button><button data-feed-category="research" type="button">Research</button><button data-feed-category="open_source" type="button">Open source</button></div></section>
+    <section class="top-stories"><div class="section-heading"><h2>Today's hot topics</h2><span>TOP 10</span></div>${renderTopStories(topEvents, snapshot, "en")}</section>
+    <section class="latest-feed"><div class="section-heading"><h2>Latest updates</h2><a href="radar/?tab=events">View all</a></div><div class="story-stream">${renderStoryStream(latestEvents, snapshot, "en")}</div></section>
     <div class="feed-more"><a class="button primary" href="radar/?tab=events">Browse all events</a></div>
     <script>${storyFilterScript()}</script>
   `);
 }
 
 function renderEnglishRadar(snapshot: Snapshot) {
+  const events = eventFeed(snapshot).filter((event) => readerReadyEventForLocale(event, snapshot, "en"));
+  return englishShell(snapshot, "radar", 1, "All updates", `
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>All AI updates</h1><span>${events.length} items</span></div><p>Browse the complete event stream by source type, topic or keyword.</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search title, summary or source" aria-label="Search updates"></div></section>
+    <section class="feed-toolbar full-toolbar">
+      <div class="filter-line"><span>Sources</span><div class="feed-chips"><button class="active" data-feed-family="all" type="button">All</button><button data-feed-family="公司/实验室" type="button">First-party</button><button data-feed-family="分析/媒体,其他公开来源" type="button">News</button><button data-feed-family="研究订阅" type="button">Research</button><button data-feed-family="开源项目" type="button">Open source</button></div></div>
+      <div class="filter-line"><span>Topics</span><div class="feed-chips"><button class="active" data-feed-category="all" type="button">All</button><button data-feed-category="model_release,benchmark" type="button">Models</button><button data-feed-category="product_update,agent,tooling" type="button">Products</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">Industry</button><button data-feed-category="research" type="button">Research</button><button data-feed-category="open_source" type="button">Open source</button></div></div>
+    </section>
+    <section class="latest-feed"><div class="section-heading"><h2>Latest</h2><span>${events.length}</span></div><div class="story-stream">${renderStoryStream(events, snapshot, "en")}</div></section>
+    <script>${storyFilterScript()}</script>
+  `);
+}
+
+function renderEnglishRadarLegacy(snapshot: Snapshot) {
   const families = uniqueStrings([
     ...Object.keys(countSourceFamilies(snapshot.radar_items)),
     ...snapshot.event_clusters.flatMap((event) => event.source_families)
@@ -814,18 +939,33 @@ function renderEnglishAsk(snapshot: Snapshot) {
 
 function renderHome(snapshot: Snapshot) {
   const events = eventFeed(snapshot).filter(readerReadyEvent);
-  const topEvents = snapshot.curated_events.filter(readerReadyEvent).toSorted(compareHomepageEvents).slice(0, 3);
+  const topEvents = events.toSorted(compareHomepageEvents).slice(0, 10);
+  const topIds = new Set(topEvents.map((event) => event.event_cluster_id));
+  const latestEvents = events.filter((event) => !topIds.has(event.event_cluster_id)).slice(0, 26);
   return shell(snapshot, "home", 0, "精选", `
-    <section class="feed-heading"><div><h1>精选</h1><p>${escapeHtml(feedDayLabel(snapshot.freshness.latest_timestamp ?? snapshot.generated_at, "zh"))}</p></div><a href="radar/?tab=events">${snapshot.event_count} 个事件</a></section>
-    <section class="top-stories"><div class="section-heading"><h2>今日热点</h2><span>TOP 3</span></div>${renderTopStories(topEvents, snapshot, "zh")}</section>
-    <section class="feed-toolbar"><div class="section-heading"><h2>最新精选</h2><a href="radar/?tab=events">全部事件</a></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索标题、摘要、来源..."></div><div class="feed-chips"><button class="active" data-feed-category="all" type="button">全部</button><button data-feed-category="model_release,benchmark" type="button">模型</button><button data-feed-category="product_update,agent,tooling" type="button">产品</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">行业</button><button data-feed-category="research" type="button">论文</button><button data-feed-category="open_source" type="button">开源</button></div></section>
-    <section class="story-stream">${renderStoryStream(events.slice(0, 36), snapshot, "zh")}</section>
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>今日热点</h1><time>${escapeHtml(feedDayLabel(snapshot.generated_at, "zh"))}</time></div><p>每天筛掉噪声，只留下真正值得看的 AI 动态。</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索动态、公司、产品或关键词" aria-label="搜索标题、摘要和来源"></div></section>
+    <section class="feed-toolbar"><div class="feed-chips"><button class="active" data-feed-category="all" type="button">全部</button><button data-feed-category="model_release,benchmark" type="button">模型</button><button data-feed-category="product_update,agent,tooling" type="button">产品</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">行业</button><button data-feed-category="research" type="button">论文</button><button data-feed-category="open_source" type="button">开源</button></div></section>
+    <section class="top-stories"><div class="section-heading"><h2>今日热点</h2><span>TOP 10</span></div>${renderTopStories(topEvents, snapshot, "zh")}</section>
+    <section class="latest-feed"><div class="section-heading"><h2>最新动态</h2><a href="radar/?tab=events">查看全部</a></div><div class="story-stream">${renderStoryStream(latestEvents, snapshot, "zh")}</div></section>
     <div class="feed-more"><a class="button primary" href="radar/?tab=events">查看全部事件</a></div>
     <script>${storyFilterScript()}</script>
   `);
 }
 
 function renderRadar(snapshot: Snapshot) {
+  const events = eventFeed(snapshot).filter(readerReadyEvent);
+  return shell(snapshot, "radar", 1, "全部动态", `
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>全部 AI 动态</h1><span>${events.length} 条</span></div><p>按来源、主题或关键词浏览完整信息流。</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索标题、摘要或来源" aria-label="搜索全部动态"></div></section>
+    <section class="feed-toolbar full-toolbar">
+      <div class="filter-line"><span>来源</span><div class="feed-chips"><button class="active" data-feed-family="all" type="button">全部</button><button data-feed-family="公司/实验室" type="button">一手信源</button><button data-feed-family="分析/媒体,其他公开来源" type="button">资讯</button><button data-feed-family="研究订阅" type="button">论文</button><button data-feed-family="开源项目" type="button">开源</button></div></div>
+      <div class="filter-line"><span>分类</span><div class="feed-chips"><button class="active" data-feed-category="all" type="button">全部</button><button data-feed-category="model_release,benchmark" type="button">模型</button><button data-feed-category="product_update,agent,tooling" type="button">产品</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">行业</button><button data-feed-category="research" type="button">论文</button><button data-feed-category="open_source" type="button">开源</button></div></div>
+    </section>
+    <section class="latest-feed"><div class="section-heading"><h2>最新动态</h2><span>${events.length}</span></div><div class="story-stream">${renderStoryStream(events, snapshot, "zh")}</div></section>
+    <script>${storyFilterScript()}</script>
+  `);
+}
+
+function renderRadarLegacy(snapshot: Snapshot) {
   const families = countSourceFamilies(snapshot.radar_items);
   const eventFamilies = uniqueStrings(snapshot.event_clusters.flatMap((event) => event.source_families));
   const scoreLabels = uniqueStrings(snapshot.event_clusters.map((event) => event.event_score_label));
@@ -999,9 +1139,19 @@ function languageSwitchStateScript() {
   })();`;
 }
 
+function navIcon(id: "home" | "radar" | "sources" | "about") {
+  const paths = {
+    home: '<path d="M12 2.8c.8 3.6-.4 5.3-2.2 7 2.7-.4 4.3-2.3 4.8-4.5 2.2 2 3.4 4.5 3.4 7.2A6 6 0 1 1 6 12.2c0-2.2 1.2-4.5 3.2-6.5.1 2.1.9 3.2 2.1 3.7C12.4 7.8 12.8 5.8 12 2.8Z"/>',
+    radar: '<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="7" cy="6" r="1"/><circle cx="11" cy="12" r="1"/><circle cx="16" cy="18" r="1"/>',
+    sources: '<path d="M5 5.5h14v10H9l-4 3v-13Z"/><path d="M9 9h6M9 12h4"/>',
+    about: '<circle cx="12" cy="12" r="9"/><path d="M12 10.5v6M12 7.5h.01"/>'
+  } as const;
+  return `<svg aria-hidden="true" viewBox="0 0 24 24">${paths[id]}</svg>`;
+}
+
 function englishShell(
   snapshot: Snapshot,
-  current: "home" | "radar" | "entities" | "reports" | "ask",
+  current: "home" | "radar" | "entities" | "reports" | "ask" | "sources" | "about",
   depth: 0 | 1,
   title: string,
   body: string
@@ -1011,10 +1161,10 @@ function englishShell(
   const chineseHref = current === "home" ? "../index.html" : `../../${current}/`;
   const englishHref = current === "home" ? "index.html" : `${localePrefix}${current}/`;
   const nav = [
-    ["home", "Selected", `${localePrefix}index.html`],
-    ["radar", "All events", `${localePrefix}radar/?tab=events`],
-    ["reports", "Reports", `${localePrefix}reports/`],
-    ["ask", "Ask", `${localePrefix}ask/`]
+    ["home", "Hot topics", `${localePrefix}index.html`],
+    ["radar", "All updates", `${localePrefix}radar/?tab=events`],
+    ["sources", "Publishers", `${localePrefix}sources/`],
+    ["about", "About", `${localePrefix}about/`]
   ] as const;
 
   return `<!doctype html>
@@ -1032,31 +1182,23 @@ function englishShell(
   <body${current === "home" ? ' class="home-page"' : ""}>
     <div class="app-layout">
       <aside class="desktop-sidebar">
-        <a class="brand" href="${localePrefix}index.html"><img src="${assetPrefix}favicon.svg" alt=""><span>AI RADAR</span></a>
-        <p class="nav-group-label">READ</p>
+        <a class="brand" href="${localePrefix}index.html"><span>AI RADAR</span><i aria-hidden="true"></i></a>
         <nav class="side-nav" aria-label="Primary navigation">
-          ${nav.map(([id, label, href]) => `<a${id === current ? ' aria-current="page"' : ""} href="${escapeAttr(href)}">${escapeHtml(label)}</a>`).join("")}
+          ${nav.map(([id, label, href]) => `<a${id === current ? ' aria-current="page"' : ""} href="${escapeAttr(href)}">${navIcon(id)}<span>${escapeHtml(label)}</span></a>`).join("")}
         </nav>
-        <p class="nav-group-label">MORE</p>
-        <nav class="side-nav secondary-nav" aria-label="Secondary navigation">
-          <a href="${localePrefix}radar/?tab=health">Data status</a>
-        </nav>
+        <div class="sidebar-language language-switch" aria-label="Language"><a lang="zh-CN" href="${escapeAttr(chineseHref)}">中</a><a aria-current="true" href="${escapeAttr(englishHref)}">EN</a></div>
       </aside>
       <div class="app-frame">
         <header class="mobile-header">
           <a class="mobile-brand" href="${localePrefix}index.html">AI RADAR</a>
           <div class="language-switch" aria-label="Language"><a lang="zh-CN" href="${escapeAttr(chineseHref)}">中</a><a aria-current="true" href="${escapeAttr(englishHref)}">EN</a></div>
         </header>
-        <div class="desktop-topbar">
-          <span>Updated through ${escapeHtml(formatDateEn(snapshot.freshness.latest_timestamp))}</span>
-          <div class="language-switch" aria-label="Language"><a lang="zh-CN" href="${escapeAttr(chineseHref)}">中文</a><a aria-current="true" href="${escapeAttr(englishHref)}">EN</a></div>
-        </div>
         <main>${body}</main>
-        <footer class="site-footer"><span>${escapeHtml(formatDateEn(snapshot.generated_at))}</span><a href="${localePrefix}radar/?tab=health">Data status</a></footer>
+        <footer class="site-footer"><span>AI Industry Radar · public-source reading index</span><a href="${localePrefix}about/">About</a></footer>
       </div>
     </div>
     <nav class="mobile-nav" aria-label="Mobile navigation">
-      ${nav.map(([id, label, href]) => `<a${id === current ? ' aria-current="page"' : ""} href="${escapeAttr(href)}">${escapeHtml(label)}</a>`).join("")}
+      ${nav.map(([id, label, href]) => `<a${id === current ? ' aria-current="page"' : ""} href="${escapeAttr(href)}">${navIcon(id)}<span>${escapeHtml(label)}</span></a>`).join("")}
     </nav>
     <script>${languageSwitchStateScript()}</script>
   </body>
@@ -1386,15 +1528,15 @@ function publicLabelEn(value: string) {
   return failureLabelEn(value);
 }
 
-function shell(snapshot: Snapshot, current: "home" | "radar" | "entities" | "reports" | "ask", depth: 0 | 1 | 2, title: string, body: string) {
+function shell(snapshot: Snapshot, current: "home" | "radar" | "entities" | "reports" | "ask" | "sources" | "about", depth: 0 | 1 | 2, title: string, body: string) {
   const prefix = depth === 0 ? "" : depth === 1 ? "../" : "../../";
   const chineseHref = current === "home" ? `${prefix}index.html` : `${prefix}${current}/`;
   const englishHref = current === "home" ? `${prefix}en/` : `${prefix}en/${current}/`;
   const nav = [
-    ["home", "精选", `${prefix}index.html`],
-    ["radar", "全部", `${prefix}radar/?tab=events`],
-    ["reports", "报告", `${prefix}reports/`],
-    ["ask", "提问", `${prefix}ask/`]
+    ["home", "今日热点", `${prefix}index.html`],
+    ["radar", "全部动态", `${prefix}radar/?tab=events`],
+    ["sources", "公众号", `${prefix}sources/`],
+    ["about", "关于", `${prefix}about/`]
   ] as const;
 
   return `<!doctype html>
@@ -1412,31 +1554,23 @@ function shell(snapshot: Snapshot, current: "home" | "radar" | "entities" | "rep
   <body${current === "home" ? ' class="home-page"' : ""}>
     <div class="app-layout">
       <aside class="desktop-sidebar">
-        <a class="brand" href="${prefix}index.html"><img src="${prefix}favicon.svg" alt=""><span>AI RADAR</span></a>
-        <p class="nav-group-label">内容</p>
+        <a class="brand" href="${prefix}index.html"><span>AI 行业雷达</span><i aria-hidden="true"></i></a>
         <nav class="side-nav" aria-label="主导航">
-          ${nav.map(([id, label, href]) => `<a${id === current ? ' aria-current="page"' : ""} href="${escapeAttr(href)}">${escapeHtml(label)}</a>`).join("")}
+          ${nav.map(([id, label, href]) => `<a${id === current ? ' aria-current="page"' : ""} href="${escapeAttr(href)}">${navIcon(id)}<span>${escapeHtml(label)}</span></a>`).join("")}
         </nav>
-        <p class="nav-group-label">更多</p>
-        <nav class="side-nav secondary-nav" aria-label="次级导航">
-          <a href="${prefix}radar/?tab=health">数据状态</a>
-        </nav>
+        <div class="sidebar-language language-switch" aria-label="语言"><a aria-current="true" href="${escapeAttr(chineseHref)}">中</a><a lang="en" href="${escapeAttr(englishHref)}">EN</a></div>
       </aside>
       <div class="app-frame">
         <header class="mobile-header">
-          <a class="mobile-brand" href="${prefix}index.html">AI RADAR</a>
+          <a class="mobile-brand" href="${prefix}index.html">AI 行业雷达</a>
           <div class="language-switch" aria-label="语言"><a aria-current="true" href="${escapeAttr(chineseHref)}">中</a><a lang="en" href="${escapeAttr(englishHref)}">EN</a></div>
         </header>
-        <div class="desktop-topbar">
-          <span>内容更新至 ${escapeHtml(formatDate(snapshot.freshness.latest_timestamp))}</span>
-          <div class="language-switch" aria-label="语言"><a aria-current="true" href="${escapeAttr(chineseHref)}">中文</a><a lang="en" href="${escapeAttr(englishHref)}">EN</a></div>
-        </div>
         <main>${body}</main>
-        <footer class="site-footer"><span>${escapeHtml(formatDate(snapshot.generated_at))}</span><a href="${prefix}radar/?tab=health">数据状态</a></footer>
+        <footer class="site-footer"><span>AI 行业雷达 · 公开信息阅读索引</span><a href="${prefix}about/">关于</a></footer>
       </div>
     </div>
     <nav class="mobile-nav" aria-label="移动导航">
-      ${nav.map(([id, label, href]) => `<a${id === current ? ' aria-current="page"' : ""} href="${escapeAttr(href)}">${escapeHtml(label)}</a>`).join("")}
+      ${nav.map(([id, label, href]) => `<a${id === current ? ' aria-current="page"' : ""} href="${escapeAttr(href)}">${navIcon(id)}<span>${escapeHtml(label)}</span></a>`).join("")}
     </nav>
     <script>${languageSwitchStateScript()}</script>
   </body>
@@ -1818,6 +1952,11 @@ function snapshotReportTraceDocument(report: SnapshotReport): ReportTraceDocumen
 void renderEnglishEntities;
 void renderEntities;
 void renderEntityDetail;
+void renderScoreReason;
+void renderEnglishRadarLegacy;
+void renderRadarLegacy;
+void renderEnglishReports;
+void renderReports;
 void staticEntityDetailSummaries;
 
 
@@ -3140,86 +3279,107 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
 
 function stylesheet() {
   return `:root {
-  --bg: #f3f5f7;
-  --ink: #172231;
-  --muted: #657386;
-  --line: #dce2e7;
+  --bg: #ffffff;
+  --ink: #17191f;
+  --muted: #727781;
+  --line: #e1e4e9;
   --panel: #ffffff;
-  --soft: #edf1f3;
-  --evidence: #0b6975;
+  --soft: #f5f7fa;
+  --evidence: #0b5cff;
   --success: #1f6b45;
   --caution: #9a5a17;
   --danger: #b9412c;
-  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow: none;
 }
 * { box-sizing: border-box; }
-html { background: var(--bg); }
-body { background: var(--bg); color: var(--ink); font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; line-height: 1.55; margin: 0; }
+html { background: var(--bg); overflow-x: hidden; }
+body { background: var(--bg); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; line-height: 1.58; margin: 0; }
 a { color: var(--evidence); text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 3px; }
 a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3px solid #2a7b89; outline-offset: 2px; }
 button, input, select, textarea { font: inherit; }
 h1, h2, h3, p { letter-spacing: 0; margin: 0; }
-h1 { font-size: 30px; line-height: 1.2; }
-h2 { font-size: 20px; line-height: 1.35; }
+h1 { font-size: 30px; font-weight: 760; line-height: 1.2; }
+h2 { font-size: 19px; line-height: 1.35; }
 h3 { font-size: 17px; line-height: 1.4; }
-.app-layout { display: grid; grid-template-columns: 180px minmax(0, 1fr); min-height: 100vh; }
-.desktop-sidebar { background: #fff; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 100vh; padding: 24px 16px; position: sticky; top: 0; }
-.brand { align-items: center; border-bottom: 1px solid var(--line); color: var(--ink); display: flex; font-size: 16px; font-weight: 800; gap: 10px; padding: 2px 8px 22px; }
+.app-layout { display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 100vh; }
+.desktop-sidebar { background: #fff; border-right: 1px solid var(--line); display: flex; flex-direction: column; height: 100vh; padding: 30px 12px 24px; position: sticky; top: 0; }
+.brand { align-items: center; color: var(--ink); display: flex; font-size: 18px; font-weight: 820; gap: 12px; justify-content: space-between; padding: 2px 12px; }
 .brand span { white-space: nowrap; }
 .brand:hover { text-decoration: none; }
-.brand img { border-radius: 6px; height: 28px; width: 28px; }
-.nav-group-label { color: var(--muted); font-size: 11px; margin: 28px 8px 8px; text-transform: uppercase; }
-.side-nav { display: grid; gap: 4px; }
-.side-nav a { border-radius: 7px; color: #405064; font-size: 14px; font-weight: 600; padding: 10px 12px; }
+.brand i { border: 1px solid #b8cdfd; border-radius: 50%; display: block; height: 30px; position: relative; width: 30px; }
+.brand i::before { background: var(--evidence); border-radius: 50%; content: ""; height: 8px; left: 10px; position: absolute; top: 10px; width: 8px; }
+.brand i::after { background: var(--evidence); border: 2px solid #fff; border-radius: 50%; content: ""; height: 5px; position: absolute; right: -2px; top: 2px; width: 5px; }
+.nav-group-label { display: none; }
+.side-nav { display: grid; gap: 8px; margin-top: 42px; }
+.side-nav a { align-items: center; border-radius: 4px; color: #353941; display: flex; font-size: 14px; font-weight: 650; gap: 13px; min-height: 44px; padding: 10px 13px; }
+.side-nav svg { fill: none; height: 20px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; width: 20px; }
+.side-nav a:first-child svg { fill: currentColor; stroke: currentColor; }
 .side-nav a:hover { background: var(--soft); text-decoration: none; }
-.side-nav a[aria-current="page"] { background: #e1ecee; color: var(--evidence); }
-.secondary-nav { margin-bottom: auto; }
+.side-nav a[aria-current="page"] { background: var(--evidence); color: #fff; }
+.sidebar-language { margin-top: auto; width: max-content; }
 .app-frame { min-width: 0; }
-.desktop-topbar { align-items: center; color: var(--muted); display: flex; font-size: 12px; height: 58px; justify-content: flex-end; margin: 0 auto; max-width: 1320px; padding: 0 30px; }
-.desktop-topbar > span { margin-right: 14px; }
-.language-switch { border: 1px solid var(--line); border-radius: 6px; display: inline-grid; grid-template-columns: repeat(2, minmax(38px, auto)); overflow: hidden; }
+.language-switch { border: 0; border-radius: 0; display: inline-grid; grid-template-columns: repeat(2, minmax(34px, auto)); overflow: hidden; }
 .language-switch a { color: var(--muted); font-size: 12px; font-weight: 700; min-width: 38px; padding: 6px 8px; text-align: center; }
 .language-switch a + a { border-left: 1px solid var(--line); }
-.language-switch a[aria-current="true"] { background: var(--ink); color: #fff; }
+.language-switch a[aria-current="true"] { color: var(--evidence); }
 .mobile-header, .mobile-nav { display: none; }
-main { margin: 0 auto; max-width: 1320px; min-width: 0; padding: 0 30px 64px; width: 100%; }
-main > * + * { margin-top: 24px; }
+main { margin: 0 auto; max-width: 1480px; min-width: 0; padding: 30px 34px 72px; width: 100%; }
+main > * + * { margin-top: 0; }
+.reader-heading { align-items: end; border-bottom: 1px solid var(--line); display: grid; gap: 28px; grid-template-columns: minmax(0, 1fr) minmax(260px, 330px); padding: 0 4px 20px; }
+.reader-heading.compact { grid-template-columns: 1fr; }
+.reader-title-line { align-items: baseline; display: flex; flex-wrap: wrap; gap: 22px; }
+.reader-title-line time, .reader-title-line > span { color: var(--muted); font-size: 13px; }
+.reader-heading p { color: #5f646e; font-size: 13px; margin-top: 5px; }
 .feed-heading { align-items: end; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; padding: 0 0 18px; }
 .feed-heading p, .tool-heading p { color: var(--muted); font-size: 13px; margin-top: 3px; }
 .feed-heading > a, .feed-heading > span { color: var(--muted); font-size: 13px; }
 .section-heading { align-items: center; display: flex; gap: 16px; justify-content: space-between; }
 .section-heading > span { color: var(--evidence); font-size: 12px; font-weight: 800; }
-.top-stories { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); overflow: hidden; }
-.top-stories .section-heading { border-bottom: 1px solid var(--line); padding: 16px 22px; }
-.top-story { align-items: center; color: var(--ink); display: grid; gap: 14px; grid-template-columns: 24px minmax(0, 1fr) auto; padding: 12px 22px; }
-.top-story + .top-story { border-top: 1px solid #edf0f2; }
-.top-story:hover { background: #fbfcfc; text-decoration: none; }
-.top-story > span { color: var(--danger); font-size: 18px; font-weight: 800; text-align: center; }
-.top-story:nth-of-type(3) > span { color: #c06d35; }
-.top-story:nth-of-type(4) > span { color: #b9852e; }
-.top-story strong { display: -webkit-box; font-size: 17px; overflow: hidden; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.top-story small { color: var(--muted); white-space: nowrap; }
-.feed-toolbar { border-bottom: 1px solid var(--line); display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) minmax(240px, 360px); padding-bottom: 14px; }
-.feed-toolbar .section-heading { grid-column: 1 / -1; }
-.feed-search { grid-column: 2; grid-row: 2; width: 100%; }
+.top-stories { background: var(--panel); border-bottom: 1px solid var(--line); }
+.top-stories .section-heading { border-bottom: 1px solid var(--line); padding: 22px 4px 12px; }
+.top-story { align-items: start; border-bottom: 1px solid var(--line); color: var(--ink); display: grid; gap: 18px; grid-template-columns: 42px 122px minmax(320px, 1fr) minmax(245px, .75fr); padding: 17px 4px; }
+.top-story[hidden] { display: none; }
+.top-story:hover { background: #fbfcff; }
+.hot-rank { color: var(--evidence); font-size: 23px; font-variant-numeric: tabular-nums; font-weight: 520; letter-spacing: -1px; line-height: 1; padding-top: 2px; }
+.hot-meta { color: var(--muted); display: grid; font-size: 12px; gap: 4px; line-height: 1.4; }
+.hot-meta time { color: #535963; font-variant-numeric: tabular-nums; }
+.hot-meta span { color: var(--ink); font-weight: 640; }
+.hot-meta small { color: var(--muted); }
+.hot-copy, .hot-judgment { min-width: 0; overflow-wrap: anywhere; }
+.hot-copy h2 { font-size: 16px; font-weight: 740; line-height: 1.45; }
+.hot-copy h2 a { color: var(--ink); }
+.hot-copy p { color: #5f646d; font-size: 13px; line-height: 1.65; margin-top: 6px; }
+.hot-judgment { border-left: 2px solid #dbe5ff; padding-left: 14px; }
+.hot-judgment strong { color: var(--evidence); display: block; font-size: 12px; margin-bottom: 3px; }
+.hot-judgment p { color: #3e4249; font-size: 12px; line-height: 1.65; }
+.hot-judgment small { color: var(--muted); display: block; font-size: 11px; margin-top: 5px; }
+.feed-toolbar { border-bottom: 1px solid var(--line); padding: 10px 4px; }
+.feed-toolbar.full-toolbar { display: grid; gap: 4px; padding: 11px 4px; }
+.filter-line { align-items: center; display: grid; gap: 18px; grid-template-columns: 40px minmax(0, 1fr); }
+.filter-line > span { color: var(--muted); font-size: 11px; }
+.feed-search { width: 100%; }
 .feed-search input, .controls input, .controls select, .tool-stage textarea { background: #fff; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); width: 100%; }
-.feed-search input { padding: 10px 12px; }
-.feed-chips { display: flex; gap: 8px; grid-column: 1; grid-row: 2; overflow-x: auto; padding-bottom: 1px; }
-.feed-chips button, .prompt-suggestions button { background: #fff; border: 1px solid var(--line); border-radius: 7px; color: #46566b; cursor: pointer; flex: 0 0 auto; padding: 7px 13px; }
-.feed-chips button.active { border-bottom: 2px solid var(--evidence); color: var(--evidence); font-weight: 700; }
+.feed-search input { border-width: 0 0 1px; border-radius: 0; padding: 9px 2px; }
+.feed-chips { display: flex; gap: 24px; overflow-x: auto; padding-bottom: 1px; }
+.feed-chips button, .prompt-suggestions button { background: transparent; border: 0; border-radius: 0; color: #41464e; cursor: pointer; flex: 0 0 auto; padding: 7px 1px; }
+.feed-chips button.active { border-bottom: 2px solid var(--evidence); color: var(--evidence); font-weight: 730; }
 .feed-day { align-items: center; display: flex; font-size: 18px; padding: 4px 0 10px; }
-.story-stream { display: grid; gap: 12px; }
-.story-row, .radar-row { align-items: start; background: transparent; display: grid; gap: 14px; grid-template-columns: 96px minmax(0, 1fr); padding: 0; }
+.latest-feed { padding-top: 26px; }
+.latest-feed > .section-heading { border-bottom: 1px solid var(--line); padding: 0 4px 12px; }
+.story-stream { display: grid; gap: 0; }
+.story-stream .story-row, .radar-row { align-items: start; background: transparent; display: grid; gap: 16px; grid-template-columns: 78px minmax(0, 1fr); padding: 0; }
 .story-row[hidden], .radar-row[hidden] { display: none; }
-.story-time { align-items: center; color: #506178; display: grid; font-size: 12px; font-weight: 700; gap: 8px; grid-template-columns: 1fr 10px; padding-top: 18px; text-align: right; }
-.story-time span { background: var(--evidence); border-radius: 50%; height: 8px; width: 8px; }
-.story-content { background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); min-width: 0; padding: 16px 20px; }
+.story-time { align-items: center; color: #60666f; display: grid; font-size: 12px; font-variant-numeric: tabular-nums; gap: 8px; grid-template-columns: 1fr 8px; padding-top: 20px; text-align: right; }
+.story-time span { background: var(--evidence); border-radius: 50%; height: 6px; width: 6px; }
+.story-content { background: #fff; border-bottom: 1px solid var(--line); min-width: 0; padding: 16px 4px 18px; }
 .story-meta { align-items: center; color: var(--muted); display: flex; font-size: 13px; gap: 12px; justify-content: space-between; }
 .story-meta strong { color: var(--evidence); font-size: 12px; }
 .story-content h2 { font-size: 18px; margin-top: 6px; }
 .story-content h2 a { color: var(--ink); display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.story-content p { color: #58687b; display: -webkit-box; font-size: 14px; line-height: 1.7; margin-top: 6px; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.story-content p { color: #555b65; font-size: 14px; line-height: 1.75; margin-top: 6px; }
+.story-content .story-judgment { color: #333840; font-size: 13px; }
+.story-content .story-judgment strong { color: var(--evidence); margin-right: 8px; }
 .story-foot { color: #7a8796; display: flex; font-size: 12px; gap: 14px; margin-top: 10px; }
 .source-drawer { border-top: 1px dashed var(--line); margin-top: 12px; padding-top: 10px; }
 .source-drawer summary, .score-drawer summary, .report-sources summary { color: var(--evidence); cursor: pointer; font-size: 13px; font-weight: 700; }
@@ -3335,6 +3495,16 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .health-table thead th { background: var(--soft); color: var(--muted); }
 .health-table th:first-child { background: #fff; left: 0; position: sticky; text-align: left; z-index: 1; }
 .empty { border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); padding: 16px; }
+.publisher-index { border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 0; padding: 14px 4px; }
+.publisher-index span { border-right: 1px solid var(--line); color: #464b54; font-size: 12px; margin: 4px 0; padding: 0 14px; }
+.publisher-index span:first-child { padding-left: 0; }
+.about-reader { margin: 54px auto 0; max-width: 820px; }
+.about-reader header { border-bottom: 1px solid var(--line); padding-bottom: 30px; }
+.about-reader header h1 { font-size: clamp(32px, 4vw, 52px); letter-spacing: -1.5px; line-height: 1.16; }
+.about-reader header p { color: #4c515a; font-size: 18px; line-height: 1.85; margin-top: 20px; }
+.about-reader section { border-bottom: 1px solid var(--line); display: grid; gap: 28px; grid-template-columns: 170px minmax(0, 1fr); padding: 30px 0; }
+.about-reader section h2 { font-size: 16px; }
+.about-reader section p { color: #555b64; line-height: 1.85; }
 .site-footer { align-items: center; border-top: 1px solid var(--line); color: var(--muted); display: flex; font-size: 12px; justify-content: space-between; margin: 0 30px; padding: 18px 0 28px; }
 @media (max-width: 980px) {
   .controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -3342,39 +3512,49 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .grid.two { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
-  body { padding-bottom: 54px; }
+  body { padding-bottom: 70px; }
   .app-layout { display: block; min-height: auto; }
   .desktop-sidebar, .desktop-topbar { display: none; }
-  .mobile-header { align-items: center; background: var(--bg); display: flex; height: 46px; justify-content: space-between; padding: 0 12px; position: sticky; top: 0; z-index: 20; }
-  .mobile-brand { color: var(--ink); font-size: 18px; font-weight: 800; }
+  .mobile-header { align-items: center; background: rgba(255,255,255,.96); border-bottom: 1px solid var(--line); display: flex; height: 54px; justify-content: space-between; padding: 0 16px; position: sticky; top: 0; z-index: 20; }
+  .mobile-brand { color: var(--ink); font-size: 17px; font-weight: 800; }
   .mobile-nav { background: #fff; border-top: 1px solid var(--line); bottom: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); left: 0; position: fixed; right: 0; z-index: 30; }
-  .mobile-nav a { color: var(--muted); font-size: 11px; font-weight: 700; padding: 11px 2px 10px; text-align: center; }
+  .mobile-nav a { align-items: center; color: var(--muted); display: flex; flex-direction: column; font-size: 10px; font-weight: 700; gap: 3px; padding: 8px 2px 7px; text-align: center; }
+  .mobile-nav svg { fill: none; height: 18px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; width: 18px; }
+  .mobile-nav a:first-child svg { fill: currentColor; }
   .mobile-nav a[aria-current="page"] { color: var(--evidence); }
-  main { padding: 0 12px 30px; }
-  main > * + * { margin-top: 14px; }
+  main { padding: 18px 16px 34px; }
+  main > * + * { margin-top: 0; }
+  .reader-heading { align-items: start; gap: 14px; grid-template-columns: 1fr; padding: 0 0 16px; }
+  .reader-title-line { gap: 12px; }
+  .reader-heading h1 { font-size: 25px; }
+  .reader-heading p { font-size: 12px; }
+  .reader-heading .feed-search { display: block; }
   .feed-heading { padding-bottom: 8px; }
   .feed-heading h1 { font-size: 22px; }
   .feed-heading p { display: none; }
-  .top-stories .section-heading { padding: 9px 12px; }
+  .top-stories .section-heading { padding: 18px 0 9px; }
   .top-stories .section-heading h2 { font-size: 16px; }
-  .top-story { gap: 8px; grid-template-columns: 20px minmax(0, 1fr) 52px; padding: 8px 12px; }
-  .top-story > span { font-size: 15px; }
-  .top-story strong { font-size: 14px; line-height: 1.35; }
-  .top-story small { font-size: 10px; white-space: normal; }
-  .home-page .feed-search { display: none; }
-  .feed-toolbar { grid-template-columns: minmax(0, 1fr); }
-  .feed-toolbar .section-heading, .feed-chips { grid-column: 1; }
-  .feed-chips { grid-row: auto; }
-  .feed-chips { margin-left: -12px; margin-right: -12px; padding-left: 12px; padding-right: 12px; }
-  .story-stream { gap: 0; margin-left: -12px; margin-right: -12px; }
+  .top-story { gap: 6px 10px; grid-template-columns: 32px minmax(0, 1fr); padding: 14px 0; }
+  .hot-rank { font-size: 19px; grid-row: 1 / 4; }
+  .hot-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; grid-column: 2; }
+  .hot-copy { grid-column: 2; }
+  .hot-copy h2 { font-size: 16px; }
+  .hot-copy p { font-size: 13px; }
+  .hot-judgment { grid-column: 2; margin-top: 4px; }
+  .feed-toolbar { overflow: hidden; padding: 8px 0; }
+  .feed-toolbar.full-toolbar { gap: 8px; }
+  .filter-line { align-items: start; gap: 8px; grid-template-columns: 34px minmax(0, 1fr); }
+  .feed-chips { gap: 20px; margin-right: -16px; padding-right: 16px; }
+  .story-stream { gap: 0; margin-left: 0; margin-right: 0; }
   .feed-day { background: #edf0f2; border-bottom: 1px solid var(--line); border-top: 1px solid var(--line); font-size: 13px; padding: 7px 12px; }
-  .story-row, .radar-row { background: transparent; gap: 8px; grid-template-columns: 38px minmax(0, 1fr); padding: 0 12px; }
+  .story-stream .story-row, .radar-row { background: transparent; gap: 8px; grid-template-columns: 38px minmax(0, 1fr); padding: 0; }
   .story-time { font-size: 10px; grid-template-columns: 1fr; padding-top: 12px; text-align: left; }
   .story-time span { display: none; }
   .story-content { background: transparent; border: 0; border-bottom: 1px solid #e3e7ea; border-radius: 0; box-shadow: none; padding: 10px 0 12px; }
   .story-meta { font-size: 11px; }
   .story-content h2 { font-size: 15px; line-height: 1.4; margin-top: 4px; }
-  .story-content p { font-size: 12px; line-height: 1.55; margin-top: 4px; -webkit-line-clamp: 2; }
+  .story-content p { font-size: 13px; line-height: 1.65; margin-top: 4px; }
+  .story-content .story-judgment { border-left: 2px solid #dbe5ff; margin-top: 8px; padding-left: 10px; }
   .story-foot { font-size: 11px; }
   .score-drawer { display: none; }
   .source-drawer-list a { grid-template-columns: 1fr; }
@@ -3398,6 +3578,12 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .prompt-suggestions { display: grid; grid-template-columns: 1fr; overflow: visible; }
   .prompt-suggestions button { max-width: none; width: 100%; }
   .rail, .event-meta, .inline-defs { grid-template-columns: 1fr; }
+  .publisher-index { margin: 0 -16px; overflow-x: auto; padding-left: 16px; flex-wrap: nowrap; }
+  .publisher-index span { flex: 0 0 auto; }
+  .about-reader { margin-top: 20px; }
+  .about-reader header h1 { font-size: 31px; }
+  .about-reader header p { font-size: 16px; }
+  .about-reader section { gap: 10px; grid-template-columns: 1fr; padding: 24px 0; }
   .site-footer { margin: 0 12px; padding-bottom: 14px; }
 }
 `;

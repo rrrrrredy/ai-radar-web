@@ -62,16 +62,15 @@ test("source health renders numeric zeroes and a reader-friendly timestamp", asy
   assert.match(html, /Reason summary/);
 });
 
-test("English reports render every citation declared by the visible quality summaries", () => {
-  const html = fs.readFileSync(path.join(outputRoot, "en", "reports", "index.html"), "utf8");
-  const declared = Array.from(
-    html.matchAll(/<summary>Sources \((\d+)\)<\/summary>/g),
-    (match) => Number(match[1])
-  );
-  const expected = declared.reduce((sum, count) => sum + count, 0);
-
-  assert.ok(declared.length >= 2);
-  assert.equal(countMatches(html, /<li><a href="https?:\/\//g), expected);
+test("public report routes are retired while report data stays available to internal workflows", () => {
+  assert.equal(fs.existsSync(path.join(outputRoot, "reports", "index.html")), false);
+  assert.equal(fs.existsSync(path.join(outputRoot, "en", "reports", "index.html")), false);
+  const redirects = fs.readFileSync(path.join(outputRoot, "_redirects"), "utf8");
+  const worker = fs.readFileSync(path.join(outputRoot, "_worker.js"), "utf8");
+  assert.match(redirects, /^\/reports\/ \/404\.html 404$/m);
+  assert.match(redirects, /^\/en\/reports\/ \/404\.html 404$/m);
+  assert.match(worker, /"\/reports"/);
+  assert.match(worker, /"\/en\/reports"/);
 });
 
 test("multi-source intent excludes single-source events", async () => {
