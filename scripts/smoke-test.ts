@@ -377,6 +377,13 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
     true,
     "Cloudflare Ask must enforce evidence windows while the public radar uses source/topic reader filters."
   );
+  assert.equal(
+    cloudflareSite.includes("Created by Song Luo") &&
+      cloudflareSite.includes('href="https://github.com/rrrrrredy"') &&
+      cloudflareSite.includes('target="_blank">GitHub</a>'),
+    true,
+    "The public reader footer must credit Song Luo and link the GitHub label to the creator profile."
+  );
 
   const snapshotExporter = readSource("scripts/export-public-snapshot.ts");
   const eventClustering = readSource("lib/events/clustering.ts");
@@ -402,12 +409,17 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
     "Event clustering and scoring must be deterministic for identical public evidence."
   );
   assert.equal(
-    /schedule:\s*[\s\S]{0,180}cron:\s*["']17 8 \* \* \*["'][\s\S]{0,120}timezone:\s*["']Asia\/Shanghai["']/.test(refreshWorkflow) &&
+    refreshWorkflow.includes('cron: "17 6 * * *"') &&
+      refreshWorkflow.includes('cron: "17 7 * * *"') &&
+      refreshWorkflow.includes('cron: "17 8 * * *"') &&
+      (refreshWorkflow.match(/timezone: "Asia\/Shanghai"/g) || []).length === 3 &&
       refreshWorkflow.includes("workflow_dispatch:") &&
+      refreshWorkflow.includes("production_already_fresh") &&
+      refreshWorkflow.includes("needs: freshness_gate") &&
       refreshWorkflow.includes('"$DISPATCH_REF" != "refs/heads/main"') &&
       refreshWorkflow.includes('"$RADAR_REFRESH_WRITE_GATE" != "true"'),
     true,
-    "The production workflow must run daily at 08:17 Asia/Shanghai and gate manual production writes to main."
+    "The production workflow must use three Asia/Shanghai recovery windows, skip an already-fresh release, and gate writes to main."
   );
   assert.equal(
     refreshWorkflow.includes("npm run data:activate:resumable:live:persist") &&
@@ -432,6 +444,10 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       refreshWorkflow.includes('remote.source?.local_data_used !== false') &&
       refreshWorkflow.includes("remote.coverage?.latest_refresh !== local.coverage?.latest_refresh") &&
       refreshWorkflow.includes("production_snapshot_refresh_is_stale") &&
+      refreshWorkflow.includes("Created by Song Luo") &&
+      refreshWorkflow.includes('href="https://github.com/rrrrrredy"') &&
+      refreshWorkflow.includes("production_home_hotspot_count_mismatch") &&
+      refreshWorkflow.includes("production_reports_route_not_retired") &&
       refreshWorkflow.includes('Object.prototype.hasOwnProperty.call(remote, "reports")') &&
       refreshWorkflow.includes("<title>AI 行业信息雷达</title>") &&
       !/report:(candidate|generate)|generate[_-]reports|persist-report|npm run [^\n]*report/iu.test(refreshWorkflow),

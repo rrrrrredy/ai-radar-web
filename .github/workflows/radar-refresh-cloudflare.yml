@@ -2,8 +2,12 @@ name: Radar Daily Production Refresh
 
 on:
   schedule:
-    # 08:17 China Standard Time (Asia/Shanghai, UTC+8), equivalent to 00:17 UTC.
-    # The non-round minute reduces the chance of GitHub Actions peak-time delay.
+    # Three non-round launch windows provide time for a full refresh and recovery
+    # before the 09:00 Asia/Shanghai freshness target.
+    - cron: "17 6 * * *"
+      timezone: "Asia/Shanghai"
+    - cron: "17 7 * * *"
+      timezone: "Asia/Shanghai"
     - cron: "17 8 * * *"
       timezone: "Asia/Shanghai"
   workflow_dispatch:
@@ -32,8 +36,119 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  freshness_gate:
+    name: Check whether production is already fresh
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should_run: ${{ steps.freshness.outputs.should_run }}
+      reason: ${{ steps.freshness.outputs.reason }}
+    steps:
+      - name: Decide whether a scheduled refresh is needed
+        id: freshness
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE_EXPRESSION: ${{ github.event.schedule || '' }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          import * as fs from "node:fs";
+          const eventName = process.env.EVENT_NAME || "";
+          const scheduleExpression = process.env.SCHEDULE_EXPRESSION || "";
+          const outputPath = process.env.GITHUB_OUTPUT;
+          const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+
+          function writeDecision(shouldRun, reason, detail) {
+            fs.appendFileSync(outputPath, `should_run=${shouldRun}\nreason=${reason}\n`);
+            fs.appendFileSync(
+              summaryPath,
+              [
+                "## AI 行业信息雷达新鲜度门控",
+                "",
+                `- Trigger: ${eventName}`,
+                `- Schedule: ${scheduleExpression || "manual"}`,
+                `- Decision: ${shouldRun === "true" ? "run production refresh" : "skip; production is already fresh"}`,
+                `- Reason: ${detail}`,
+                "- Production URL: https://ai-industry-radar.pages.dev/",
+                ""
+              ].join("\n")
+            );
+          }
+
+          function shanghaiParts(value) {
+            const parts = new Intl.DateTimeFormat("en-CA", {
+              timeZone: "Asia/Shanghai",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              hourCycle: "h23"
+            }).formatToParts(value);
+            return Object.fromEntries(parts.map((part) => [part.type, part.value]));
+          }
+
+          if (eventName === "workflow_dispatch") {
+            writeDecision("true", "manual_dispatch", "Manual runs always execute after passing production gates.");
+            process.exit(0);
+          }
+
+          try {
+            const cacheBust = encodeURIComponent(`${Date.now()}-${Math.random()}`);
+            const response = await fetch(
+              `https://ai-industry-radar.pages.dev/data/radar-snapshot.json?freshness=${cacheBust}`,
+              { cache: "no-store", signal: AbortSignal.timeout(15000) }
+            );
+            if (!response.ok) throw new Error(`snapshot_http_${response.status}`);
+
+            const snapshot = await response.json();
+            const refresh = new Date(snapshot.coverage?.latest_refresh || "");
+            const now = new Date();
+            const refreshTime = refresh.getTime();
+            const ageMs = now.getTime() - refreshTime;
+            const current = shanghaiParts(now);
+            const refreshed = Number.isFinite(refreshTime) ? shanghaiParts(refresh) : {};
+            const sameShanghaiDay =
+              refreshed.year === current.year &&
+              refreshed.month === current.month &&
+              refreshed.day === current.day;
+            const afterDailyWindow = Number(refreshed.hour) >= 6;
+            const recentEnough = ageMs >= -5 * 60 * 1000 && ageMs <= 3 * 60 * 60 * 1000;
+            const strictSupabase =
+              snapshot.source?.kind === "supabase_public_views" &&
+              snapshot.source?.data_source === "public_evidence_store" &&
+              snapshot.source?.local_data_used === false;
+            const reportFree =
+              !Object.prototype.hasOwnProperty.call(snapshot, "reports") &&
+              !Object.prototype.hasOwnProperty.call(snapshot, "report_quality_summary");
+
+            if (sameShanghaiDay && afterDailyWindow && recentEnough && strictSupabase && reportFree) {
+              writeDecision(
+                "false",
+                "production_already_fresh",
+                `Strict Supabase snapshot refreshed at ${refresh.toISOString()}.`
+              );
+            } else {
+              writeDecision(
+                "true",
+                "production_stale_or_invalid",
+                `Production snapshot did not meet the daily freshness contract (latest_refresh=${snapshot.coverage?.latest_refresh || "missing"}).`
+              );
+            }
+          } catch (error) {
+            writeDecision(
+              "true",
+              "freshness_check_failed",
+              `Freshness check failed closed: ${error instanceof Error ? error.message : String(error)}.`
+            );
+          }
+          NODE
+
   refresh:
     name: Live refresh, persist, cluster, build, and deploy
+    needs: freshness_gate
+    if: ${{ needs.freshness_gate.outputs.should_run == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 75
     steps:
@@ -45,8 +160,9 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE_EXPRESSION: ${{ github.event.schedule || '' }}
           DISPATCH_REF: ${{ github.ref }}
-          LIMIT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.limit || '30' }}
+          LIMIT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.limit || github.event.schedule == '17 8 * * *' && '10' || '30' }}
           CHUNK_SIZE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.chunk_size || '5' }}
           MAX_ITEMS_PER_SOURCE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.max_items_per_source || '3' }}
           RADAR_REFRESH_WRITE_GATE: ${{ vars.RADAR_REFRESH_WRITE_GATE }}
@@ -112,6 +228,7 @@ jobs:
             echo "max_items_per_source=$MAX_ITEMS_PER_SOURCE"
             echo "rotation_offset=$rotation_offset"
             echo "refresh_started_at=$refresh_started_at"
+            echo "schedule_expression=$SCHEDULE_EXPRESSION"
           } >> "$GITHUB_OUTPUT"
 
       - name: Setup Node
@@ -121,7 +238,19 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if npm ci; then
+              exit 0
+            fi
+            if [[ "$attempt" == "3" ]]; then
+              echo "::error title=Dependency installation failed::npm ci failed after 3 attempts."
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
 
       - name: Run code and data preflight
         run: |
@@ -134,7 +263,19 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-        run: npm run supabase:public-contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if npm run supabase:public-contract; then
+              exit 0
+            fi
+            if [[ "$attempt" == "3" ]]; then
+              echo "::error title=Supabase public contract failed::Contract validation failed after 3 attempts."
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
 
       - name: Restore resumable activation state
         id: activation_cache_restore
@@ -155,6 +296,18 @@ jobs:
           const fs = require("node:fs");
           const checkpointPath = "data/activation/latest/checkpoint.json";
           let shouldResume = false;
+          let reuseCompleted = false;
+          let refreshNotBefore = process.env.REFRESH_STARTED_AT;
+          let effectiveLimit = process.env.REQUESTED_LIMIT;
+
+          function shanghaiDate(value) {
+            return new Intl.DateTimeFormat("en-CA", {
+              timeZone: "Asia/Shanghai",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit"
+            }).format(value);
+          }
 
           if (fs.existsSync(checkpointPath)) {
             try {
@@ -164,7 +317,15 @@ jobs:
                 Array.isArray(checkpoint.selected_source_ids) ? checkpoint.selected_source_ids.length : 0
               );
               const chunkSize = Number(checkpoint.chunk_size) || 0;
-              if (selectedCount < 1 || chunkSize < 1 || !Array.isArray(checkpoint.chunks)) {
+              const startedAt = new Date(checkpoint.started_at || "");
+              const checkpointAgeMs = Date.now() - startedAt.getTime();
+              const recentDailyCheckpoint =
+                checkpoint.mode === "live" &&
+                Number.isFinite(startedAt.getTime()) &&
+                checkpointAgeMs >= 0 &&
+                checkpointAgeMs <= 6 * 60 * 60 * 1000 &&
+                shanghaiDate(startedAt) === shanghaiDate(new Date());
+              if (selectedCount < 1 || chunkSize < 1 || !Array.isArray(checkpoint.chunks) || !recentDailyCheckpoint) {
                 throw new Error("checkpoint shape is invalid");
               }
 
@@ -174,10 +335,13 @@ jobs:
                 .every((chunk) => chunk?.status === "completed" && chunk.persisted === true);
 
               if (fullyPersisted) {
-                fs.rmSync("data/activation", { recursive: true, force: true });
-                console.log("Previous production activation completed; starting a fresh daily run.");
+                reuseCompleted = true;
+                refreshNotBefore = checkpoint.started_at;
+                effectiveLimit = String(checkpoint.limit);
+                console.log("Restored a recent fully persisted activation; reusing it for cluster, build, and deploy recovery.");
               } else {
                 shouldResume = true;
+                refreshNotBefore = checkpoint.started_at;
                 console.log("Restored an incomplete production activation; resuming from its checkpoint.");
               }
             } catch (error) {
@@ -189,10 +353,18 @@ jobs:
           }
 
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `resume=${shouldResume}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `reuse_completed=${reuseCompleted}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `refresh_not_before=${refreshNotBefore}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `effective_limit=${effectiveLimit}\n`);
           NODE
+        env:
+          REFRESH_STARTED_AT: ${{ steps.config.outputs.refresh_started_at }}
+          REQUESTED_LIMIT: ${{ steps.config.outputs.limit }}
 
       - name: Run live resumable activation with persistence
         id: activation
+        if: ${{ steps.activation_state.outputs.reuse_completed != 'true' }}
+        timeout-minutes: ${{ github.event_name == 'schedule' && github.event.schedule == '17 8 * * *' && 20 || 45 }}
         shell: bash
         env:
           LIMIT: ${{ steps.config.outputs.limit }}
@@ -240,10 +412,10 @@ jobs:
         env:
           CLOUDFLARE_SNAPSHOT_READ_SUPABASE: "true"
           CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE: "true"
-          CLOUDFLARE_SNAPSHOT_EXPECTED_ATTEMPTED_SOURCES: ${{ steps.config.outputs.limit }}
+          CLOUDFLARE_SNAPSHOT_EXPECTED_ATTEMPTED_SOURCES: ${{ steps.activation_state.outputs.effective_limit }}
           CLOUDFLARE_SNAPSHOT_MAX_SOURCE_FAILURE_RATE: "0.5"
           CLOUDFLARE_SNAPSHOT_MAX_REFRESH_AGE_HOURS: "6"
-          CLOUDFLARE_SNAPSHOT_REFRESH_NOT_BEFORE: ${{ steps.config.outputs.refresh_started_at }}
+          CLOUDFLARE_SNAPSHOT_REFRESH_NOT_BEFORE: ${{ steps.activation_state.outputs.refresh_not_before }}
           ENABLE_SUPABASE_WRITES: "true"
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
@@ -275,9 +447,20 @@ jobs:
             exit 1
           fi
           test -s dist/cloudflare-pages/index.html
-          npm exec -- wrangler pages deploy dist/cloudflare-pages \
-            --project-name=ai-industry-radar \
-            --branch=main
+          for attempt in 1 2 3; do
+            if npm exec -- wrangler pages deploy dist/cloudflare-pages \
+              --project-name=ai-industry-radar \
+              --branch=main \
+              --commit-hash="$GITHUB_SHA" \
+              --commit-dirty=false; then
+              exit 0
+            fi
+            if [[ "$attempt" == "3" ]]; then
+              echo "::error title=Cloudflare deployment failed::Wrangler failed after 3 attempts."
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
 
       - name: Verify production endpoint
         id: production_verify
@@ -287,16 +470,17 @@ jobs:
         run: |
           set -euo pipefail
           node <<'NODE'
-          const fs = require("node:fs");
+          import * as fs from "node:fs";
           const local = JSON.parse(fs.readFileSync("dist/cloudflare-pages/data/radar-snapshot.json", "utf8"));
           const cacheBust = encodeURIComponent(process.env.VERIFY_CACHE_BUST || Date.now());
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
           async function verify(attempt) {
             const requestId = `${cacheBust}-${attempt}`;
-            const [homeResponse, snapshotResponse] = await Promise.all([
+            const [homeResponse, snapshotResponse, reportsResponse] = await Promise.all([
               fetch(`https://ai-industry-radar.pages.dev/?verify=${requestId}`, { cache: "no-store" }),
-              fetch(`https://ai-industry-radar.pages.dev/data/radar-snapshot.json?verify=${requestId}`, { cache: "no-store" })
+              fetch(`https://ai-industry-radar.pages.dev/data/radar-snapshot.json?verify=${requestId}`, { cache: "no-store" }),
+              fetch(`https://ai-industry-radar.pages.dev/reports/?verify=${requestId}`, { cache: "no-store", redirect: "manual" })
             ]);
             if (!homeResponse.ok || !snapshotResponse.ok) {
               throw new Error(`production_http_status home=${homeResponse.status} snapshot=${snapshotResponse.status}`);
@@ -306,6 +490,20 @@ jobs:
             const remote = await snapshotResponse.json();
             if (!home.includes("<title>AI 行业信息雷达</title>")) {
               throw new Error("production_home_title_mismatch");
+            }
+            if ((home.match(/<article class="top-story"/g) || []).length !== 10) {
+              throw new Error("production_home_hotspot_count_mismatch");
+            }
+            if (
+              !home.includes("Created by Song Luo") ||
+              !home.includes('href="https://github.com/rrrrrredy"') ||
+              home.includes("公众号") ||
+              home.includes("数据状态")
+            ) {
+              throw new Error("production_home_reader_contract_mismatch");
+            }
+            if (reportsResponse.status !== 404) {
+              throw new Error(`production_reports_route_not_retired status=${reportsResponse.status}`);
             }
             if (remote.generated_at !== local.generated_at) {
               throw new Error(`production_snapshot_generation_mismatch local=${local.generated_at} remote=${remote.generated_at}`);
@@ -335,7 +533,7 @@ jobs:
           }
 
           let lastError;
-          for (let attempt = 1; attempt <= 6; attempt += 1) {
+          for (let attempt = 1; attempt <= 12; attempt += 1) {
             try {
               await verify(attempt);
               console.log(`Production deployment verified on attempt ${attempt}.`);
@@ -343,7 +541,7 @@ jobs:
             } catch (error) {
               lastError = error;
               console.warn(`Production verification attempt ${attempt} failed: ${error.message}`);
-              if (attempt < 6) await sleep(5000);
+              if (attempt < 12) await sleep(10000);
             }
           }
           throw lastError;
@@ -354,6 +552,9 @@ jobs:
         shell: bash
         env:
           TRIGGER: ${{ github.event_name }}
+          SCHEDULE_EXPRESSION: ${{ steps.config.outputs.schedule_expression }}
+          FRESHNESS_REASON: ${{ needs.freshness_gate.outputs.reason }}
+          ACTIVATION_REUSED: ${{ steps.activation_state.outputs.reuse_completed || 'false' }}
           ACTIVATION_OUTCOME: ${{ steps.activation.outcome || 'skipped' }}
           CLUSTER_OUTCOME: ${{ steps.events_cluster.outcome || 'skipped' }}
           BUILD_OUTCOME: ${{ steps.cloudflare_build.outcome || 'skipped' }}
@@ -364,7 +565,11 @@ jobs:
             echo "## AI 行业信息雷达生产更新"
             echo
             echo "- Trigger: ${TRIGGER}"
-            echo "- Schedule: 08:17 Asia/Shanghai (00:17 UTC)"
+            echo "- Target: production fresh before 09:00 Asia/Shanghai"
+            echo "- Scheduled windows: 06:17 / 07:17 / 08:17 Asia/Shanghai"
+            echo "- Current schedule expression: ${SCHEDULE_EXPRESSION:-manual}"
+            echo "- Freshness gate: ${FRESHNESS_REASON}"
+            echo "- Completed activation reused: ${ACTIVATION_REUSED}"
             echo "- Mode: live"
             echo "- Supabase persistence: enabled"
             echo "- Snapshot source: strict Supabase (local fallback disabled)"

@@ -717,7 +717,10 @@ function englishShell(
           <div class="language-switch" aria-label="Language"><a lang="zh-CN" href="${escapeAttr(chineseHref)}">中</a><a aria-current="true" href="${escapeAttr(englishHref)}">EN</a></div>
         </header>
         <main>${body}</main>
-        <footer class="site-footer"><span>AI Industry Radar · public-source reading index</span><a href="${localePrefix}about/">About</a></footer>
+        <footer class="site-footer">
+          <div class="site-footer-copy"><span>AI Industry Radar · public-source reading index</span><span>Created by Song Luo</span></div>
+          <nav class="site-footer-links" aria-label="Footer navigation"><a href="${localePrefix}about/">About</a><a href="https://github.com/rrrrrredy" rel="noreferrer" target="_blank">GitHub</a></nav>
+        </footer>
       </div>
     </div>
     <nav class="mobile-nav" aria-label="Mobile navigation">
@@ -873,7 +876,10 @@ function shell(snapshot: Snapshot, current: "home" | "radar" | "ask" | "sources"
           <div class="language-switch" aria-label="语言"><a aria-current="true" href="${escapeAttr(chineseHref)}">中</a><a lang="en" href="${escapeAttr(englishHref)}">EN</a></div>
         </header>
         <main>${body}</main>
-        <footer class="site-footer"><span>AI 行业雷达 · 公开信息阅读索引</span><a href="${prefix}about/">关于</a></footer>
+        <footer class="site-footer">
+          <div class="site-footer-copy"><span>AI 行业雷达 · 公开信息阅读索引</span><span>Created by Song Luo</span></div>
+          <nav class="site-footer-links" aria-label="页脚导航"><a href="${prefix}about/">关于</a><a href="https://github.com/rrrrrredy" rel="noreferrer" target="_blank">GitHub</a></nav>
+        </footer>
       </div>
     </div>
     <nav class="mobile-nav" aria-label="移动导航">
@@ -2035,7 +2041,11 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .about-reader section { border-bottom: 1px solid var(--line); display: grid; gap: 28px; grid-template-columns: 170px minmax(0, 1fr); padding: 30px 0; }
 .about-reader section h2 { font-size: 16px; }
 .about-reader section p { color: #555b64; line-height: 1.85; }
-.site-footer { align-items: center; border-top: 1px solid var(--line); color: var(--muted); display: flex; font-size: 12px; justify-content: space-between; margin: 0 30px; padding: 18px 0 28px; }
+.site-footer { align-items: center; border-top: 1px solid var(--line); color: var(--muted); display: flex; font-size: 12px; gap: 24px; justify-content: space-between; margin: 0 30px; padding: 18px 0 28px; }
+.site-footer-copy, .site-footer-links { align-items: center; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.site-footer-copy span + span::before { color: var(--line-strong); content: "·"; margin-right: 14px; }
+.site-footer a { color: inherit; text-decoration: none; }
+.site-footer a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 @media (max-width: 980px) {
   .controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .controls .search-control { grid-column: 1 / -1; }
@@ -2118,7 +2128,7 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .about-reader header h1 { font-size: 31px; }
   .about-reader header p { font-size: 16px; }
   .about-reader section { gap: 10px; grid-template-columns: 1fr; padding: 24px 0; }
-  .site-footer { margin: 0 12px; padding-bottom: 14px; }
+  .site-footer { align-items: flex-start; flex-direction: column; gap: 10px; margin: 0 12px; padding-bottom: 14px; }
 }
 `;
 }

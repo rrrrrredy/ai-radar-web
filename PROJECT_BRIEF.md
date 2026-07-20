@@ -43,7 +43,9 @@ The public site is a reading product. Admin controls, ingestion status, internal
 
 ## Daily Production Operation
 
-At 08:17 Asia/Shanghai every day, GitHub Actions runs live source activation, persists successful chunks to Supabase, clusters and persists events, builds a strict Supabase-backed public snapshot, validates it, deploys to Cloudflare Pages, and verifies the production endpoint.
+GitHub Actions targets a fresh production release before 09:00 Asia/Shanghai through guarded launch windows at 06:17, 07:17, and 08:17. Each window first checks production freshness; work runs only when the current strict Supabase release is missing or stale. The final window uses a bounded core-source plan for faster recovery.
+
+The production path runs live source activation, persists successful chunks to Supabase, clusters and persists events, builds a strict Supabase-backed public snapshot, validates it, deploys to Cloudflare Pages, and verifies the fixed endpoint. Recent same-day checkpoints support both incomplete activation resume and build/deploy-only retry.
 
 The run is restricted to `main`, protected by `RADAR_REFRESH_WRITE_GATE=true`, and serialized by one production concurrency group. Strict production builds fail when Supabase is unavailable, incomplete, stale, or below the release boundary; they never fall back to local files.
 

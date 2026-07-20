@@ -70,7 +70,7 @@ export default function AdminSettingsPage() {
     },
     {
       boundary: "Scheduled jobs",
-      detail: "GitHub Actions runs a daily guarded refresh at 08:17 Asia/Shanghai, followed by strict snapshot and deployment verification.",
+      detail: "GitHub Actions uses guarded 06:17, 07:17, and 08:17 Asia/Shanghai recovery windows to target a fresh verified release before 09:00.",
       keyName: ".github/workflows/radar-refresh-cloudflare.yml",
       status: "daily guarded refresh",
       tone: "success"

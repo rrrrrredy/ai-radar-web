@@ -73,7 +73,7 @@ Low-information directory pages, documentation indexes, generic homepages, and r
 - what the product does;
 - how repeated source items become one event;
 - how summaries and reader judgments are produced;
-- the daily 08:17 Asia/Shanghai update cadence;
+- the before-09:00 Asia/Shanghai freshness target and recovery cadence;
 - public-data and privacy boundaries;
 - coverage and freshness limitations.
 
@@ -121,7 +121,9 @@ A production run never falls back to local evidence files. Forbidden public fiel
 
 ## Operations
 
-`.github/workflows/radar-refresh-cloudflare.yml` runs daily at **08:17 Asia/Shanghai** (`00:17 UTC`) using timezone-aware GitHub Actions scheduling. It also retains `workflow_dispatch` for bounded manual reruns.
+`.github/workflows/radar-refresh-cloudflare.yml` uses timezone-aware GitHub Actions windows at **06:17, 07:17, and 08:17 Asia/Shanghai** to target a fresh production release before 09:00. It also retains `workflow_dispatch` for bounded manual reruns.
+
+Each scheduled window checks the fixed production snapshot before doing expensive work. A current-day strict Supabase release from the service window is skipped. The first two windows run the normal 30-source plan when needed; the 08:17 recovery window uses 10 core sources so it can still complete before the target.
 
 Every production run must:
 
@@ -137,7 +139,9 @@ Every production run must:
 
 Scheduled events use explicit production defaults and never depend on absent dispatch inputs. Manual inputs only adjust bounded source and item counts; they cannot switch the run to mock, disable persistence, skip clustering, or skip deployment.
 
-One fixed concurrency group prevents overlapping production refreshes. Incomplete activation checkpoints can resume across workflow runs. Fully persisted checkpoints are cleared before the next daily run so a successful previous day cannot cause the next refresh to no-op.
+One fixed concurrency group prevents overlapping production refreshes. Recent same-day incomplete activation checkpoints resume across workflow runs. A recent fully persisted checkpoint is reused only to retry clustering, build, and deployment; old or incompatible checkpoints are cleared before a new activation.
+
+The 09:00 target is a monitored service objective, not an absolute cron guarantee. GitHub Actions billing, repository configuration, and hosted-runner availability remain external prerequisites.
 
 ## Security Configuration
 

@@ -10,7 +10,9 @@ Cloudflare Pages is the public production surface for AI 行业信息雷达.
 
 ## Daily production refresh
 
-GitHub Actions starts the production workflow every day at `08:17 Asia/Shanghai`. `workflow_dispatch` is also available for an operator retry, but it is subject to the same production gates and may run only from `main`.
+GitHub Actions has daily launch windows at `06:17`, `07:17`, and `08:17 Asia/Shanghai`, with the operational goal that the fixed production URL is fresh before 09:00. `workflow_dispatch` is also available for an operator retry, but it is subject to the same production gates and may run only from `main`.
+
+Every scheduled window first reads the production snapshot with cache bypass. It skips when the release is from the current Beijing day, refreshed after 06:00, no more than three hours old, strict-Supabase-backed, and report-free. Otherwise the first two windows use 30 sources and the last-chance 08:17 window uses 10 core sources.
 
 Each successful run must complete this chain:
 
@@ -25,7 +27,7 @@ Each successful run must complete this chain:
 
 Processing failures, missing chunks, persistence failures, stale evidence, a non-Supabase snapshot, forbidden legacy fields, deployment drift, or endpoint verification failure must fail the workflow.
 
-The resumable cache is only a recovery mechanism for an incomplete run. Completed, malformed, or incompatible checkpoints are discarded so the next scheduled run starts cleanly.
+The resumable cache supports two same-day recovery modes: incomplete activations resume, while a recent fully persisted activation skips collection and retries cluster/build/deploy. Checkpoints older than six hours, malformed checkpoints, and non-live checkpoints are discarded before starting fresh.
 
 ## GitHub repository configuration
 
@@ -45,6 +47,8 @@ Configure these Actions secrets:
 The service-role and provider keys are server-only. Never expose them to browser code, committed files, logs, task text, or public deployment variables. The Cloudflare token should be scoped only to the `ai-industry-radar` Pages deployment needs.
 
 GitHub Actions and repository billing must be active. A configured workflow cannot refresh production while Actions jobs are suspended.
+
+GitHub scheduled events can be delayed or dropped, so these recovery windows implement a best-effort 09:00 SLO, not a hard hosted-runner SLA. Operational acceptance is seven consecutive days with the fixed URL passing the production checks by 08:55; alerts or an independent watchdog are required for a contractual guarantee.
 
 ## Supabase
 

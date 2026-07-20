@@ -67,7 +67,9 @@ Local persistence still requires `ENABLE_SUPABASE_WRITES=true` plus valid Supaba
 
 ## Daily Production Refresh
 
-`.github/workflows/radar-refresh-cloudflare.yml` runs every day at **08:17 Asia/Shanghai** (`00:17 UTC`) and also supports `workflow_dispatch`.
+`.github/workflows/radar-refresh-cloudflare.yml` targets a fresh production release before **09:00 Asia/Shanghai**. It has recovery windows at **06:17, 07:17, and 08:17 Asia/Shanghai** and also supports `workflow_dispatch`.
+
+Scheduled runs first inspect the fixed production snapshot. A strict Supabase snapshot refreshed after 06:00 on the current Beijing date and no more than three hours ago skips the expensive path. Otherwise 06:17 and 07:17 use the normal 30-source plan; 08:17 is a last-chance 10-core-source run.
 
 Every scheduled run follows one production path:
 
@@ -81,7 +83,7 @@ Every scheduled run follows one production path:
 
 Manual runs expose only `limit`, `chunk_size`, and `max_items_per_source`. They still use live mode, persistence, strict snapshot export, validation, and production deployment. Production runs are restricted to `refs/heads/main`.
 
-The workflow restores incomplete activation checkpoints across runs. A fully persisted checkpoint is discarded before the next scheduled run so each successful day starts a fresh crawl. Concurrency is fixed to one production refresh at a time and an in-progress run is not cancelled by a new trigger.
+The workflow restores recent same-day activation checkpoints across runs. An incomplete checkpoint resumes; a fully persisted checkpoint can skip activation and retry clustering, build, and deployment without fetching and scoring the same sources again. Old, malformed, or non-live checkpoints are discarded. Concurrency is fixed to one production refresh at a time and an in-progress run is not cancelled by a new trigger.
 
 ### Required repository configuration
 
@@ -126,7 +128,8 @@ Raw text, raw/model metadata, evidence notes, private notes, admin/audit logs, s
 - no automatic WeChat crawl;
 - no browser or public service-role access;
 - no claim of complete real-time industry coverage;
-- scheduled workflows may be delayed by GitHub Actions load and require an enabled Actions billing state.
+- the 09:00 goal is an operational SLO rather than a hard scheduling guarantee because GitHub-hosted scheduled workflows may be delayed or dropped under load;
+- GitHub Actions billing and all required variables/secrets must be active, or no scheduled production run can start.
 
 ## Release Documentation
 

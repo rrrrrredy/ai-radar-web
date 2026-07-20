@@ -4,7 +4,7 @@ export function Footer() {
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-6 text-sm text-radar-muted sm:px-6 lg:px-8">
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <p className="font-medium text-radar-ink">
-            AI 行业雷达 <span className="text-radar-muted">·</span> Song Luo
+            AI 行业雷达 <span className="text-radar-muted">·</span> Created by Song Luo
           </p>
           <p>© 2026 Song Luo</p>
         </div>
@@ -24,7 +24,7 @@ export function Footer() {
             rel="noreferrer"
             target="_blank"
           >
-            GitHub: github.com/rrrrrredy
+            GitHub
           </a>
         </div>
       </div>
