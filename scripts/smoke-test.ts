@@ -373,9 +373,13 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       cloudflareSite.includes('data-feed-family="公司/实验室"') &&
       cloudflareSite.includes('data-feed-category="model_release,benchmark"') &&
       cloudflareSite.includes("function renderStoryRow") &&
+      cloudflareSite.includes("function feedDateTime") &&
+      cloudflareSite.includes('class="story-date"') &&
+      cloudflareSite.includes('class="story-clock"') &&
+      cloudflareSite.includes('locale === "en" ? "UTC" : "北京时间"') &&
       cloudflareSite.includes("function storyFilterScript"),
     true,
-    "Cloudflare Ask must enforce evidence windows while the public radar uses source/topic reader filters."
+    "Cloudflare Ask must enforce evidence windows while the public radar uses source/topic reader filters and visible date-plus-time labels."
   );
   assert.equal(
     cloudflareSite.includes("Created by Song Luo") &&
@@ -561,6 +565,8 @@ function assertBilingualStaticContract() {
     assert.equal((page.match(/class="top-story story-row"/g) ?? []).length, 10, `${label} homepage must expose exactly ten hot topics.`);
     assert.equal(page.includes("hot-copy") && page.includes("hot-judgment") && page.includes("TOP 10"), true, `${label} Top 10 must include summaries and reader judgment.`);
     assert.equal(page.includes('class="story-stream"'), true, `${label} homepage must continue into the latest-update stream.`);
+    assert.match(page, /<time datetime="[^"]+" title="[^"]+">[^<]+ · \d{2}:\d{2}<\/time>/, `${label} hot topics must show a visible date and time.`);
+    assert.match(page, /<time datetime="[^"]+" title="[^"]+"><span class="story-date">[^<]+<\/span><span class="story-clock">\d{2}:\d{2}<\/span><\/time>/, `${label} latest updates must show separate visible date and time labels.`);
   }
   assert.equal(chineseHome.includes("为什么值得看"), true, "Chinese homepage must explain why every hot topic matters.");
   assert.equal(englishHome.includes("Why it matters"), true, "English homepage must explain why every hot topic matters.");

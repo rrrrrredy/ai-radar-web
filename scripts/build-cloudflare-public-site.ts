@@ -367,15 +367,23 @@ function readerReadyEventForLocale(event: SnapshotEvent, snapshot: Snapshot, loc
   return summary.length >= 30 && !/(only metadata|no body text|metadata only|content was not provided|title alone)/iu.test(summary);
 }
 
-function feedTime(value: string, locale: "en" | "zh") {
+function feedDateTime(value: string, locale: "en" | "zh") {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "--:--";
-  return new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "zh-CN", {
-    hour: "2-digit",
-    hour12: false,
-    minute: "2-digit",
-    timeZone: locale === "en" ? "UTC" : "Asia/Shanghai"
-  }).format(date);
+  if (Number.isNaN(date.getTime())) return { date: "--", time: "--:--" };
+  const timeZone = locale === "en" ? "UTC" : "Asia/Shanghai";
+  return {
+    date: new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "zh-CN", {
+      day: "2-digit",
+      month: locale === "en" ? "short" : "2-digit",
+      timeZone
+    }).format(date),
+    time: new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "zh-CN", {
+      hour: "2-digit",
+      hour12: false,
+      minute: "2-digit",
+      timeZone
+    }).format(date)
+  };
 }
 
 function feedDayKey(value: string, locale: "en" | "zh") {
@@ -438,8 +446,9 @@ function renderStoryRow(event: SnapshotEvent, snapshot: Snapshot, locale: "en" |
   const sources = eventSources(event).join(" · ") || (locale === "en" ? "Public source" : "公开来源");
   const sourceCount = locale === "en" ? `${event.source_count} source${event.source_count === 1 ? "" : "s"}` : `${event.source_count} 个来源`;
   const category = locale === "en" ? categoryLabelEn(event.category) : labelize(event.category);
+  const timestamp = feedDateTime(event.latest_seen_at, locale);
   return `<article class="event-card story-row" ${storyDataAttributes(event, snapshot, title, summary)}>
-    <div class="story-time"><time>${escapeHtml(feedTime(event.latest_seen_at, locale))}</time><span></span></div>
+    <div class="story-time"><time datetime="${escapeAttr(event.latest_seen_at)}" title="${escapeAttr(`${timestamp.date} ${timestamp.time} · ${locale === "en" ? "UTC" : "北京时间"}`)}"><span class="story-date">${escapeHtml(timestamp.date)}</span><span class="story-clock">${escapeHtml(timestamp.time)}</span></time><i aria-hidden="true"></i></div>
     <div class="story-content">
       <div class="story-meta"><span>${escapeHtml(sources)}</span><strong>${escapeHtml(sourceCount)}</strong></div>
       <h2><a href="${escapeAttr(eventPrimaryUrl(event))}">${escapeHtml(title)}</a></h2>
@@ -468,9 +477,10 @@ function renderTopStories(events: SnapshotEvent[], snapshot: Snapshot, locale: "
     const sources = locale === "en" ? `${event.source_count} source${event.source_count === 1 ? "" : "s"}` : `${event.source_count} 个来源`;
     const category = locale === "en" ? categoryLabelEn(event.category) : labelize(event.category);
     const sourceNames = eventSources(event, 2).join(" · ") || (locale === "en" ? "Public source" : "公开来源");
+    const timestamp = feedDateTime(event.latest_seen_at, locale);
     return `<article class="top-story story-row" ${storyDataAttributes(event, snapshot, title, summary)}>
       <span class="hot-rank">${String(index + 1).padStart(2, "0")}</span>
-      <div class="hot-meta"><time>${escapeHtml(feedTime(event.latest_seen_at, locale))}</time><span>${escapeHtml(sourceNames)}</span><small>${escapeHtml(category)}</small></div>
+      <div class="hot-meta"><time datetime="${escapeAttr(event.latest_seen_at)}" title="${escapeAttr(locale === "en" ? "UTC" : "北京时间")}">${escapeHtml(`${timestamp.date} · ${timestamp.time}`)}</time><span>${escapeHtml(sourceNames)}</span><small>${escapeHtml(category)}</small></div>
       <div class="hot-copy"><h2><a href="${escapeAttr(eventPrimaryUrl(event))}">${escapeHtml(title)}</a></h2><p>${escapeHtml(summary)}</p></div>
       <div class="hot-judgment"><strong>${locale === "en" ? "Why it matters" : "为什么值得看"}</strong><p>${escapeHtml(eventReaderJudgment(event, snapshot, locale))}</p><small>${escapeHtml(`${sources} · ${locale === "en" ? eventScoreLabelEn(event.event_score_label) : event.event_score_label}`)}</small></div>
     </article>`;
@@ -1940,7 +1950,10 @@ main > * + * { margin-top: 0; }
 .story-stream .story-row, .radar-row { align-items: start; background: transparent; display: grid; gap: 16px; grid-template-columns: 78px minmax(0, 1fr); padding: 0; }
 .story-row[hidden], .radar-row[hidden] { display: none; }
 .story-time { align-items: center; color: #60666f; display: grid; font-size: 12px; font-variant-numeric: tabular-nums; gap: 8px; grid-template-columns: 1fr 8px; padding-top: 20px; text-align: right; }
-.story-time span { background: var(--evidence); border-radius: 50%; height: 6px; width: 6px; }
+.story-time time { display: grid; gap: 1px; white-space: nowrap; }
+.story-time .story-date { color: #7a8089; font-size: 11px; }
+.story-time .story-clock { color: #4b515a; font-size: 12px; }
+.story-time i { background: var(--evidence); border-radius: 50%; height: 6px; width: 6px; }
 .story-content { background: #fff; border-bottom: 1px solid var(--line); min-width: 0; padding: 16px 4px 18px; }
 .story-meta { align-items: center; color: var(--muted); display: flex; font-size: 13px; gap: 12px; justify-content: space-between; }
 .story-meta strong { color: var(--evidence); font-size: 12px; }
@@ -2094,9 +2107,10 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .feed-chips { gap: 20px; margin-right: -16px; padding-right: 16px; }
   .story-stream { gap: 0; margin-left: 0; margin-right: 0; }
   .feed-day { background: #edf0f2; border-bottom: 1px solid var(--line); border-top: 1px solid var(--line); font-size: 13px; padding: 7px 12px; }
-  .story-stream .story-row, .radar-row { background: transparent; gap: 8px; grid-template-columns: 38px minmax(0, 1fr); padding: 0; }
+  .story-stream .story-row, .radar-row { background: transparent; gap: 8px; grid-template-columns: 58px minmax(0, 1fr); padding: 0; }
   .story-time { font-size: 10px; grid-template-columns: 1fr; padding-top: 12px; text-align: left; }
-  .story-time span { display: none; }
+  .story-time .story-date, .story-time .story-clock { font-size: 10px; }
+  .story-time i { display: none; }
   .story-content { background: transparent; border: 0; border-bottom: 1px solid #e3e7ea; border-radius: 0; box-shadow: none; padding: 10px 0 12px; }
   .story-meta { font-size: 11px; }
   .story-content h2 { font-size: 15px; line-height: 1.4; margin-top: 4px; }
