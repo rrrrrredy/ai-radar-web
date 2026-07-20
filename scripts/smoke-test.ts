@@ -282,7 +282,8 @@ function assertEvidenceToInsightLoopSurfaces() {
 function assertPublicReaderSurfaces() {
   const cloudflareSite = readSource("scripts/build-cloudflare-public-site.ts");
   assert.equal(
-    cloudflareSite.includes("function renderTopStories") &&
+      cloudflareSite.includes("function renderTopStories") &&
+      cloudflareSite.includes("function selectHomepageEvents") &&
       cloudflareSite.includes("function renderStoryStream") &&
       cloudflareSite.includes("function readerReadyEvent") &&
       cloudflareSite.includes("function humanizeChineseHeadline") &&
@@ -294,6 +295,7 @@ function assertPublicReaderSurfaces() {
       !cloudflareSite.includes('"公众号"') &&
       cloudflareSite.includes("AI 行业信息雷达") &&
       cloudflareSite.includes("function renderSources") &&
+      cloudflareSite.includes("function sourcePublishers") &&
       cloudflareSite.includes("function renderAbout") &&
       cloudflareSite.includes("language-switch") &&
       cloudflareSite.includes("mobile-nav") &&
@@ -307,6 +309,16 @@ function assertPublicReaderSurfaces() {
       !cloudflareSite.includes("slice(0, 33)"),
     true,
     "Cloudflare static site must use the AI HOT-like Top 10 reader IA, source navigation, branded titles, and concrete untruncated headlines."
+  );
+
+  const understandingSummary = readSource("lib/understanding/summarize.ts");
+  assert.equal(
+    !understandingSummary.includes("`元数据级条目：") &&
+      !understandingSummary.includes("`条目摘要：") &&
+      understandingSummary.includes("Public information currently provides only the title") &&
+      understandingSummary.includes("公开信息目前只提供"),
+    true,
+    "Understanding fallbacks must use public-facing language instead of ingestion-stage boilerplate."
   );
 
   const homepage = readSource("app/page.tsx");
@@ -456,6 +468,10 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       refreshWorkflow.includes("production_snapshot_refresh_is_stale") &&
       refreshWorkflow.includes('class="top-story(?:\\s[^"]*)?"') &&
       refreshWorkflow.includes("production_home_datetime_mismatch") &&
+      refreshWorkflow.includes("/sources/?verify=") &&
+      refreshWorkflow.includes("production_reader_boilerplate_leak") &&
+      refreshWorkflow.includes("production_home_source_diversity_missing") &&
+      refreshWorkflow.includes("production_sources_contract_mismatch") &&
       refreshWorkflow.includes("Created by Song Luo") &&
       refreshWorkflow.includes('href="https://github.com/rrrrrredy"') &&
       refreshWorkflow.includes("production_home_hotspot_count_mismatch") &&
@@ -567,6 +583,7 @@ function assertBilingualStaticContract() {
 
   const chineseHome = readSource("dist/cloudflare-pages/index.html");
   const englishHome = readSource("dist/cloudflare-pages/en/index.html");
+  const readerBoilerplate = /(?:条目摘要|元数据级条目)\s*[：:]|\b(?:Metadata-level item|Item summary|Evidence text|Announce Type|Phase 4)\b|\barXiv:\d{4}\.\d+(?:v\d+)?\b|\bAbstract\s*:/iu;
   for (const [page, label] of [[chineseHome, "Chinese"], [englishHome, "English"]] as const) {
     assert.equal((page.match(/class="top-story story-row"/g) ?? []).length, 10, `${label} homepage must expose exactly ten hot topics.`);
     assert.equal(page.includes("hot-copy") && page.includes("hot-judgment") && page.includes("TOP 10"), true, `${label} Top 10 must include summaries and reader judgment.`);
@@ -581,8 +598,11 @@ function assertBilingualStaticContract() {
     chineseHome.matchAll(/class="hot-copy"[\s\S]*?<h2><a[^>]*>([^<]+)<\/a><\/h2>/g),
     (match) => match[1]
   ).slice(0, 10);
+  const chineseTopTags = Array.from(chineseHome.matchAll(/<article class="top-story story-row"[^>]*>/g), (match) => match[0]);
   assert.equal(chineseTopTitles.length, 10, "Chinese homepage must expose ten inspectable hot-topic titles.");
+  assert.equal(chineseTopTags.some((tag) => /data-source-count="(?:same|cross)"/.test(tag)), true, "Chinese Top 10 must include at least one corroborated multi-source event when the snapshot provides one.");
   for (const title of chineseTopTitles) {
+    assert.match(title, /[\u3400-\u9fff]/u, `Chinese hot-topic title must be written for Chinese readers: ${title}`);
     assert.doesNotMatch(title, /(?:…|\.{3})$/, `Hot-topic title must not be pre-truncated: ${title}`);
     assert.doesNotMatch(title, /相关 AI 法律纠纷升级|发布研究进展|基准\/评测更新/, `Hot-topic title must describe the actual event: ${title}`);
     assert.doesNotMatch(title, /\b(?:openai|anthropic|xai|nvidia|hugging face|apple|google|meta|deepseek)\b/, `Hot-topic title must preserve official brand casing: ${title}`);
@@ -597,7 +617,10 @@ function assertBilingualStaticContract() {
 
   const chineseSources = readSource("dist/cloudflare-pages/sources/index.html");
   const chineseAbout = readSource("dist/cloudflare-pages/about/index.html");
-  assert.equal(chineseSources.includes("<h1>来源</h1>") && !chineseSources.includes("公众号") && chineseSources.includes("最近更新") && chineseSources.includes("publisher-index"), true, "Chinese Sources page must provide a real cross-source reading stream.");
+  assert.doesNotMatch(chineseHome, readerBoilerplate, "Chinese homepage must not expose ingestion or model-fallback boilerplate.");
+  assert.doesNotMatch(chineseRadar, readerBoilerplate, "Chinese all-updates page must not expose ingestion or model-fallback boilerplate.");
+  assert.doesNotMatch(chineseSources, readerBoilerplate, "Chinese Sources page must not expose ingestion or model-fallback boilerplate.");
+  assert.equal(chineseSources.includes("<h1>来源</h1>") && chineseSources.includes("个公开来源") && chineseSources.includes("个来源抓取成功") && !chineseSources.includes("公众号") && chineseSources.includes("最近更新") && chineseSources.includes("publisher-index"), true, "Chinese Sources page must expose the complete public-source scale and latest refresh coverage.");
   assert.equal(chineseAbout.includes("我们怎么选") && chineseAbout.includes("内容边界"), true, "Chinese About page must explain selection and editorial boundaries.");
 
   const englishAsk = readSource("dist/cloudflare-pages/en/ask/index.html");

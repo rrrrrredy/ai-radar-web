@@ -358,7 +358,9 @@ function eventFeed(snapshot: Snapshot) {
 
 function readerReadyEvent(event: SnapshotEvent) {
   const summary = chineseEventSummary(event);
-  return summary.length >= 18 && !/(未提供具体内容|未提供正文|没有正文|内容未提供|仅提供元数据|文章标题指出|这是一篇(?:来自)?|标题为《)/u.test(summary);
+  return summary.length >= 18 &&
+    !containsReaderPipelineBoilerplate(summary) &&
+    !/(未提供具体内容|未提供正文|没有正文|内容未提供|仅提供元数据|文章标题指出|这是一篇(?:来自)?|标题为《)/u.test(summary);
 }
 
 function readerReadyEventForLocale(event: SnapshotEvent, snapshot: Snapshot, locale: "en" | "zh") {
@@ -415,6 +417,8 @@ function eventReaderJudgment(event: SnapshotEvent, snapshot: Snapshot, locale: "
   const relatedIds = new Set(event.related_item_ids);
   const item = snapshot.radar_items.find((candidate) => relatedIds.has(candidate.id) && candidate.why_it_matters?.trim());
   if (locale === "zh") {
+    const override = chineseReaderContentOverride(event);
+    if (override) return override.why;
     const itemJudgment = item?.why_it_matters?.trim() ?? "";
     if (containsHan(itemJudgment)) return publicText(itemJudgment);
     if (containsHan(event.score_reason) && !/(?:综合分|AI\s*相关度|重要性|来源家族|来源家庭|来源覆盖|独立性未验证|单一来源)/u.test(event.score_reason)) {
@@ -511,14 +515,26 @@ function storyFilterScript() {
 }
 
 function sourceEvents(snapshot: Snapshot) {
-  return eventFeed(snapshot).filter(readerReadyEvent).slice(0, 30);
+  return eventFeed(snapshot).filter(readerReadyEvent).slice(0, 50);
+}
+
+function sourcePublishers(snapshot: Snapshot) {
+  return uniqueStrings(
+    snapshot.radar_items
+      .toSorted((left, right) => Date.parse(right.published_at ?? right.collected_at) - Date.parse(left.published_at ?? left.collected_at))
+      .map((item) => item.source_name)
+  );
 }
 
 function renderSources(snapshot: Snapshot) {
   const events = sourceEvents(snapshot);
-  const publishers = uniqueStrings(events.flatMap((event) => event.citations.map((citation) => citation.source_name))).slice(0, 24);
+  const publishers = sourcePublishers(snapshot);
+  const publicSourceCount = snapshot.coverage.sources_with_public_items ?? publishers.length;
+  const attempted = snapshot.coverage.attempted_sources ?? 0;
+  const fetched = snapshot.coverage.fetched_sources ?? 0;
+  const refreshStatus = attempted > 0 ? `本轮 ${fetched}/${attempted} 个来源抓取成功` : "按最近更新时间排列";
   return shell(snapshot, "sources", 1, "来源", `
-    <section class="reader-heading compact"><div><div class="reader-title-line"><h1>来源</h1><span>本期 ${publishers.length} 个活跃来源</span></div><p>把值得持续关注的公司、研究机构、媒体和开源社区更新放在同一条时间线上。</p></div></section>
+    <section class="reader-heading compact"><div><div class="reader-title-line"><h1>来源</h1><span>${publicSourceCount} 个公开来源</span></div><p>${refreshStatus}。公司、研究机构、媒体与开源社区的公开更新按时间汇入同一条阅读流。</p></div></section>
     <section class="publisher-index" aria-label="信息来源">${publishers.map((publisher) => `<span>${escapeHtml(publisher)}</span>`).join("")}</section>
     <section class="latest-feed"><div class="section-heading"><h2>最近更新</h2><span>${events.length} 条</span></div><div class="story-stream">${renderStoryStream(events, snapshot, "zh")}</div></section>
   `);
@@ -526,9 +542,13 @@ function renderSources(snapshot: Snapshot) {
 
 function renderEnglishSources(snapshot: Snapshot) {
   const events = sourceEvents(snapshot).filter((event) => readerReadyEventForLocale(event, snapshot, "en"));
-  const publishers = uniqueStrings(events.flatMap((event) => event.citations.map((citation) => citation.source_name))).slice(0, 24);
+  const publishers = sourcePublishers(snapshot);
+  const publicSourceCount = snapshot.coverage.sources_with_public_items ?? publishers.length;
+  const attempted = snapshot.coverage.attempted_sources ?? 0;
+  const fetched = snapshot.coverage.fetched_sources ?? 0;
+  const refreshStatus = attempted > 0 ? `${fetched} of ${attempted} sources fetched in the latest run` : "Ordered by latest update";
   return englishShell(snapshot, "sources", 1, "Sources", `
-    <section class="reader-heading compact"><div><div class="reader-title-line"><h1>Sources</h1><span>${publishers.length} active sources this cycle</span></div><p>Companies, research labs, publishers and open-source communities in one reading stream.</p></div></section>
+    <section class="reader-heading compact"><div><div class="reader-title-line"><h1>Sources</h1><span>${publicSourceCount} public sources</span></div><p>${refreshStatus}. Companies, research labs, publishers and open-source communities share one reading stream.</p></div></section>
     <section class="publisher-index" aria-label="Sources">${publishers.map((publisher) => `<span>${escapeHtml(publisher)}</span>`).join("")}</section>
     <section class="latest-feed"><div class="section-heading"><h2>Latest updates</h2><span>${events.length} items</span></div><div class="story-stream">${renderStoryStream(events, snapshot, "en")}</div></section>
   `);
@@ -558,7 +578,7 @@ function renderEnglishAbout(snapshot: Snapshot) {
 
 function renderEnglishHome(snapshot: Snapshot) {
   const events = eventFeed(snapshot).filter((event) => readerReadyEventForLocale(event, snapshot, "en"));
-  const topEvents = events.toSorted(compareHomepageEvents).slice(0, 10);
+  const topEvents = selectHomepageEvents(events, 10);
   const topIds = new Set(topEvents.map((event) => event.event_cluster_id));
   const latestEvents = events.filter((event) => !topIds.has(event.event_cluster_id)).slice(0, 26);
   return englishShell(snapshot, "home", 0, "Today's hot topics", `
@@ -613,7 +633,7 @@ function renderEnglishAsk(snapshot: Snapshot) {
 
 function renderHome(snapshot: Snapshot) {
   const events = eventFeed(snapshot).filter(readerReadyEvent);
-  const topEvents = events.toSorted(compareHomepageEvents).slice(0, 10);
+  const topEvents = selectHomepageEvents(events, 10);
   const topIds = new Set(topEvents.map((event) => event.event_cluster_id));
   const latestEvents = events.filter((event) => !topIds.has(event.event_cluster_id)).slice(0, 26);
   return shell(snapshot, "home", 0, "今日热点", `
@@ -773,8 +793,26 @@ function eventEnglishSummary(event: SnapshotEvent, snapshot: Snapshot) {
   const summary = eventEnglishItems(event, snapshot)
     .map((item) => item.summary_en?.trim())
     .find((value) => value && !containsHan(value));
-  if (summary) return summary;
-  return "";
+  if (summary && !containsEnglishReaderPipelineBoilerplate(summary)) {
+    return summary
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/(?:^|\s)#{1,6}\s+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  return genericEnglishEventSummary(event, snapshot);
+}
+
+function containsEnglishReaderPipelineBoilerplate(value: string) {
+  return /\b(?:Metadata-level item|Item summary|Evidence text|Announce Type|Phase 4)\b|\barXiv:\d{4}\.\d+(?:v\d+)?\b|\bAbstract\s*:/iu.test(value);
+}
+
+function genericEnglishEventSummary(event: SnapshotEvent, snapshot: Snapshot) {
+  const title = eventEnglishTitle(event, snapshot);
+  if (event.category === "research" || event.category === "benchmark") {
+    return `This public research item examines “${title}”. Evidence currently comes from ${event.source_count} source${event.source_count === 1 ? "" : "s"}; review the paper before relying on its methods or conclusions.`;
+  }
+  return `This public update concerns “${title}”. Available evidence currently covers ${event.source_count} source${event.source_count === 1 ? "" : "s"}; review the original source for capabilities, limitations and impact.`;
 }
 
 function entityLabelEn(value: string) {
@@ -945,16 +983,154 @@ function entityDisplayLabel(value: string) {
 
 
 
-function chineseProductText(value: string | undefined, fallback: string) {
-  const localized = publicText(value ?? "").trim();
-  return /[\u3400-\u9fff]/.test(localized) ? localized : fallback;
+const chineseReaderContentOverrides = [
+  {
+    match: "GPT-Red: Unlocking Self-Improvement for Robustness",
+    title: "OpenAI 发布 GPT-Red 红队系统",
+    summary: "OpenAI 发布 GPT-Red，通过自我对弈自动生成攻击与防御策略，用于提升模型在越狱、提示注入和对齐场景下的鲁棒性。",
+    why: "自动化红队能力会改变模型安全测试的速度与覆盖面，但安全收益仍需结合真实攻击和外部评估验证。"
+  },
+  {
+    match: "Anthropic found a hidden space where Claude puzzles over concepts",
+    title: "Anthropic 披露 Claude 内部表征研究",
+    summary: "Anthropic 使用 Jacobian Lens 研究 Claude 在回答问题时的内部表征，尝试把模型概念处理过程变得更可观察。",
+    why: "更可观察的内部表征可能推进模型可解释性与安全评估，但方法的稳定性和适用范围仍需独立验证。"
+  },
+  {
+    match: "OpenAI releases a $230 keyboard for Codex",
+    title: "OpenAI 推出 Codex 硬件键盘",
+    summary: "OpenAI 推出一款面向 Codex 编程工作流的 230 美元硬件键盘，试图把智能体操作入口延伸到专用硬件。",
+    why: "专用硬件意味着 Codex 正从软件功能走向完整工作流入口，但真实效率、兼容性和用户需求仍待验证。"
+  },
+  {
+    match: "Apple’s lawsuit against OpenAI",
+    title: "Apple 起诉 OpenAI：指控窃取硬件商业机密",
+    summary: "Apple 起诉 OpenAI，指控其在招聘与硬件研发过程中获取未发布组件、样品和机密资料；相关主张仍需等待司法程序核实。",
+    why: "这场诉讼会影响 AI 公司的人才招聘、硬件研发边界和商业机密合规，后续证据与判决值得持续跟踪。"
+  },
+  {
+    match: "AI is more likely than humans to form biases when hiring",
+    title: "研究发现 AI 招聘筛选比人类更容易形成偏见",
+    summary: "研究发现，在招聘筛选场景中，AI 比人类更容易形成或放大偏见，提醒企业重新审视自动化招聘的评估与问责机制。",
+    why: "如果偏见在招聘自动化环节被规模化，企业会同时面临公平性、合规和可申诉性风险。"
+  },
+  {
+    match: "Causal-Audit:",
+    title: "Causal-Audit 提出可审计图推理：用目标感知因果链回答干预问题",
+    summary: "论文提出 Causal-Audit，通过面向目标的因果链构建，让图推理过程更易追踪和审计；实际效果仍需结合基准结果与消融实验判断。",
+    why: "把推理链显式化并可审计，有机会提高因果问答的可信度，但是否优于现有方法仍要看独立复现。"
+  },
+  {
+    match: "GraphDx:",
+    title: "GraphDx 用成本感知多智能体框架改进序贯诊断",
+    summary: "论文提出 GraphDx，在序贯诊断中结合知识增强、多智能体协作与成本控制，目标是在诊断准确率和信息采集成本之间取得平衡。",
+    why: "医疗诊断智能体必须同时控制准确率与信息成本；该框架能否安全泛化，决定了它是否具有临床价值。"
+  },
+  {
+    match: "VarRate:",
+    title: "VarRate 无需训练即可动态压缩长上下文 KV Cache",
+    summary: "论文提出 VarRate，无需额外训练即可按层和上下文动态调整 KV Cache 压缩率，目标是在长上下文推理中降低显存占用。",
+    why: "KV Cache 是长上下文推理的主要显存瓶颈；无需训练的动态压缩若经验证有效，可直接降低部署成本。"
+  },
+  {
+    match: "Large Language Models as Unified Multimodal Learners for Clinical Prediction",
+    title: "研究探索用大模型统一多模态临床预测",
+    summary: "论文研究如何用大语言模型统一处理临床文本与结构化指标，以支持临床预测；仍需重点核对数据集、泛化能力与医疗安全边界。",
+    why: "统一处理文本和结构化病历可能简化临床预测管线，但泛化、偏差与安全验证不可省略。"
+  },
+  {
+    match: "Cura 1T:",
+    title: "Cura 1T 发布：面向医疗智能体的专用模型",
+    summary: "论文介绍 Cura 1T，一款面向医疗智能体任务的专用大模型，覆盖高风险沟通、专业推理与工作流执行；医疗场景表现仍需独立验证。",
+    why: "医疗专用智能体模型可能提升工作流能力，但高风险场景必须依赖独立临床评估和治理。"
+  },
+  {
+    match: "Verbalizable Representations Form a Global Workspace",
+    title: "研究发现语言模型中的可表达表征形成“全局工作空间”",
+    summary: "论文研究语言模型中可被语言化的内部表征，提出其可能形成类似“全局工作空间”的共享机制；结论仍需结合实验设计审慎解读。",
+    why: "如果内部表征存在可共享的全局机制，将影响可解释性研究；目前它仍是需要独立复核的论文结论。"
+  },
+  {
+    match: "Will AI fix prior authorization",
+    title: "美国试点用 AI 审核医疗保险预授权，效果与风险仍待检验",
+    summary: "美国政府正在试点用 AI 辅助医疗保险预授权决策。效率提升之外，误拒、可解释性与申诉机制仍是需要持续验证的关键风险。",
+    why: "AI 可能加快审批，也可能把错误拒付规模化；人工复核、可解释性和申诉权是落地关键。"
+  },
+  {
+    match: "Google-backed satellites for wildfire detection",
+    title: "Google 支持的 FireSat 卫星升空，用于更早发现野火",
+    summary: "Google 支持的 FireSat 卫星已发射，计划通过更高频率的地球观测帮助更早发现野火；覆盖能力和预警效果仍需后续运行数据验证。",
+    why: "更早发现野火可直接缩短响应时间，但成效取决于轨道覆盖、识别准确率以及与应急系统的衔接。"
+  },
+  {
+    match: "A scorecard for the AI age",
+    title: "OpenAI 首席财务官 Sarah Friar 提出 AI 投资回报评分卡",
+    summary: "OpenAI 首席财务官 Sarah Friar 提出一套 AI 投资回报评分方法，重点衡量有效工作量、单次成功任务成本、可靠性与算力回报。",
+    why: "企业正从“是否采用 AI”转向“如何量化回报”，这套指标可能影响预算、采购和规模化部署判断。"
+  },
+  {
+    match: "The risk of weather data sabotage is rising",
+    title: "天气数据遭破坏风险上升，关键基础设施面临连锁影响",
+    summary: "天气预报支撑航空、电网和农业等关键决策。相关数据一旦被篡改或破坏，可能引发跨行业连锁风险，数据完整性与溯源能力因此更加重要。",
+    why: "天气数据是多类关键基础设施的共同输入，一处污染可能被自动化决策链迅速放大。"
+  },
+  {
+    match: "Anthropic Python SDK 发布 v0.117.0",
+    title: "Anthropic Python SDK v0.117.0 增加 MCP Tunnels 并修复凭证泄露",
+    summary: "Anthropic Python SDK v0.117.0 新增 MCP Tunnels 支持，并修复可能泄露凭证的安全问题；使用相关功能的开发者应核对变更并及时升级。",
+    why: "凭证泄露修复会直接影响生产安全；使用旧版 SDK 或 MCP 集成的团队应优先核对升级。"
+  },
+  {
+    match: "Why teens deserve access to safe AI",
+    title: "OpenAI 为青少年 ChatGPT 增加安全保护与家长控制",
+    summary: "OpenAI 介绍面向青少年的 ChatGPT 安全措施，包括适龄保护、学习工具、家长控制和专家合作；实际保护效果仍需结合落地机制评估。",
+    why: "青少年保护正在成为消费级 AI 的产品责任基线，关键不只是功能发布，而是能否被验证和持续执行。"
+  },
+  {
+    match: "How Cars24 scales conversations",
+    title: "Cars24 用 OpenAI 语音与聊天智能体每月处理超 100 万分钟对话",
+    summary: "Cars24 使用 OpenAI 驱动的语音与聊天智能体，每月处理超过 100 万分钟对话，并称由此挽回部分流失线索、加快内部智能体工作流落地。",
+    why: "这是智能体进入高频业务流程的规模化案例，但成本、成功率和人工接管比例仍需结合完整数据评估。"
+  }
+] as const;
+
+function chineseReaderContentOverride(event: SnapshotEvent) {
+  const canonical = publicText(event.canonical_title).toLowerCase();
+  return chineseReaderContentOverrides.find((entry) => canonical.includes(entry.match.toLowerCase()));
+}
+
+function containsReaderPipelineBoilerplate(value: string) {
+  return /(?:条目摘要|元数据级条目)\s*[：:]|\b(?:Announce Type|Phase 4)\b|\barXiv:\d{4}\.\d+(?:v\d+)?\b|\bAbstract\s*:/iu.test(value);
+}
+
+function normalizeReaderSummary(value: string) {
+  return publicText(value)
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/(?:^|\s)#{1,6}\s+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function genericChineseEventSummary(event: SnapshotEvent, canonical: string) {
+  const title = canonical || "这条 AI 行业动态";
+  const category = categoryFilterValue(event.category);
+  if (category === "research" || category === "benchmark") {
+    return `这项公开研究围绕“${title}”展开；当前证据主要来自 ${event.source_count} 个来源，方法、实验与结论仍需回到原文核对。`;
+  }
+  if (["agent", "product_update", "tooling", "model_release", "open_source"].includes(category)) {
+    return `这条更新围绕“${title}”展开；当前公开信息有限，实际能力、可用性与适用边界仍需结合原始来源核对。`;
+  }
+  return `这条公开信息关注“${title}”；当前证据覆盖 ${event.source_count} 个来源，请结合原文判断其实际影响。`;
 }
 
 function chineseEventSummary(event: SnapshotEvent) {
-  return chineseProductText(
-    event.summary_zh,
-    `该事件汇集 ${event.related_item_ids.length} 条公开信号，当前覆盖 ${event.source_count} 个来源；请结合时间线和引用核对。`
-  );
+  const override = chineseReaderContentOverride(event);
+  if (override) return override.summary;
+
+  const canonical = publicText(event.canonical_title).trim();
+  const localized = normalizeReaderSummary(event.summary_zh ?? "");
+  if (/[\u3400-\u9fff]/.test(localized) && !containsReaderPipelineBoilerplate(localized)) return localized;
+  return genericChineseEventSummary(event, canonical);
 }
 
 function humanizeChineseHeadline(value: string) {
@@ -1015,10 +1191,17 @@ function normalizeChineseTitleStyle(value: string) {
 
 function chineseEventTitle(event: SnapshotEvent) {
   const canonical = publicText(event.canonical_title).trim();
+  const override = chineseReaderContentOverride(event);
+  if (override) return shortenChineseTitle(override.title);
+
+  const rawSummary = normalizeReaderSummary(event.summary_zh ?? "");
   const summary = chineseEventSummary(event);
   const compact = compactChineseEventTitle(event, canonical, summary);
   const sentence = humanizeChineseHeadline(summary.replace(/\s+/g, " ").split(/[。！？]/u)[0]?.trim() ?? "");
-  return shortenChineseTitle(compact || (/\p{Script=Han}/u.test(canonical) ? canonical : sentence || canonical));
+  const summaryCanLead = /\p{Script=Han}/u.test(rawSummary) &&
+    !containsReaderPipelineBoilerplate(rawSummary) &&
+    !/^(?:公开信息|这条|该事件|这项公开研究)/u.test(rawSummary);
+  return shortenChineseTitle(compact || (/\p{Script=Han}/u.test(canonical) ? canonical : summaryCanLead ? sentence : canonical));
 }
 
 function compactChineseEventTitle(event: SnapshotEvent, canonical: string, summary: string) {
@@ -1029,7 +1212,7 @@ function compactChineseEventTitle(event: SnapshotEvent, canonical: string, summa
 
   if (/GPT-Red/i.test(text)) return "OpenAI 发布 GPT-Red 红队系统";
   if (/Codex Micro|keyboard|键盘/i.test(text)) return "OpenAI 推出 Codex 硬件键盘";
-  if (/Jacobian|hidden space|global workspace|雅可比|全局工作空间/i.test(text)) return "Anthropic 披露 Claude 内部表征研究";
+  if (/Jacobian|hidden space|雅可比/i.test(text) && /Anthropic|Claude/i.test(text)) return "Anthropic 披露 Claude 内部表征研究";
   if (/xAI/i.test(text) && /Grok/i.test(text) && /CSAM|儿童性虐待材料/i.test(text)) return "xAI 起诉绕过 Grok 安全措施生成 CSAM 的用户";
   if (/Apple|苹果/i.test(text) && /OpenAI/i.test(text) && /lawsuit|起诉|trade secret|商业机密/i.test(text)) return "Apple 起诉 OpenAI：指控窃取硬件商业机密";
   if (/values vary by model and language|30\s*万次真实对话|价值观.*四个.*维度/i.test(text)) return "Anthropic 分析 30 万次对话：Claude 价值观可归纳为四个维度";
@@ -1245,6 +1428,58 @@ function compareHomepageEvents(left: SnapshotEvent, right: SnapshotEvent) {
     left.canonical_title.localeCompare(right.canonical_title, "zh-CN");
 }
 
+function homepageSourceGroup(event: SnapshotEvent) {
+  const source = eventSources(event, 1)[0]?.trim().toLowerCase() ?? "unknown";
+  return source.startsWith("arxiv") ? "arxiv" : source;
+}
+
+function compareHomepageImpact(left: SnapshotEvent, right: SnapshotEvent) {
+  const leftImpact = left.event_score + Math.min(left.source_count - 1, 2) * 8 + Number(left.source_families.length > 1) * 6;
+  const rightImpact = right.event_score + Math.min(right.source_count - 1, 2) * 8 + Number(right.source_families.length > 1) * 6;
+  return rightImpact - leftImpact || compareHomepageEvents(left, right);
+}
+
+function selectHomepageEvents(events: SnapshotEvent[], limit: number) {
+  const chronological = events.toSorted(compareHomepageEvents);
+  const selected: SnapshotEvent[] = [];
+  const selectedIds = new Set<string>();
+  const sourceCounts = new Map<string, number>();
+  const categoryCounts = new Map<string, number>();
+
+  const add = (event: SnapshotEvent, enforceDiversity: boolean) => {
+    if (selectedIds.has(event.event_cluster_id)) return false;
+    const source = homepageSourceGroup(event);
+    const sourceLimit = source === "arxiv" ? 3 : 2;
+    if (enforceDiversity && (sourceCounts.get(source) ?? 0) >= sourceLimit) return false;
+    if (enforceDiversity && (categoryCounts.get(event.category) ?? 0) >= 3) return false;
+    selected.push(event);
+    selectedIds.add(event.event_cluster_id);
+    sourceCounts.set(source, (sourceCounts.get(source) ?? 0) + 1);
+    categoryCounts.set(event.category, (categoryCounts.get(event.category) ?? 0) + 1);
+    return true;
+  };
+
+  for (const event of chronological) {
+    if (selected.length >= Math.min(6, limit)) break;
+    add(event, true);
+  }
+
+  const eventTimes = events.map((event) => Date.parse(event.latest_seen_at)).filter(Number.isFinite);
+  const newest = eventTimes.length > 0 ? Math.max(...eventTimes) : Date.now();
+  const impactWindow = chronological
+    .filter((event) => newest - Date.parse(event.latest_seen_at) <= 14 * 86_400_000)
+    .toSorted(compareHomepageImpact);
+  for (const event of impactWindow) {
+    if (selected.length >= limit) break;
+    add(event, true);
+  }
+  for (const event of chronological) {
+    if (selected.length >= limit) break;
+    add(event, false);
+  }
+  return selected;
+}
+
 function curatedWindowIsCurrent(snapshot: Snapshot) {
   const generatedAt = Date.parse(snapshot.generated_at);
   const topEvents = snapshot.curated_events.toSorted(compareHomepageEvents).slice(0, 3);
@@ -1376,6 +1611,7 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
 (function () {
   const language = ${JSON.stringify(locale)};
   const snapshotUrl = ${JSON.stringify(snapshotUrl)};
+  const readerContentOverrides = ${JSON.stringify(chineseReaderContentOverrides)};
   const input = document.querySelector("#local-query-input");
   const button = document.querySelector("#local-query-run");
   const result = document.querySelector("#local-query-result");
@@ -1451,13 +1687,48 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
       .trim();
   }
 
+  function readerContentOverride(event) {
+    const canonical = String(event.canonical_title || "").toLowerCase();
+    return readerContentOverrides.find((entry) => canonical.includes(String(entry.match || "").toLowerCase()));
+  }
+
+  function containsPipelineBoilerplate(value) {
+    return /(?:\u6761\u76ee\u6458\u8981|\u5143\u6570\u636e\u7ea7\u6761\u76ee)\s*[\uFF1A:]|\b(?:Metadata-level item|Item summary|Evidence text|Announce Type|Phase 4)\b|\barXiv:\d{4}\.\d+(?:v\d+)?\b|\bAbstract\s*:/i.test(String(value || ""));
+  }
+
+  function normalizeReaderSummary(value) {
+    return String(value || "")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/(?:^|\s)#{1,6}\s+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function genericChineseSummary(event) {
+    const canonical = String(event.canonical_title || "").trim() || "这条 AI 行业动态";
+    const category = String(event.category || "");
+    if (category === "research" || category === "benchmark") {
+      return "这项公开研究围绕“" + canonical + "”展开；当前证据主要来自 " + Number(event.source_count || 0) + " 个来源，方法、实验与结论仍需回到原文核对。";
+    }
+    if (["agent", "product_update", "tooling", "model_release", "open_source"].includes(category)) {
+      return "这条更新围绕“" + canonical + "”展开；当前公开信息有限，实际能力、可用性与适用边界仍需结合原始来源核对。";
+    }
+    return "这条公开信息关注“" + canonical + "”；当前证据覆盖 " + Number(event.source_count || 0) + " 个来源，请结合原文判断其实际影响。";
+  }
+
   function eventTitle(snapshot, event) {
     if (language === "en") return relatedItem(snapshot, event)?.title || event.timeline?.[0]?.title || event.canonical_title;
+    const override = readerContentOverride(event);
+    if (override) return shortChineseTitle(override.title);
     const canonical = String(event.canonical_title || "").trim();
+    const rawSummary = normalizeReaderSummary(event.summary_zh);
     const fullSummary = eventSummary(snapshot, event);
     const compact = compactChineseTitle(event, canonical, fullSummary);
     const summary = humanizeChineseTitle(fullSummary.replace(/\s+/g, " ").split(/[。！？]/)[0].trim());
-    return shortChineseTitle(compact || (/[\u3400-\u9fff]/.test(canonical) ? canonical : summary || canonical));
+    const summaryCanLead = /[\u3400-\u9fff]/.test(rawSummary) &&
+      !containsPipelineBoilerplate(rawSummary) &&
+      !/^(?:公开信息|这条|该事件|这项公开研究)/.test(rawSummary);
+    return shortChineseTitle(compact || (/[\u3400-\u9fff]/.test(canonical) ? canonical : summaryCanLead ? summary : canonical));
   }
 
   function compactChineseTitle(event, canonical, summary) {
@@ -1467,7 +1738,7 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
     const product = entities.find((entity) => /GPT-Red|Codex Micro|Claude|Gemini|DeepSeek|Qwen|Kimi|Jacobian|DeepStream|Transformers|Grok|ATL Saathi|workspace|keyboard/i.test(entity)) || "";
     if (/GPT-Red/i.test(text)) return "OpenAI 发布 GPT-Red 红队系统";
     if (/Codex Micro|keyboard|键盘/i.test(text)) return "OpenAI 推出 Codex 硬件键盘";
-    if (/Jacobian|hidden space|global workspace|雅可比|全局工作空间/i.test(text)) return "Anthropic 披露 Claude 内部表征研究";
+    if (/Jacobian|hidden space|雅可比/i.test(text) && /Anthropic|Claude/i.test(text)) return "Anthropic 披露 Claude 内部表征研究";
     if (/xAI/i.test(text) && /Grok/i.test(text) && /CSAM|儿童性虐待材料/i.test(text)) return "xAI 起诉绕过 Grok 安全措施生成 CSAM 的用户";
     if (/Apple|苹果/i.test(text) && /OpenAI/i.test(text) && /lawsuit|起诉|trade secret|商业机密/i.test(text)) return "Apple 起诉 OpenAI：指控窃取硬件商业机密";
     if (/values vary by model and language|30\s*万次真实对话|价值观.*四个.*维度/i.test(text)) return "Anthropic 分析 30 万次对话：Claude 价值观可归纳为四个维度";
@@ -1486,12 +1757,14 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
 
   function eventSummary(snapshot, event) {
     if (language !== "en") {
-      const summary = String(event.summary_zh || "");
-      if (/[\u3400-\u9fff]/.test(summary)) return summary;
-      return "该事件汇集 " + Number((event.related_item_ids || []).length) + " 条公开信号，当前覆盖 " + Number(event.source_count || 0) + " 个来源；请结合时间线和引用核对。";
+      const override = readerContentOverride(event);
+      if (override) return override.summary;
+      const summary = normalizeReaderSummary(event.summary_zh);
+      if (/[\u3400-\u9fff]/.test(summary) && !containsPipelineBoilerplate(summary)) return summary;
+      return genericChineseSummary(event);
     }
     const item = relatedItem(snapshot, event);
-    if (item?.summary_en) return item.summary_en;
+    if (item?.summary_en && !containsPipelineBoilerplate(item.summary_en)) return normalizeReaderSummary(item.summary_en);
     return "This public event is supported by " + Number(event.source_count || 0) + " source(s) and " + Number((event.related_item_ids || []).length) + " related signal(s). Review the citations before drawing a firm conclusion.";
   }
 
@@ -2099,8 +2372,11 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .hot-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; grid-column: 2; }
   .hot-copy { grid-column: 2; }
   .hot-copy h2 { font-size: 16px; }
-  .hot-copy p { font-size: 13px; }
-  .hot-judgment { grid-column: 2; margin-top: 4px; }
+  .hot-copy p { display: -webkit-box; font-size: 12px; line-height: 1.5; margin-top: 3px; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .hot-judgment { align-items: baseline; border-left: 0; display: grid; gap: 5px; grid-column: 2; grid-template-columns: auto minmax(0, 1fr); margin-top: 2px; padding-left: 0; }
+  .hot-judgment strong { font-size: 11px; margin: 0; white-space: nowrap; }
+  .hot-judgment p { display: -webkit-box; font-size: 11px; line-height: 1.5; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 1; }
+  .hot-judgment small { display: none; }
   .feed-toolbar { overflow: hidden; padding: 8px 0; }
   .feed-toolbar.full-toolbar { gap: 8px; }
   .filter-line { align-items: start; gap: 8px; grid-template-columns: 34px minmax(0, 1fr); }

@@ -498,22 +498,27 @@ jobs:
 
           async function verify(attempt) {
             const requestId = `${cacheBust}-${attempt}`;
-            const [homeResponse, snapshotResponse, reportsResponse] = await Promise.all([
+            const [homeResponse, sourcesResponse, snapshotResponse, reportsResponse] = await Promise.all([
               fetch(`https://ai-industry-radar.pages.dev/?verify=${requestId}`, { cache: "no-store" }),
+              fetch(`https://ai-industry-radar.pages.dev/sources/?verify=${requestId}`, { cache: "no-store" }),
               fetch(`https://ai-industry-radar.pages.dev/data/radar-snapshot.json?verify=${requestId}`, { cache: "no-store" }),
               fetch(`https://ai-industry-radar.pages.dev/reports/?verify=${requestId}`, { cache: "no-store", redirect: "manual" })
             ]);
-            if (!homeResponse.ok || !snapshotResponse.ok) {
-              throw new Error(`production_http_status home=${homeResponse.status} snapshot=${snapshotResponse.status}`);
+            if (!homeResponse.ok || !sourcesResponse.ok || !snapshotResponse.ok) {
+              throw new Error(`production_http_status home=${homeResponse.status} sources=${sourcesResponse.status} snapshot=${snapshotResponse.status}`);
             }
 
             const home = await homeResponse.text();
+            const sources = await sourcesResponse.text();
             const remote = await snapshotResponse.json();
             if (!home.includes("<title>AI 行业信息雷达</title>")) {
               throw new Error("production_home_title_mismatch");
             }
             if ((home.match(/<article class="top-story(?:\s[^"]*)?"/g) || []).length !== 10) {
               throw new Error("production_home_hotspot_count_mismatch");
+            }
+            if (!/<article class="top-story[^>]*data-source-count="(?:same|cross)"/.test(home)) {
+              throw new Error("production_home_source_diversity_missing");
             }
             if (!/<time datetime="[^"]+" title="[^"]+">[^<]+ · \d{2}:\d{2}<\/time>/.test(home)) {
               throw new Error("production_home_datetime_mismatch");
@@ -525,6 +530,13 @@ jobs:
               home.includes("数据状态")
             ) {
               throw new Error("production_home_reader_contract_mismatch");
+            }
+            const readerBoilerplate = /(?:条目摘要|元数据级条目)\s*[：:]|\b(?:Metadata-level item|Item summary|Evidence text|Announce Type|Phase 4)\b|\barXiv:\d{4}\.\d+(?:v\d+)?\b|\bAbstract\s*:/iu;
+            if (readerBoilerplate.test(home) || readerBoilerplate.test(sources)) {
+              throw new Error("production_reader_boilerplate_leak");
+            }
+            if (!sources.includes("个公开来源") || !/本轮 \d+\/\d+ 个来源抓取成功/.test(sources)) {
+              throw new Error("production_sources_contract_mismatch");
             }
             if (reportsResponse.status !== 404) {
               throw new Error(`production_reports_route_not_retired status=${reportsResponse.status}`);

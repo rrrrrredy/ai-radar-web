@@ -51,7 +51,6 @@ export async function summarizeRawItem(
 
 export function heuristicSummary(modelInput: UnderstandingModelInput): SummaryResult {
   const rawItem = modelInput.rawItem;
-  const sourceLabel = rawItem.source_name ? ` from ${rawItem.source_name}` : "";
   const title = normalizeText(rawItem.title) || "Untitled item";
   const summaryText = normalizeText(rawItem.summary || rawItem.raw_text);
   const isMetadataLevel = rawItem.metadata?.item_kind === "raw_html_summary" || summaryText.length < 80;
@@ -60,15 +59,27 @@ export function heuristicSummary(modelInput: UnderstandingModelInput): SummaryRe
     modelInput.truncated ? "input text was truncated before understanding" : ""
   ].filter(Boolean);
 
-  const shortEvidence = summaryText ? ` Evidence text: ${summaryText.slice(0, 180)}${summaryText.length > 180 ? "..." : ""}` : "";
+  const cleanEvidence = summaryText
+    .replace(/^arXiv:\d{4}\.\d+(?:v\d+)?\s+Announce Type:\s*\w+\s+Abstract:\s*/iu, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/(?:^|\s)#{1,6}\s+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const englishEvidence = cleanEvidence
+    ? `${cleanEvidence.slice(0, 260).replace(/(?:…|\.{3})$/u, "").trim()}${cleanEvidence.length > 260 ? "…" : ""}`
+    : "The available evidence is limited and should be checked against the original source.";
+  const chineseEvidence = /[\u3400-\u9fff]/u.test(cleanEvidence) &&
+    (cleanEvidence.match(/[\u3400-\u9fff]/gu)?.length ?? 0) >= Math.max(12, Math.floor(cleanEvidence.length * 0.2))
+    ? cleanEvidence.slice(0, 220).replace(/(?:…|\.{3})$/u, "").trim()
+    : "当前材料主要来自英文标题或摘要，具体方法、数据与结论仍需回到原始来源核对";
 
   return {
     summary_zh: isMetadataLevel
-      ? `元数据级条目：${title}。仅基于 Phase 4 抓取到的标题、链接和页面元数据。`
-      : `条目摘要：${title}。${summaryText.slice(0, 180)}${summaryText.length > 180 ? "..." : ""}`,
+      ? `公开信息目前只提供“${title}”的标题与页面元数据，更多细节仍需回到原始来源核对。`
+      : `公开信息显示，该条目聚焦“${title}”。${chineseEvidence}。`,
     summary_en: isMetadataLevel
-      ? `Metadata-level item${sourceLabel}: ${title}. The available evidence is limited to title, URL, and page metadata.`
-      : `Item summary${sourceLabel}: ${title}.${shortEvidence}`,
+      ? `Public information currently provides only the title and page metadata for “${title}”. Review the original source for details.`
+      : `Public information on “${title}”: ${englishEvidence}`,
     evidence_notes: evidenceNotes
   };
 }
