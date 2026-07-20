@@ -76,9 +76,9 @@ export default async function EntityDetailPage({
             </Link>
             <Link
               className="rounded-md border border-radar-line px-4 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
-              href="/reports#evidence-to-report-path"
+              href="/radar#evidence-to-insight"
             >
-              查看报告路径
+              查看事件路径
             </Link>
           </div>
         </div>
@@ -415,7 +415,7 @@ function trackingTone(score: number): StatusTone {
 }
 
 function watchTone(label: string): StatusTone {
-  if (label === "报告候选") return "evidence";
+  if (label === "事件线索") return "evidence";
   if (label === "先复核") return "caution";
   return "neutral";
 }

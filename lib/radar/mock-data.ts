@@ -3,7 +3,6 @@ import type {
   EventCluster,
   IngestionRun,
   RadarItem,
-  Report,
   Score,
   Source
 } from "@/lib/radar/types";
@@ -237,7 +236,7 @@ export const mockEntities: Entity[] = [
     type: "model",
     name: "Example Model V",
     aliases: ["Example V"],
-    description: "Synthetic model entity for radar linking and report placeholders.",
+    description: "Synthetic model entity for radar linking and interface placeholders.",
     homepageUrl: "https://example.com/ai-radar/entities/example-model-v",
     metadata: {
       modality: "text",
@@ -292,31 +291,6 @@ export const mockScores: Score[] = [
     model: "rules-v0",
     ruleVersion: "phase-2-demo",
     createdAt: "2026-05-12T13:00:00.000Z"
-  }
-];
-
-export const mockReports: Report[] = [
-  {
-    id: "demo-report-daily",
-    type: "daily",
-    title: "Demo daily AI radar brief",
-    language: "bilingual",
-    timeWindowStart: "2026-05-12T00:00:00.000Z",
-    timeWindowEnd: "2026-05-12T23:59:59.000Z",
-    body: "Phase 2 placeholder. Future daily reports will rank events, explain importance, cite evidence, and state uncertainty.",
-    status: "draft",
-    createdAt: "2026-05-12T14:00:00.000Z"
-  },
-  {
-    id: "demo-report-weekly",
-    type: "weekly",
-    title: "Demo weekly trend synthesis",
-    language: "bilingual",
-    timeWindowStart: "2026-05-06T00:00:00.000Z",
-    timeWindowEnd: "2026-05-12T23:59:59.000Z",
-    body: "Phase 2 placeholder. Future weekly reports will synthesize models, agents, infrastructure, papers, funding, and regulation.",
-    status: "draft",
-    createdAt: "2026-05-12T15:00:00.000Z"
   }
 ];
 

@@ -2,21 +2,15 @@ import "server-only";
 
 export const reviewTaskStatuses = ["open", "in_review", "approved", "rejected", "deferred", "resolved"] as const;
 export const reviewTaskPriorities = ["low", "normal", "high", "urgent"] as const;
-export const reviewTaskTargetTypes = ["radar_item", "source", "report_candidate", "source_change", "system"] as const;
+export const reviewTaskTargetTypes = ["radar_item", "source", "source_change", "system"] as const;
 export const sourceChangeRequestTypes = ["add", "update_url", "trial", "approve", "reject", "pause", "resume"] as const;
 export const sourceChangeRequestStatuses = ["open", "approved", "rejected", "deferred"] as const;
 export const sourceChangeReviewStatuses = ["approved", "rejected", "deferred"] as const;
-export const reportCandidateTypes = ["daily", "weekly", "topic", "observation"] as const;
-export const reportCandidateStatuses = ["draft", "needs_review", "approved", "deferred", "rejected", "published"] as const;
-export const reportCandidateReviewStatuses = ["approved", "deferred", "rejected"] as const;
-export const reportPublicationStatuses = ["reviewed", "published"] as const;
 export const sourceStatuses = ["active", "trial", "paused", "rejected", "needs_public_url", "deferred", "monitor"] as const;
 export const sourceTiers = ["T1", "T1.5", "T2", "T3", "unreviewed"] as const;
 export const auditTargetTypes = [
   "review_task",
   "source_change_request",
-  "report_candidate",
-  "report",
   "radar_item",
   "source",
   "system",
@@ -29,10 +23,6 @@ export type ReviewTaskTargetType = (typeof reviewTaskTargetTypes)[number];
 export type SourceChangeRequestType = (typeof sourceChangeRequestTypes)[number];
 export type SourceChangeRequestStatus = (typeof sourceChangeRequestStatuses)[number];
 export type SourceChangeReviewStatus = (typeof sourceChangeReviewStatuses)[number];
-export type ReportCandidateType = (typeof reportCandidateTypes)[number];
-export type ReportCandidateStatus = (typeof reportCandidateStatuses)[number];
-export type ReportCandidateReviewStatus = (typeof reportCandidateReviewStatuses)[number];
-export type ReportPublicationStatus = (typeof reportPublicationStatuses)[number];
 export type AuditTargetType = (typeof auditTargetTypes)[number];
 
 export type CreateReviewTaskInput = {
@@ -65,28 +55,6 @@ export type UpdateSourceChangeRequestStatusInput = {
   id: string;
   status: SourceChangeReviewStatus;
   reviewNote?: string;
-};
-
-export type CreateReportCandidateInput = {
-  reportType: ReportCandidateType;
-  title: string;
-  summary: string;
-  timeWindowStart?: string;
-  timeWindowEnd?: string;
-  sourceItemIds: string[];
-  confidence?: number;
-};
-
-export type UpdateReportCandidateStatusInput = {
-  id: string;
-  status: ReportCandidateReviewStatus;
-  reviewNote?: string;
-};
-
-export type PublishReportCandidateInput = {
-  id: string;
-  reportStatus: ReportPublicationStatus;
-  publicationNote?: string;
 };
 
 export type CreateAdminAuditEventInput = {
@@ -261,126 +229,6 @@ export function validateUpdateSourceChangeRequestStatusInput(
       id: id.value,
       reviewNote: note,
       status: normalizedStatus
-    }
-  };
-}
-
-export function validateCreateReportCandidateInput(input: unknown): AdminValidationResult<CreateReportCandidateInput> {
-  const record = inputRecord(input);
-  const reportType = enumValue(record.reportType ?? record.report_type, reportCandidateTypes);
-  const title = requiredText(record.title, 180, "Report candidate title");
-  const summary = requiredText(record.summary, 1200, "Report candidate summary");
-  const timeWindowStart = optionalDate(record.timeWindowStart ?? record.time_window_start);
-  const timeWindowEnd = optionalDate(record.timeWindowEnd ?? record.time_window_end);
-  const sourceItemIds = uuidList(record.sourceItemIds ?? record.source_item_ids);
-  const confidence = optionalConfidence(record.confidence);
-
-  if (!reportType) {
-    return failure("Select a valid report candidate type.");
-  }
-
-  if (!title.ok) {
-    return title;
-  }
-
-  if (!summary.ok) {
-    return summary;
-  }
-
-  if (timeWindowStart === null || timeWindowEnd === null) {
-    return failure("Report time windows must be valid dates.");
-  }
-
-  if (timeWindowStart && timeWindowEnd && Date.parse(timeWindowStart) > Date.parse(timeWindowEnd)) {
-    return failure("Report time window start must be before the end.");
-  }
-
-  if (sourceItemIds === null) {
-    return failure("Source item ids must be valid UUID values.");
-  }
-
-  if (confidence === null) {
-    return failure("Confidence must be a number between 0 and 1.");
-  }
-
-  return {
-    ok: true,
-    value: {
-      confidence: confidence ?? undefined,
-      reportType,
-      sourceItemIds,
-      summary: summary.value,
-      timeWindowEnd: timeWindowEnd ?? undefined,
-      timeWindowStart: timeWindowStart ?? undefined,
-      title: title.value
-    }
-  };
-}
-
-export function validateUpdateReportCandidateStatusInput(
-  idOrInput: unknown,
-  status?: unknown,
-  reviewNote?: unknown
-): AdminValidationResult<UpdateReportCandidateStatusInput> {
-  const record = isStructuredInput(idOrInput)
-    ? inputRecord(idOrInput)
-    : {
-        id: idOrInput,
-        reviewNote,
-        status
-      };
-  const id = requiredUuid(record.id);
-  const normalizedStatus = enumValue(record.status, reportCandidateReviewStatuses);
-  const note = optionalText(record.reviewNote ?? record.review_note, 500);
-
-  if (!id.ok) {
-    return id;
-  }
-
-  if (!normalizedStatus) {
-    return failure("Select approve, defer, or reject for the report candidate.");
-  }
-
-  return {
-    ok: true,
-    value: {
-      id: id.value,
-      reviewNote: note,
-      status: normalizedStatus
-    }
-  };
-}
-
-export function validatePublishReportCandidateInput(
-  idOrInput: unknown,
-  reportStatus?: unknown,
-  publicationNote?: unknown
-): AdminValidationResult<PublishReportCandidateInput> {
-  const record = isStructuredInput(idOrInput)
-    ? inputRecord(idOrInput)
-    : {
-        id: idOrInput,
-        publicationNote,
-        reportStatus
-      };
-  const id = requiredUuid(record.id);
-  const normalizedStatus = enumValue(record.reportStatus ?? record.report_status, reportPublicationStatuses);
-  const note = optionalText(record.publicationNote ?? record.publication_note, 500);
-
-  if (!id.ok) {
-    return id;
-  }
-
-  if (!normalizedStatus) {
-    return failure("Select reviewed or published for the report record.");
-  }
-
-  return {
-    ok: true,
-    value: {
-      id: id.value,
-      publicationNote: note,
-      reportStatus: normalizedStatus
     }
   };
 }
@@ -569,51 +417,6 @@ function optionalPublicUrl(value: unknown) {
   } catch {
     return null;
   }
-}
-
-function optionalDate(value: unknown) {
-  const normalized = optionalText(value, 80);
-  if (!normalized) {
-    return undefined;
-  }
-
-  const timestamp = Date.parse(normalized);
-  if (!Number.isFinite(timestamp)) {
-    return null;
-  }
-
-  return new Date(timestamp).toISOString();
-}
-
-function uuidList(value: unknown) {
-  const values = Array.isArray(value)
-    ? value
-    : optionalText(value, 2000)
-      ?.split(",")
-      .map((item) => item.trim()) ?? [];
-  const nonEmpty = values
-    .map((item) => optionalText(item, 80))
-    .filter((item): item is string => Boolean(item));
-
-  if (nonEmpty.some((item) => !uuidPattern.test(item))) {
-    return null;
-  }
-
-  return Array.from(new Set(nonEmpty)).slice(0, 24);
-}
-
-function optionalConfidence(value: unknown) {
-  const normalized = optionalText(value, 20);
-  if (!normalized) {
-    return undefined;
-  }
-
-  const numberValue = Number(normalized);
-  if (!Number.isFinite(numberValue) || numberValue < 0 || numberValue > 1) {
-    return null;
-  }
-
-  return numberValue;
 }
 
 function failure(error: string): AdminValidationResult<never> {

@@ -37,7 +37,6 @@ type PublicSnapshotItem = {
 type PublicSnapshot = {
   generated_at?: string;
   radar_items?: PublicSnapshotItem[];
-  reports?: unknown[];
   freshness?: {
     latest_timestamp?: string;
   };
@@ -58,7 +57,7 @@ async function main() {
         limit: options.limit,
         minAiScore: options.minAiScore
       });
-  const report = renderReport({
+  const diff = renderDiff({
     candidates,
     dailyBrief: learnPrompt.dailyBrief,
     latest: learnPrompt.latest,
@@ -71,12 +70,12 @@ async function main() {
   if (options.output) {
     const outputPath = path.resolve(options.output);
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
-    await fs.writeFile(outputPath, report, "utf8");
-    console.log(`LearnPrompt diff report written: ${outputPath}`);
+    await fs.writeFile(outputPath, diff, "utf8");
+    console.log(`LearnPrompt diff written: ${outputPath}`);
     return;
   }
 
-  console.log(report);
+  console.log(diff);
 }
 
 async function loadLearnPromptData(options: CliOptions, now: Date): Promise<{
@@ -126,7 +125,7 @@ async function loadCurrentPublicSnapshot(options: CliOptions): Promise<PublicSna
   return (snapshot ?? {}) as PublicSnapshot;
 }
 
-function renderReport({
+function renderDiff({
   candidates,
   dailyBrief,
   latest,
@@ -149,7 +148,7 @@ function renderReport({
   const candidateIntro = staleBlocked
     ? "LearnPrompt latest data is stale or has a suspicious future timestamp, so normal missing-signal candidates are suppressed. Re-run with `--allow-stale` only for source-repair diagnostics."
     : candidates.length > 0
-      ? "These are high-scoring public LearnPrompt 24h signals that do not match the current AI Radar public snapshot by normalized URL or source-title pair. They are source-repair diagnostics only, not AI Radar evidence candidates, public claims, or formal reports."
+      ? "These are high-scoring public LearnPrompt 24h signals that do not match the current AI Radar public snapshot by normalized URL or source-title pair. They are source-repair diagnostics only, not AI Radar evidence or public claims."
       : "No high-score missing external signals found with the current threshold.";
   const lines = [
     "# LearnPrompt AI News Radar Diff",
@@ -160,7 +159,6 @@ function renderReport({
     "",
     `- AI Radar public snapshot generated_at: ${snapshot.generated_at ?? "unknown"}`,
     `- AI Radar public radar items: ${snapshot.radar_items?.length ?? 0}`,
-    `- AI Radar reports: ${snapshot.reports?.length ?? 0}`,
     `- LearnPrompt latest generated_at: ${latest.generated_at ?? "unknown"}${freshnessLabel(latest.freshness)}`,
     `- LearnPrompt latest AI items: ${latest.items.length}`,
     `- LearnPrompt stories: ${stories.stories.length}${freshnessLabel(stories.freshness)}`,
@@ -189,10 +187,10 @@ function renderReport({
   lines.push(
     "## Guardrails",
     "",
-    "- This report is read-only and performs no Supabase writes.",
+    "- This diff is read-only and performs no Supabase writes.",
     "- External signals remain `external_unreviewed` and `source_repair_only`; they must not become public AI Radar evidence through this diff.",
-    "- LearnPrompt daily-brief and story data must not be treated as AI Radar reports, report drafts, or public entity evidence.",
-    "- If LearnPrompt freshness is stale, use this report only for source repair, not for today-facing copy.",
+    "- LearnPrompt daily-brief and story data must not be treated as AI Radar evidence or public entity evidence.",
+    "- If LearnPrompt freshness is stale, use this diff only for source repair, not for today-facing copy.",
     ""
   );
 
@@ -277,7 +275,7 @@ Options:
   --snapshot-file <path>      Read AI Radar public snapshot from a specific file.
   --limit <n>                 Max missing signals to print. Default: 30.
   --min-ai-score <0..1>       Minimum LearnPrompt AI score. Default: 0.85.
-  --output <path>             Write Markdown report to a file.
+  --output <path>             Write the Markdown diff to a file.
 `);
 }
 

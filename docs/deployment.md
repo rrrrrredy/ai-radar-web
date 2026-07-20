@@ -1,61 +1,71 @@
 # Deployment
 
-Cloudflare Pages is the primary public product surface. Vercel remains the dynamic/reference application.
+Cloudflare Pages is the public production surface for AI 行业信息雷达.
 
-- Primary: `https://ai-industry-radar.pages.dev`
-- Reference: `https://ai-radar-web-luosongred-5507s-projects.vercel.app`
-- Cloudflare artifact: `dist/cloudflare-pages`
-- Manual refresh workflow: `.github/workflows/radar-refresh-cloudflare.yml`
+- Production URL: `https://ai-industry-radar.pages.dev/`
+- Cloudflare Pages project: `ai-industry-radar`
+- Production branch: `main`
+- Build artifact: `dist/cloudflare-pages`
+- Daily workflow: `.github/workflows/radar-refresh-cloudflare.yml`
 
-Milestone D: Preview is deployed and publicly accessible after disabling Vercel Authentication. Use the active Preview alias `ai-radar-web-luosongred-5507-luosongred-5507s-projects.vercel.app`; the latest immutable deployment URL and smoke results are recorded in [deployment-preview-milestone-d.md](./deployment-preview-milestone-d.md). Project-wide Preview environment variables are configured.
+## Daily production refresh
 
-Milestone G: Production is deployed at `https://ai-radar-web-luosongred-5507s-projects.vercel.app`. See [production-launch-milestone-g.md](./production-launch-milestone-g.md) for env names, callback URL, smoke results, DNS caveat, and rollback plan.
+GitHub Actions starts the production workflow every day at `08:17 Asia/Shanghai`. `workflow_dispatch` is also available for an operator retry, but it is subject to the same production gates and may run only from `main`.
 
-Use Cloudflare Pages first for public access and the allowlisted static snapshot. Use Vercel for the Next.js App Router reference/dynamic application and Supabase for managed Postgres/Auth. GitHub Pages is not used.
+Each successful run must complete this chain:
 
-Production refreshes are manual `workflow_dispatch` runs only. Deployed environments keep `ENABLE_SUPABASE_WRITES=false`; a persistence run requires the explicit workflow input and repository write-gate variable. No scheduled writes are enabled.
+1. select 10 core sources plus a rotating long-tail batch;
+2. fetch and understand live source data;
+3. persist every activation chunk to Supabase;
+4. cluster and persist public events;
+5. export a strict Supabase-backed public snapshot with local fallback disabled;
+6. render and test the Cloudflare artifact;
+7. deploy the `main` artifact to Cloudflare Pages;
+8. compare the remote snapshot generation ID and source contract with the local artifact.
 
-Use the detailed readiness checklist in [deployment-hardening.md](./deployment-hardening.md) before any preview or production deployment.
+Processing failures, missing chunks, persistence failures, stale evidence, a non-Supabase snapshot, forbidden legacy fields, deployment drift, or endpoint verification failure must fail the workflow.
 
-Milestone D status: see [deployment-preview-milestone-d.md](./deployment-preview-milestone-d.md).
+The resumable cache is only a recovery mechanism for an incomplete run. Completed, malformed, or incompatible checkpoints are discarded so the next scheduled run starts cleanly.
 
-Milestone G status: see [production-launch-milestone-g.md](./production-launch-milestone-g.md).
+## GitHub repository configuration
 
-## Environment Variables
+Configure these Actions variables:
 
-Configure deployed values only in the platform environment manager. Keep `.env.example` blank or set to safe defaults, and never paste secrets into task text, deployment notes, GitHub issues, commits, docs, or logs.
-
-Required Supabase variables for deployed Supabase behavior:
-
+- `RADAR_REFRESH_WRITE_GATE=true`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` for approved server-only write workflows only
-- `ADMIN_EMAIL`
-- `ENABLE_SUPABASE_RETRIEVAL`
-- `ENABLE_SUPABASE_WRITES=false` by default
-- `ENABLE_SCHEDULED_INGESTION=false`
-- `ENABLE_SCHEDULED_PERSISTENCE=false`
-- `ENABLE_LIVE_DEEPSEEK_IN_JOBS=false`
-- `ENABLE_X_API=false`
-- `ENABLE_WECHAT_AUTH=false`
+- `CLOUDFLARE_ACCOUNT_ID`
+
+Configure these Actions secrets:
+
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `DEEPSEEK_API_KEY`
+- `CLOUDFLARE_API_TOKEN`
+
+The service-role and provider keys are server-only. Never expose them to browser code, committed files, logs, task text, or public deployment variables. The Cloudflare token should be scoped only to the `ai-industry-radar` Pages deployment needs.
+
+GitHub Actions and repository billing must be active. A configured workflow cannot refresh production while Actions jobs are suspended.
 
 ## Supabase
 
-For a new project, apply `supabase/schema.sql` and use `supabase/seed.sql` only for safe demo rows. For the current Phase 7 persistence path, apply migrations in order:
+For the existing project, keep the checked-in migration history aligned with the production migration history and apply every pending migration in version order. For a new project, use the current baseline and then apply the complete migration chain; do not follow an old milestone-only subset.
+
+After migrations, run:
 
 ```bash
-supabase/migrations/202605140001_phase7_persistence.sql
-supabase/migrations/202605140002_phase7_upsert_constraints.sql
-supabase/migrations/202605140003_public_retrieval_view.sql
-supabase/migrations/202605140004_auth_admin_rls.sql
+npm run supabase:public-contract
 ```
 
-The public anon key should read only `public.public_radar_items`. The service role key must remain server-only and must not be exposed to browser code.
+The anonymous key may read only the allowlisted public radar/event surface. Retired legacy tables and views must reject anonymous and authenticated Data API reads. The service-role key is used only in server-side persistence and sanitized snapshot-export steps.
 
-Enable Email magic links in Supabase first. Configure GitHub OAuth manually in the Supabase dashboard before relying on the GitHub button. WeChat auth remains a disabled placeholder.
+## Release validation
 
-After applying the auth/admin RLS migration, the initial admin must sign in once with the configured `ADMIN_EMAIL`, then run `npm run auth:bootstrap-admin` as a dry-run. A later explicitly approved write can run `npm run auth:bootstrap-admin -- --write` with `ENABLE_SUPABASE_WRITES=true`.
+Before a production deployment, run:
 
-## Deferred Work
+```bash
+npm run check:deployment
+```
 
-Scheduled persistence and automatic report publication remain disabled. X and WeChat are not automatically crawled. Live DeepSeek is available only in bounded, manually triggered refresh/report paths, and report candidates still require editorial review before publication.
+For the release artifact, export from live Supabase with strict mode enabled; never publish an artifact whose snapshot says `local_data_used=true`. After deployment, verify both the homepage and `/data/radar-snapshot.json`; the remote `generated_at` must equal the just-built local snapshot.
+
+The Vercel App Router deployment is a reference/admin surface and is not the public URL to share.

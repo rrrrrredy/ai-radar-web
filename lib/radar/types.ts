@@ -96,20 +96,6 @@ export type Score = {
   createdAt: string;
 };
 
-export type Report = {
-  id: string;
-  type: "daily" | "weekly" | "topic" | "source_evaluation";
-  title: string;
-  language: LanguageCode;
-  timeWindowStart: string;
-  timeWindowEnd: string;
-  body: string;
-  status: RadarItemStatus;
-  createdBy?: string;
-  createdAt: string;
-  publishedAt?: string;
-};
-
 export type IngestionRun = {
   id: string;
   startedAt: string;

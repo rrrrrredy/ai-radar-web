@@ -103,7 +103,6 @@ export type ExternalSourceGapWorkbench = {
   aiRadar: {
     generatedAt: string | null;
     radarItemCount: number;
-    reportCount: number;
     snapshotAvailable: boolean;
     sourceCount: number;
   };
@@ -146,7 +145,6 @@ type PublicSnapshotItem = {
 type PublicSnapshot = {
   generated_at?: string;
   radar_items?: PublicSnapshotItem[];
-  reports?: unknown[];
 };
 
 const defaultLimit = 20;
@@ -238,7 +236,6 @@ export function buildExternalSourceGapWorkbench({
     aiRadar: {
       generatedAt: text(snapshot.generated_at) || null,
       radarItemCount: radarItems.length,
-      reportCount: formalReportCount(snapshot.reports),
       snapshotAvailable,
       sourceCount: sourceIndex.sourceNames.size
     },
@@ -247,9 +244,9 @@ export function buildExternalSourceGapWorkbench({
     generatedAt: now.toISOString(),
     guardrails: [
       "External signals are source-repair candidates only.",
-      "The workbench performs no Supabase writes and creates no formal reports.",
+      "The workbench performs no Supabase writes and publishes no content.",
       "Stale or suspicious-future LearnPrompt data is blocked unless explicitly allowed for diagnostics.",
-      "Default public /radar, /entities, and /reports must not display external_unreviewed items as AI Radar claims."
+      "Default public radar and entity surfaces must not display external_unreviewed items as AI Radar claims."
     ],
     learnPrompt: {
       freshness: latest.freshness,
@@ -492,17 +489,6 @@ function actionCounts(candidates: ExternalSourceGapCandidate[]) {
   }
 
   return counts;
-}
-
-function formalReportCount(value: unknown) {
-  if (!Array.isArray(value)) {
-    return 0;
-  }
-
-  return value.filter((report) => {
-    const row = record(report);
-    return row.mode === "saved_report" && (row.status === "reviewed" || row.status === "published");
-  }).length;
 }
 
 function readinessCounts(candidates: ExternalSourceGapCandidate[]) {

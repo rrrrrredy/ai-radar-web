@@ -36,13 +36,13 @@ export default async function AdminSourceGapsPage() {
           Operator workbench for comparing LearnPrompt AI News Radar public
           signals with the current AI Radar public snapshot. It classifies
           missing signals into source repair actions without adding them to
-          public radar, entities, reports, or reviewed report counts.
+          public radar or entity records.
         </p>
       </section>
 
       <section
         aria-label="External source gap overview"
-        className="grid gap-4 md:grid-cols-2 xl:grid-cols-6"
+        className="grid gap-4 md:grid-cols-2 xl:grid-cols-5"
       >
         <AdminStatusCard
           detail="High-score LearnPrompt signals missing from the current AI Radar public snapshot after freshness and duplicate gates."
@@ -74,12 +74,6 @@ export default async function AdminSourceGapsPage() {
           tone="success"
           value={workbench.learnPrompt.sourceHealth.okSites}
         />
-        <AdminStatusCard
-          detail="Formal saved reports in reviewed or published status; this workbench does not change the count."
-          label="Reports"
-          tone="evidence"
-          value={workbench.aiRadar.reportCount}
-        />
       </section>
 
       <section className="rounded-lg border border-radar-line bg-radar-panel p-4">
@@ -90,8 +84,7 @@ export default async function AdminSourceGapsPage() {
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
               This page is a diagnostic surface. It does not promote external
-              signals, create source rows, generate report candidates, or call
-              live model providers.
+              signals, create source rows, or call live model providers.
             </p>
           </div>
           <DataSourceChip detail="baseline" source="supabase_radar_items" />
@@ -187,7 +180,7 @@ export default async function AdminSourceGapsPage() {
               value={workbench.learnPrompt.generatedAt ?? "unknown"}
             />
             <InputStatus
-              detail={`${workbench.aiRadar.radarItemCount} radar rows, ${workbench.aiRadar.reportCount} formal report(s).`}
+              detail={`${workbench.aiRadar.radarItemCount} radar rows across ${workbench.aiRadar.sourceCount} snapshot sources.`}
               label="AI Radar snapshot"
               tone="evidence"
               value={workbench.aiRadar.generatedAt ?? "unknown"}

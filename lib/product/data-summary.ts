@@ -8,8 +8,6 @@ import {
   type PublicEventCluster
 } from "@/lib/events/clustering";
 import { loadRadarFeed, type RadarFeed, itemEvidenceTimestamp } from "@/lib/radar/feed";
-import { loadReportWorkflowData } from "@/lib/reports/load-report-data";
-import type { ReportWorkflowDocument } from "@/lib/reports/types";
 import type { RetrievalRadarItem } from "@/lib/retrieval/types";
 import type { RadarCategory, UnderstandingStatus } from "@/lib/understanding/types";
 
@@ -30,7 +28,6 @@ export type ProductDataSummary = {
     needsReview: number;
     excluded: number;
     failed: number;
-    reportCandidates: number | null;
     citations: number;
   };
   latest: {
@@ -56,11 +53,6 @@ export type ProductDataSummary = {
     href: string;
     categories: string[];
   }>;
-  reports: {
-    daily: ReportWorkflowDocument | null;
-    weekly: ReportWorkflowDocument | null;
-    savedCount: number;
-  };
   caveats: string[];
   warnings: string[];
   coverage: PublicDataCompletenessSummary;
@@ -68,10 +60,7 @@ export type ProductDataSummary = {
 
 export async function loadProductDataSummary(): Promise<ProductDataSummary> {
   const feed = await loadRadarFeed();
-  const [reportData, coverage] = await Promise.all([
-    loadReportWorkflowData({ feed, publicSnapshotLocalOnly: true }),
-    loadPublicSafeDataCompletenessSummary(feed)
-  ]);
+  const coverage = await loadPublicSafeDataCompletenessSummary(feed);
   const eventLayer = filterPublicDisplayEventLayer(buildEventLayer(
     feed.items.map((item) => ({
       categories: item.categories,
@@ -102,9 +91,8 @@ export async function loadProductDataSummary(): Promise<ProductDataSummary> {
       why_it_matters: item.why_it_matters
     }))
   ));
-  const reportsByType = new Map(reportData.reports.map((report) => [report.report_type, report]));
-  const caveats = Array.from(new Set([...feed.caveats, ...reportData.warnings]));
-  const warnings = Array.from(new Set([...coverage.warnings, ...reportData.warnings]));
+  const caveats = Array.from(new Set(feed.caveats));
+  const warnings = Array.from(new Set(coverage.warnings));
 
   return {
     dataSource: feed.data_source,
@@ -117,7 +105,6 @@ export async function loadProductDataSummary(): Promise<ProductDataSummary> {
       needsReview: coverage.needsReview ?? feed.counts.needs_review,
       excluded: coverage.excluded ?? feed.counts.excluded,
       failed: coverage.failedRadarItems ?? feed.counts.failed,
-      reportCandidates: coverage.reportCandidates,
       citations: feed.citations.length
     },
     latest: {
@@ -146,11 +133,6 @@ export async function loadProductDataSummary(): Promise<ProductDataSummary> {
       timestamp: itemEvidenceTimestamp(item),
       title: item.title
     })),
-    reports: {
-      daily: reportsByType.get("daily") ?? null,
-      weekly: reportsByType.get("weekly") ?? null,
-      savedCount: reportData.reports.filter((report) => report.read_source === "supabase").length
-    },
     caveats,
     warnings,
     coverage

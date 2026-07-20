@@ -17,7 +17,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export type ReviewTaskStatus = "open" | "in_review" | "approved" | "rejected" | "deferred" | "resolved";
 export type ReviewTaskPriority = "low" | "normal" | "high" | "urgent";
-export type ReviewTaskTargetType = "radar_item" | "source" | "report_candidate" | "source_change" | "system";
+export type ReviewTaskTargetType = "radar_item" | "source" | "source_change" | "system";
 
 export type ReviewTaskRow = {
   id: string;
@@ -71,31 +71,10 @@ export type SourceChangeRequestRow = {
   source: "supabase" | "local_preview";
 };
 
-export type ReportCandidateRow = {
-  id: string;
-  reportType: "daily" | "weekly" | "topic" | "observation";
-  title: string;
-  summary: string;
-  status: "draft" | "needs_review" | "approved" | "deferred" | "rejected" | "published";
-  confidence?: number;
-  timeWindowStart?: string;
-  timeWindowEnd?: string;
-  caveats: string[];
-  citationsCount: number;
-  distinctSourceCount: number;
-  missingEvidence: string[];
-  qualityGatePassed: boolean | null;
-  sourceItemCount: number;
-  usableItemCount: number;
-  createdAt?: string;
-  source: "supabase" | "local_preview";
-};
-
 export type AdminReviewDashboardData = {
   auditEvents: AdminReviewReadResult<AdminAuditEventRow>;
   missingPublicUrlSources: AdminReviewReadResult<SourceMissingPublicUrlRow>;
   radarItemsNeedingReview: AdminReviewReadResult<NeedsReviewRadarItemRow>;
-  reportCandidates: AdminReviewReadResult<ReportCandidateRow>;
   reviewTasks: AdminReviewReadResult<ReviewTaskRow>;
   sourceChangeRequests: AdminReviewReadResult<SourceChangeRequestRow>;
   warnings: string[];
@@ -115,51 +94,40 @@ const ensureAdminReviewAccess = cache(async () => {
 export async function getReviewDashboardData(): Promise<AdminReviewDashboardData> {
   await ensureAdminReviewAccess();
 
-  const [
-    radarItemsNeedingReview,
-    missingPublicUrlSources,
-    sourceChangeRequests,
-    reportCandidates,
-    persistedReviewTasks,
-    auditEvents
-  ] = await Promise.all([
-    listNeedsReviewRadarItemsInternal(),
-    listSourcesMissingPublicUrlInternal(),
-    listSourceChangeRequestsInternal(),
-    listReportCandidatesInternal(),
-    listReviewTasksFromSupabase(),
-    listRecentAuditEvents()
-  ]);
+  const [radarItemsNeedingReview, missingPublicUrlSources, sourceChangeRequests, persistedReviewTasks, auditEvents] =
+    await Promise.all([
+      listNeedsReviewRadarItemsInternal(),
+      listSourcesMissingPublicUrlInternal(),
+      listSourceChangeRequestsInternal(),
+      listReviewTasksFromSupabase(),
+      listRecentAuditEvents()
+    ]);
 
-  const reviewTasks =
-    persistedReviewTasks.source === "supabase"
-      ? persistedReviewTasks
-      : {
-          rows: buildReviewTaskPreview({
-            missingPublicUrlSourceCount: missingPublicUrlSources.rows.length,
-            radarReviewCount: radarItemsNeedingReview.rows.length,
-            reportCandidateCount: reportCandidates.rows.length,
-            sourceChangeRequestCount: sourceChangeRequests.rows.length
-          }),
-          source: "local_preview" as const,
-          warnings: [
-            ...persistedReviewTasks.warnings,
-            "Persistent review tasks are not readable yet; showing derived local review-task previews."
-          ]
-        };
+  const reviewTasks = persistedReviewTasks.source === "supabase"
+    ? persistedReviewTasks
+    : {
+        rows: buildReviewTaskPreview({
+          missingPublicUrlSourceCount: missingPublicUrlSources.rows.length,
+          radarReviewCount: radarItemsNeedingReview.rows.length,
+          sourceChangeRequestCount: sourceChangeRequests.rows.length
+        }),
+        source: "local_preview" as const,
+        warnings: [
+          ...persistedReviewTasks.warnings,
+          "Persistent review tasks are not readable yet; showing derived local review-task previews."
+        ]
+      };
 
   return {
     auditEvents,
     missingPublicUrlSources,
     radarItemsNeedingReview,
-    reportCandidates,
     reviewTasks,
     sourceChangeRequests,
     warnings: uniqueWarnings([
       ...radarItemsNeedingReview.warnings,
       ...missingPublicUrlSources.warnings,
       ...sourceChangeRequests.warnings,
-      ...reportCandidates.warnings,
       ...reviewTasks.warnings,
       ...auditEvents.warnings
     ])
@@ -179,12 +147,11 @@ export async function listSourcesMissingPublicUrl(): Promise<AdminReviewReadResu
 export async function listReviewTasks(): Promise<AdminReviewReadResult<ReviewTaskRow>> {
   await ensureAdminReviewAccess();
 
-  const [persisted, radarItems, missingSources, sourceChanges, reportCandidates] = await Promise.all([
+  const [persisted, radarItems, missingSources, sourceChanges] = await Promise.all([
     listReviewTasksFromSupabase(),
     listNeedsReviewRadarItemsInternal(),
     listSourcesMissingPublicUrlInternal(),
-    listSourceChangeRequestsInternal(),
-    listReportCandidatesInternal()
+    listSourceChangeRequestsInternal()
   ]);
 
   if (persisted.source === "supabase") {
@@ -195,7 +162,6 @@ export async function listReviewTasks(): Promise<AdminReviewReadResult<ReviewTas
     rows: buildReviewTaskPreview({
       missingPublicUrlSourceCount: missingSources.rows.length,
       radarReviewCount: radarItems.rows.length,
-      reportCandidateCount: reportCandidates.rows.length,
       sourceChangeRequestCount: sourceChanges.rows.length
     }),
     source: "local_preview",
@@ -211,23 +177,16 @@ export async function listSourceChangeRequests(): Promise<AdminReviewReadResult<
   return listSourceChangeRequestsInternal();
 }
 
-export async function listReportCandidates(): Promise<AdminReviewReadResult<ReportCandidateRow>> {
-  await ensureAdminReviewAccess();
-  return listReportCandidatesInternal();
-}
-
 export function buildReviewTaskPreview({
   missingPublicUrlSourceCount = 0,
   radarReviewCount = 0,
-  reportCandidateCount = 0,
   sourceChangeRequestCount = 0
 }: {
   missingPublicUrlSourceCount?: number;
   radarReviewCount?: number;
-  reportCandidateCount?: number;
   sourceChangeRequestCount?: number;
 } = {}): ReviewTaskRow[] {
-  const rows: ReviewTaskRow[] = [
+  return [
     {
       description: "Derived from retrieval/local understanding rows whose status, confidence, or credibility indicates analyst review.",
       id: "preview-task-radar-items",
@@ -260,21 +219,8 @@ export function buildReviewTaskPreview({
       targetLocalId: "source-change-requests",
       targetType: "source_change",
       title: `${sourceChangeRequestCount} source change requests visible`
-    },
-    {
-      description: "Derived count for report candidates. Approval, rejection, deferral, and approved-candidate report publication are controlled admin actions.",
-      id: "preview-task-report-candidates",
-      priority: reportCandidateCount > 0 ? "normal" : "low",
-      reason: "report_candidates migration not applied or empty",
-      source: "local_preview",
-      status: reportCandidateCount > 0 ? "open" : "deferred",
-      targetLocalId: "report-candidates",
-      targetType: "report_candidate",
-      title: `${reportCandidateCount} report candidates visible`
     }
   ];
-
-  return rows;
 }
 
 async function listNeedsReviewRadarItemsInternal(): Promise<AdminReviewReadResult<NeedsReviewRadarItemRow>> {
@@ -404,51 +350,6 @@ async function listSourceChangeRequestsInternal(): Promise<AdminReviewReadResult
   };
 }
 
-async function listReportCandidatesInternal(): Promise<AdminReviewReadResult<ReportCandidateRow>> {
-  const supabase = await getSupabaseServerClient();
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from("report_candidates")
-        .select("id, report_type, title, summary, time_window_start, time_window_end, source_item_ids, status, confidence, created_at, metadata")
-        .order("created_at", { ascending: false, nullsFirst: false })
-        .limit(24);
-
-      if (!error) {
-        const rows = ((data ?? []) as Record<string, unknown>[])
-          .map(normalizeReportCandidate)
-          .filter((row): row is ReportCandidateRow => Boolean(row));
-
-        return {
-          rows,
-          source: "supabase",
-          warnings: []
-        };
-      }
-
-      if (error) {
-        return {
-          rows: [],
-          source: "unavailable",
-          warnings: [readErrorMessage("report_candidates", error as SupabaseReadError)]
-        };
-      }
-    } catch (error) {
-      return {
-        rows: [],
-        source: "unavailable",
-        warnings: [`report_candidates read failed: ${sanitizeAdminError(error)}`]
-      };
-    }
-  }
-
-  return {
-    rows: [],
-    source: "unavailable",
-    warnings: ["Supabase browser-auth read client is not configured; report candidates are not readable."]
-  };
-}
-
 function normalizeReviewTask(value: Record<string, unknown>): ReviewTaskRow | null {
   const id = text(value.id);
   const targetType = normalizeReviewTaskTargetType(value.target_type);
@@ -494,36 +395,6 @@ function normalizeSourceChangeRequest(value: Record<string, unknown>): SourceCha
     source: "supabase",
     sourceSlug: optionalText(value.source_slug),
     status: normalizeSourceChangeStatus(value.status)
-  };
-}
-
-function normalizeReportCandidate(value: Record<string, unknown>): ReportCandidateRow | null {
-  const id = text(value.id);
-  const reportType = normalizeReportType(value.report_type);
-  const title = text(value.title);
-
-  if (!id || !reportType || !title) {
-    return null;
-  }
-
-  return {
-    caveats: reportDraftStringArray(value.metadata, "caveats"),
-    citationsCount: reportDraftInteger(value.metadata, "citation_count") ?? reportDraftArrayCount(value.metadata, "citations"),
-    confidence: optionalScore(value.confidence),
-    createdAt: optionalText(value.created_at),
-    distinctSourceCount: reportDraftInteger(value.metadata, "distinct_source_count") ?? 0,
-    id,
-    missingEvidence: reportDraftStringArray(value.metadata, "missing_evidence"),
-    qualityGatePassed: reportDraftQualityGatePassed(value.metadata),
-    reportType,
-    source: "supabase",
-    sourceItemCount: Array.isArray(value.source_item_ids) ? value.source_item_ids.length : 0,
-    status: normalizeReportCandidateStatus(value.status),
-    summary: text(value.summary) || "No candidate summary recorded.",
-    timeWindowEnd: optionalText(value.time_window_end),
-    timeWindowStart: optionalText(value.time_window_start),
-    title,
-    usableItemCount: reportDraftInteger(value.metadata, "usable_item_count") ?? 0
   };
 }
 
@@ -603,7 +474,7 @@ function uniqueWarnings(warnings: string[]) {
 }
 
 function normalizeReviewTaskTargetType(value: unknown): ReviewTaskTargetType | null {
-  return isOneOf(value, ["radar_item", "source", "report_candidate", "source_change", "system"]);
+  return isOneOf(value, ["radar_item", "source", "source_change", "system"]);
 }
 
 function normalizeReviewTaskStatus(value: unknown): ReviewTaskStatus {
@@ -622,87 +493,12 @@ function normalizeSourceChangeStatus(value: unknown): SourceChangeRequestRow["st
   return isOneOf(value, ["open", "approved", "rejected", "deferred"]) ?? "open";
 }
 
-function normalizeReportType(value: unknown): ReportCandidateRow["reportType"] | null {
-  return isOneOf(value, ["daily", "weekly", "topic", "observation"]);
-}
-
-function normalizeReportCandidateStatus(value: unknown): ReportCandidateRow["status"] {
-  return isOneOf(value, ["draft", "needs_review", "approved", "deferred", "rejected", "published"]) ?? "draft";
-}
-
 function isOneOf<const T extends readonly string[]>(value: unknown, options: T): T[number] | null {
   if (typeof value !== "string") {
     return null;
   }
 
   return options.includes(value as T[number]) ? (value as T[number]) : null;
-}
-
-function optionalScore(value: unknown) {
-  const numberValue = typeof value === "number" ? value : Number(value);
-
-  if (!Number.isFinite(numberValue)) {
-    return undefined;
-  }
-
-  return Math.max(0, Math.min(1, numberValue));
-}
-
-function reportDraftArrayCount(metadata: unknown, key: string) {
-  const reportDraft = reportDraftRecord(metadata);
-  const value = reportDraft?.[key];
-
-  return Array.isArray(value) ? value.length : 0;
-}
-
-function reportDraftInteger(metadata: unknown, key: string) {
-  const reportDraft = reportDraftRecord(metadata);
-  const numberValue = Number(reportDraft?.[key]);
-
-  if (!Number.isFinite(numberValue) || numberValue < 0) {
-    return undefined;
-  }
-
-  return Math.floor(numberValue);
-}
-
-function reportDraftQualityGatePassed(metadata: unknown) {
-  const reportDraft = reportDraftRecord(metadata);
-  const qualityGate: Record<string, unknown> = isRecord(reportDraft?.quality_gate) ? reportDraft.quality_gate : {};
-
-  if (reportDraft?.quality_gate_passed === false || qualityGate.passed === false) {
-    return false;
-  }
-
-  if (reportDraft?.quality_gate_passed === true || qualityGate.passed === true) {
-    return true;
-  }
-
-  return null;
-}
-
-function reportDraftStringArray(metadata: unknown, key: string) {
-  const reportDraft = reportDraftRecord(metadata);
-  const value = reportDraft?.[key];
-
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.map(text).filter(Boolean).slice(0, 4);
-}
-
-function reportDraftRecord(metadata: unknown) {
-  if (!isRecord(metadata)) {
-    return null;
-  }
-
-  const reportDraft = metadata.report_draft;
-  return isRecord(reportDraft) ? reportDraft : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function text(value: unknown) {

@@ -344,7 +344,7 @@ export default async function RadarPage({
               全部信号
             </h2>
             <p className="mt-2 text-sm leading-6 text-radar-muted">
-              展示当前筛选命中的全部公开信号；低事件性条目保留用于审计，但不进入事件列表和报告正文。
+              展示当前筛选命中的全部公开信号；低事件性条目保留用于审计，但不进入事件列表和精选判断。
             </p>
           </div>
           <StatusChip
@@ -356,7 +356,7 @@ export default async function RadarPage({
 
         {downgradedFilteredCount > 0 ? (
           <div className="rounded-lg border border-radar-caution/40 bg-radar-caution/5 p-4 text-sm leading-6 text-radar-muted">
-            其中 {downgradedFilteredCount} 条为低事件性审计信号；它们在下方继续可见，但不进入事件列表、报告正文或事件引用栏。
+            其中 {downgradedFilteredCount} 条为低事件性审计信号；它们在下方继续可见，但不进入事件列表、精选判断或事件引用栏。
           </div>
         ) : null}
 
@@ -625,8 +625,8 @@ function RadarItemRow({
           {item.status === "excluded" || item.status === "failed" ? (
             <p className="mt-3 rounded-md border border-radar-risk/30 bg-radar-risk/5 px-3 py-2 text-sm leading-6 text-radar-risk">
               {item.exclusion_reason
-                ? `不是报告证据：${item.exclusion_reason}。`
-                : "在当前理解状态下不是报告证据。"}
+                ? `不作为事件判断证据：${item.exclusion_reason}。`
+                : "在当前理解状态下不作为事件判断证据。"}
             </p>
           ) : null}
         </div>
@@ -789,7 +789,7 @@ function EvidenceToInsightPanel({
         <div>
           <h2 className="text-2xl font-semibold text-radar-ink">从证据到洞察</h2>
           <p className="mt-2 text-sm leading-6 text-radar-muted">
-            AI Radar 的核心路径是先看公开信号，再判断实体是否值得跟踪，最后进入报告草稿和人工审核。
+            AI Radar 的核心路径是先看公开信号，再判断实体是否值得跟踪，并持续核对事件与来源。
           </p>
         </div>
         <StatusChip label="当前信号" tone={filteredCount > 0 ? "evidence" : "caution"} value={filteredCount} />
@@ -809,16 +809,16 @@ function EvidenceToInsightPanel({
           text="把零散信号聚合到公司、模型、产品、论文和项目。"
         />
         <InsightStep
-          detail="带证据边界"
-          href="/reports"
-          label="3. 报告草稿"
-          text="用公开证据检查草稿质量门禁，不把草稿当结论。"
+          detail="合并重复信号"
+          href="/radar"
+          label="3. 事件聚类"
+          text="把同一主题的重复信号合并为可追踪事件，并保留来源边界。"
         />
         <InsightStep
-          detail="正式报告"
-          href="/reports"
-          label="4. 发布结论"
-          text="只有完成复核并进入报告区的记录才作为正式结论阅读。"
+          detail="实体与来源"
+          href="/entities"
+          label="4. 持续跟踪"
+          text="围绕实体、来源和时间线继续核对变化，不把单一信号写成确定结论。"
         />
       </div>
 
@@ -851,9 +851,9 @@ function EvidenceToInsightPanel({
                   </Link>
                   <Link
                     className="rounded-md border border-radar-line bg-white px-3 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
-                    href="/reports#evidence-to-report-path"
+                    href="/radar#evidence-to-insight"
                   >
-                    报告路径
+                    事件路径
                   </Link>
                 </div>
               </article>
@@ -1326,8 +1326,8 @@ function publicText(value: string) {
       "此页面是公开只读情报快照，不提供账号、后台操作或写入能力。"
     )
     .replace(
-      "Only public-safe radar and report fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
-      "只纳入可公开引用的雷达和报告字段；私有原文、内部备注和凭据均不展示。"
+      "Only public-safe radar fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
+      "只纳入可公开引用的雷达字段；私有原文、内部备注和凭据均不展示。"
     )
     .replace(
       "Snapshot data came from Supabase public-safe read views using anon read access.",

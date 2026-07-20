@@ -9,7 +9,6 @@ const publicNavItems = [
   { href: "/", label: "今日" },
   { href: "/radar", label: "雷达" },
   { href: "/entities", label: "实体" },
-  { href: "/reports", label: "报告" },
   { href: "/ask", label: "提问" }
 ];
 

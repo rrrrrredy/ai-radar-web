@@ -11,14 +11,8 @@ import {
   selectLearnPromptDiffCandidates
 } from "@/lib/external/learnprompt-ai-news-radar";
 import { buildExternalSourceGapWorkbench } from "@/lib/external/source-gap-workbench";
-import { loadLocalPublicReportSnapshotRecords } from "@/lib/reports/local-public-reports";
-import {
-  reportPublishingReadiness,
-  summarizePublishingReadiness
-} from "@/lib/reports/publishing-readiness";
 import { isPublicInternetHttpUrl, publicInternetHttpUrl } from "@/lib/public-url";
 import { isExternalSourceRepairSignal } from "@/lib/radar/public-source-boundary";
-import type { ReportWorkflowDocument } from "@/lib/reports/types";
 
 process.env.ENABLE_SUPABASE_RETRIEVAL = "false";
 process.env.ALLOW_SYNTHETIC_RADAR_FALLBACK = "true";
@@ -38,33 +32,13 @@ async function main() {
   assertPublicRoutesUsePublicSafeCoverage();
   assertExperienceEnhancementSurfaces();
   assertEvidenceToInsightLoopSurfaces();
-  assertTrustedPublishingSurfaces();
+  assertPublicReaderSurfaces();
   assertStaticEntityParityAndPublicSnapshotContract();
-  assertTrustedPublishingReadiness();
-  assertTrustedPublishingRegressionGuards();
-  await assertLocalPublicReports();
   assertLearnPromptAdapter();
   assertLearnPromptBoundaryLanguage();
   assertExternalSourceGapWorkbench();
 
-  const [
-    { publicReportMarkdown },
-    { entityCandidatesForItem, matchesEntityCandidate },
-    { reportEvidenceItems, reportSectionTraceability }
-  ] = await Promise.all([
-    import("@/lib/reports/public-markdown"),
-    import("@/lib/radar/entities"),
-    import("@/lib/reports/entity-traceability")
-  ]);
-
-  const publicMarkdown = publicReportMarkdown(
-    "# Report\n\n- Model: deepseek-chat\n- API calls: 2\n- Provider: deepseek\n\n## Summary\n\nEvidence only.",
-    "# Fallback"
-  );
-  assert.equal(publicMarkdown.includes("Model:"), false);
-  assert.equal(publicMarkdown.includes("API calls:"), false);
-  assert.equal(publicMarkdown.includes("Provider:"), false);
-  assert.equal(publicMarkdown.includes("Evidence only."), true);
+  const { entityCandidatesForItem, matchesEntityCandidate } = await import("@/lib/radar/entities");
 
   const fallbackEntityItem: RetrievalRadarItem = {
     categories: ["model_release"],
@@ -96,128 +70,7 @@ async function main() {
   assert.equal(entityCandidatesForItem(fallbackEntityItem).some((entity) => entity.name === "OpenAI"), true);
   assert.equal(matchesEntityCandidate(fallbackEntityItem, "OpenAI"), true);
 
-  const duplicateTitleItems: RetrievalRadarItem[] = [
-    {
-      ...fallbackEntityItem,
-      id: "duplicate_title_deepseek",
-      raw_item_id: "raw_duplicate_title_deepseek",
-      source_name: "DeepSeek",
-      title: "v1.0.0",
-      url: "https://example.com/deepseek-v1"
-    },
-    {
-      ...fallbackEntityItem,
-      id: "duplicate_title_meta",
-      raw_item_id: "raw_duplicate_title_meta",
-      source_name: "Meta",
-      title: "v1.0.0",
-      url: "https://example.com/meta-v1"
-    }
-  ];
-  const unknownSourceTitleOnlyReport = mockReport({
-    citations: [
-      {
-        ...mockReport({}).citations[0],
-        id: "missing_duplicate_title_citation",
-        source_name: "Unknown",
-        title: "v1.0.0",
-        url: "https://example.com/not-present"
-      }
-    ],
-    source_item_ids: []
-  });
-  assert.deepEqual(
-    reportEvidenceItems(unknownSourceTitleOnlyReport, duplicateTitleItems).map((item) => item.id),
-    [],
-    "Duplicate citation titles must not match unrelated radar items by title alone."
-  );
-  const sameSourceTitleReport = mockReport({
-    citations: [
-      {
-        ...mockReport({}).citations[0],
-        id: "same_source_duplicate_title_citation",
-        source_name: "DeepSeek",
-        title: "v1.0.0",
-        url: ""
-      }
-    ],
-    source_item_ids: []
-  });
-  assert.deepEqual(
-    reportEvidenceItems(sameSourceTitleReport, duplicateTitleItems).map((item) => item.id),
-    ["duplicate_title_deepseek"],
-    "Source plus title may match only when that pair is unique."
-  );
-  const sectionTraceReport = mockReport({
-    citations: [
-      {
-        ...mockReport({}).citations[0],
-        id: "duplicate_title_deepseek",
-        source_name: "DeepSeek",
-        title: "v1.0.0",
-        url: "https://example.com/deepseek-v1"
-      }
-    ],
-    sections: [
-      {
-        bullets: ["DeepSeek section bullet"],
-        caveats: [],
-        citations: ["duplicate_title_deepseek"],
-        id: "model_product_company_updates",
-        missing_evidence: [],
-        summary: "Section with one traced citation.",
-        title: "Model updates"
-      },
-      {
-        bullets: ["Unknown section bullet"],
-        caveats: [],
-        citations: ["unknown_section_citation"],
-        id: "research_open_source",
-        missing_evidence: [],
-        summary: "Section with no traced citations.",
-        title: "Research updates"
-      }
-    ],
-    source_item_ids: []
-  });
-  const sectionTraces = reportSectionTraceability(sectionTraceReport, duplicateTitleItems);
-  assert.deepEqual(
-    sectionTraces.map((section) => section.evidenceItems.map((item) => item.id)),
-    [["duplicate_title_deepseek"], []],
-    "Section entity coverage must only use evidence explicitly cited by that section."
-  );
-  const reportInternalCitationId = mockReport({
-    citations: [
-      {
-        ...mockReport({}).citations[0],
-        id: "report-citation-1",
-        source_name: "DeepSeek",
-        title: "v1.0.0",
-        url: "https://example.com/deepseek-v1"
-      }
-    ],
-    sections: [
-      {
-        bullets: ["DeepSeek section bullet"],
-        caveats: [],
-        citations: ["report-citation-1"],
-        id: "model_product_company_updates",
-        missing_evidence: [],
-        summary: "Section citing a report-local citation id.",
-        title: "Model updates"
-      }
-    ],
-    source_item_ids: []
-  });
-  assert.deepEqual(
-    reportSectionTraceability(reportInternalCitationId, duplicateTitleItems).map((section) =>
-      section.evidenceItems.map((item) => item.id)
-    ),
-    [["duplicate_title_deepseek"]],
-    "Section entity coverage must trace report-local citation ids through public citation metadata."
-  );
-
-  console.log("Smoke test passed: event-aware Ask, radar, entity, report, and public snapshot paths remain guarded.");
+  console.log("Smoke test passed: event-aware Ask, radar, source, and public snapshot paths remain guarded.");
 }
 
 function blockExternalNetwork() {
@@ -258,7 +111,7 @@ function assertClientModulesDoNotImportServiceRoleHelpers() {
 }
 
 function assertPublicRoutesUsePublicSafeCoverage() {
-  for (const file of ["app/page.tsx", "app/radar/page.tsx", "app/reports/page.tsx"]) {
+  for (const file of ["app/page.tsx", "app/radar/page.tsx"]) {
     const source = readSource(file);
     assert.equal(
       source.includes("@/lib/data-completeness/public-summary") ||
@@ -268,12 +121,6 @@ function assertPublicRoutesUsePublicSafeCoverage() {
       `${file} must use public-safe coverage and must not import service-role coverage helpers.`
     );
   }
-
-  assert.equal(
-    readSource("app/reports/page.tsx").includes("loadPublicSnapshotRadarItems({ localOnly: true, preferLocal: true })"),
-    true,
-    "Reports traceability fallback must read only the local public snapshot on public SSR paths."
-  );
 
   const productSummary = readSource("lib/product/data-summary.ts");
   assert.equal(
@@ -301,18 +148,6 @@ function assertPublicRoutesUsePublicSafeCoverage() {
     "Public-safe coverage loader must not import Supabase persistence helpers."
   );
 
-  const reportLoader = readSource("lib/reports/load-report-data.ts");
-  assert.equal(
-    reportLoader.includes("localOnly: options.publicSnapshotLocalOnly ?? true") &&
-      reportLoader.includes("const feed = options.feed ?? await loadRadarFeed();"),
-    true,
-    "Report workflow loader must reuse a supplied feed and keep public snapshot fallback local-only by default."
-  );
-  assert.equal(
-    productSummary.includes("loadReportWorkflowData({ feed, publicSnapshotLocalOnly: true })"),
-    true,
-    "Homepage product summary must pass the already-loaded feed into report loading."
-  );
 }
 
 function assertAssistantFeaturesPresent() {
@@ -386,17 +221,6 @@ function assertExperienceEnhancementSurfaces() {
     "Entities page must derive its index from public radar evidence, not mock entities."
   );
 
-  const reportsPage = readSource("app/reports/page.tsx");
-  assert.equal(
-    reportsPage.includes("已审核/已发布报告") && reportsPage.includes("证据草稿"),
-    true,
-    "Reports page must separate formal reports from evidence drafts."
-  );
-  assert.equal(
-    readSource("app/page.tsx").includes("detail: summary.reports.savedCount"),
-    false,
-    "Homepage must not use savedCount as the formal reviewed/published report count."
-  );
   assert.equal(
     readSource("app/page.tsx").includes("读者判断摘要") &&
       readSource("app/page.tsx").includes("DecisionCard") &&
@@ -404,12 +228,6 @@ function assertExperienceEnhancementSurfaces() {
     true,
     "Homepage must provide reader-facing decision guidance without operational vocabulary."
   );
-  assert.equal(
-    readSource("supabase/migrations/202605250001_report_quality_gate_public_views.sql").includes("stored_report_draft ->> 'markdown'"),
-    false,
-    "Public report views must not expose raw stored report markdown."
-  );
-
   const savedFilters = readSource("components/radar-saved-filters.tsx");
   assert.equal(
     savedFilters.includes("ai-radar.saved-filters.v1") && savedFilters.includes("window.localStorage"),
@@ -434,10 +252,9 @@ function assertEvidenceToInsightLoopSurfaces() {
   assert.equal(
     entitiesPage.includes("跟踪队列") &&
       entitiesPage.includes("为什么跟踪") &&
-      entitiesPage.includes("entityHref") &&
-      entitiesPage.includes("报告路径"),
+      entitiesPage.includes("entityHref"),
     true,
-    "Entities page must explain why an entity is worth tracking and link to the report path."
+    "Entities page must explain why an entity is worth tracking and link to its evidence path."
   );
 
   const entityDetailPage = readSource("app/entities/[entityId]/page.tsx");
@@ -460,56 +277,9 @@ function assertEvidenceToInsightLoopSurfaces() {
     "Radar page must connect evidence signals to entity tracking and downstream insight actions."
   );
 
-  const reportsPage = readSource("app/reports/page.tsx");
-  assert.equal(
-    reportsPage.includes("证据到报告路径") &&
-      reportsPage.includes("发布结论") &&
-      !reportsPage.includes("/admin/review#report-candidates") &&
-      reportsPage.includes("ReportEntityTraceabilityPanel") &&
-      reportsPage.includes("reportEntityTraceability") &&
-      reportsPage.includes("reportSectionTraceability") &&
-      reportsPage.includes("章节实体覆盖"),
-    true,
-    "Reports page must show the reader-facing path from public evidence to formal reports, report traceability, and section-level entity coverage."
-  );
-
-  const reportDetailPage = readSource("app/reports/[id]/page.tsx");
-  assert.equal(
-    reportDetailPage.includes("ReportDetailEntityTraceability") &&
-      reportDetailPage.includes("reportEntityTraceability") &&
-      reportDetailPage.includes("reportSectionTraceability") &&
-      reportDetailPage.includes("章节实体覆盖") &&
-      reportDetailPage.includes("打开实体详情"),
-    true,
-    "Report detail page must link report and section evidence back to entity detail pages."
-  );
-
-  const reportTraceability = readSource("lib/reports/entity-traceability.ts");
-  assert.equal(
-    reportTraceability.includes("reportEntityTraceability") &&
-      reportTraceability.includes("reportSectionTraceability") &&
-      reportTraceability.includes("reportEvidenceItems") &&
-      reportTraceability.includes("entityHref"),
-    true,
-    "Report entity traceability helpers must map report and section evidence back to public entity detail links."
-  );
 }
 
-function assertTrustedPublishingSurfaces() {
-  const reportsPage = readSource("app/reports/page.tsx");
-  assert.equal(
-    reportsPage.includes("发布准备度") && reportsPage.includes("reportPublishingReadiness"),
-    true,
-    "Reports page must explain publication readiness from shared readiness logic."
-  );
-
-  const adminReviewPage = readSource("app/admin/review/page.tsx");
-  assert.equal(
-    adminReviewPage.includes("Report publishing funnel") && adminReviewPage.includes("ENABLE_ADMIN_REVIEW_WRITES"),
-    true,
-    "Admin review must expose the publishing funnel and write-gate state."
-  );
-
+function assertPublicReaderSurfaces() {
   const cloudflareSite = readSource("scripts/build-cloudflare-public-site.ts");
   assert.equal(
     cloudflareSite.includes("function renderTopStories") &&
@@ -520,7 +290,9 @@ function assertTrustedPublishingSurfaces() {
       cloudflareSite.includes("TOP 10") &&
       cloudflareSite.includes("为什么值得看") &&
       cloudflareSite.includes("全部 AI 动态") &&
-      cloudflareSite.includes("公众号") &&
+      cloudflareSite.includes('"来源"') &&
+      !cloudflareSite.includes('"公众号"') &&
+      cloudflareSite.includes("AI 行业信息雷达") &&
       cloudflareSite.includes("function renderSources") &&
       cloudflareSite.includes("function renderAbout") &&
       cloudflareSite.includes("language-switch") &&
@@ -529,9 +301,12 @@ function assertTrustedPublishingSurfaces() {
       cloudflareSite.includes("product_update,agent,tooling") &&
       cloudflareSite.includes("business,regulation,policy,funding,infrastructure,safety") &&
       cloudflareSite.includes("data-feed-family") &&
-      cloudflareSite.includes("/reports/* /404.html 404"),
+      !cloudflareSite.includes("相关 AI 法律纠纷升级") &&
+      !cloudflareSite.includes("发布研究进展") &&
+      !cloudflareSite.includes("基准/评测更新") &&
+      !cloudflareSite.includes("slice(0, 33)"),
     true,
-    "Cloudflare static site must use the AI HOT-like Top 10 reader IA, user-facing navigation, and retired public reports."
+    "Cloudflare static site must use the AI HOT-like Top 10 reader IA, source navigation, branded titles, and concrete untruncated headlines."
   );
 
   const homepage = readSource("app/page.tsx");
@@ -627,16 +402,41 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
     "Event clustering and scoring must be deterministic for identical public evidence."
   );
   assert.equal(
-    /Build Cloudflare public snapshot[\s\S]{0,500}CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE:[^\n]+true[\s\S]{0,500}ENABLE_SUPABASE_WRITES:[^\n]+false[\s\S]{0,500}SUPABASE_SERVICE_ROLE_KEY:/.test(refreshWorkflow),
+    /schedule:\s*[\s\S]{0,180}cron:\s*["']17 8 \* \* \*["'][\s\S]{0,120}timezone:\s*["']Asia\/Shanghai["']/.test(refreshWorkflow) &&
+      refreshWorkflow.includes("workflow_dispatch:") &&
+      refreshWorkflow.includes('"$DISPATCH_REF" != "refs/heads/main"') &&
+      refreshWorkflow.includes('"$RADAR_REFRESH_WRITE_GATE" != "true"'),
     true,
-    "The production Cloudflare workflow must read authoritative completeness data with writes disabled."
+    "The production workflow must run daily at 08:17 Asia/Shanghai and gate manual production writes to main."
   );
   assert.equal(
-    refreshWorkflow.indexOf("npm run test") > refreshWorkflow.indexOf("Build Cloudflare public snapshot") &&
-      refreshWorkflow.indexOf("npm run test") > refreshWorkflow.indexOf("Validate built Cloudflare artifact") &&
-      !/\n\s+schedule:/m.test(refreshWorkflow),
+    refreshWorkflow.includes("npm run data:activate:resumable:live:persist") &&
+      refreshWorkflow.includes("npm run events:cluster -- --persist") &&
+      refreshWorkflow.includes('ENABLE_SUPABASE_WRITES: "true"') &&
+      refreshWorkflow.includes('CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE: "true"') &&
+      refreshWorkflow.includes('CLOUDFLARE_SNAPSHOT_READ_SUPABASE: "true"') &&
+      refreshWorkflow.includes("ENABLE_SUPABASE_WRITES=false npm run cloudflare:snapshot") &&
+      refreshWorkflow.includes("npx tsx scripts/build-cloudflare-public-site.ts"),
     true,
-    "The manual refresh workflow must stay dispatch-only and run static-output tests after building the Cloudflare artifact."
+    "The daily production workflow must live-refresh and persist before building from strict Supabase data with local fallback disabled."
+  );
+  assert.equal(
+    refreshWorkflow.includes("npm exec -- wrangler pages deploy dist/cloudflare-pages") &&
+      refreshWorkflow.includes("--project-name=ai-industry-radar") &&
+      refreshWorkflow.includes("https://ai-industry-radar.pages.dev/") &&
+      refreshWorkflow.indexOf("npm run test") > refreshWorkflow.indexOf("npx tsx scripts/build-cloudflare-public-site.ts") &&
+      refreshWorkflow.indexOf("pages deploy dist/cloudflare-pages") > refreshWorkflow.indexOf("npm run test") &&
+      refreshWorkflow.includes("remote.generated_at !== local.generated_at") &&
+      refreshWorkflow.includes('remote.source?.kind !== "supabase_public_views"') &&
+      refreshWorkflow.includes('remote.source?.data_source !== "public_evidence_store"') &&
+      refreshWorkflow.includes('remote.source?.local_data_used !== false') &&
+      refreshWorkflow.includes("remote.coverage?.latest_refresh !== local.coverage?.latest_refresh") &&
+      refreshWorkflow.includes("production_snapshot_refresh_is_stale") &&
+      refreshWorkflow.includes('Object.prototype.hasOwnProperty.call(remote, "reports")') &&
+      refreshWorkflow.includes("<title>AI 行业信息雷达</title>") &&
+      !/report:(candidate|generate)|generate[_-]reports|persist-report|npm run [^\n]*report/iu.test(refreshWorkflow),
+    true,
+    "The production workflow must validate the built artifact, deploy Cloudflare Pages, verify the public endpoint, and contain no report stage."
   );
   assertSupabasePublicContractCheckScript(supabasePublicContract);
   assertPublicRadarViewSqlContract(publicEntityMigration);
@@ -733,6 +533,8 @@ function assertBilingualStaticContract() {
     assert.equal(english.includes('<html lang="en">'), true, `${englishPath} must declare the English locale.`);
     assert.equal(english.includes('class="language-switch"') && english.includes('lang="zh-CN"'), true, `${englishPath} must expose the Chinese switch.`);
     assert.equal(chinese.includes('>报告<') || chinese.includes('>数据状态<'), false, `${chinesePath} must not expose retired report or data-status navigation.`);
+    assert.match(chinese, /<title>(?:AI 行业信息雷达|[^<]+ - AI 行业信息雷达)<\/title>/, `${chinesePath} must use the public browser-title brand.`);
+    assert.match(english, /<title>(?:AI 行业信息雷达|[^<]+ - AI 行业信息雷达)<\/title>/, `${englishPath} must use the same public browser-title brand.`);
   }
 
   const chineseHome = readSource("dist/cloudflare-pages/index.html");
@@ -744,6 +546,17 @@ function assertBilingualStaticContract() {
   }
   assert.equal(chineseHome.includes("为什么值得看"), true, "Chinese homepage must explain why every hot topic matters.");
   assert.equal(englishHome.includes("Why it matters"), true, "English homepage must explain why every hot topic matters.");
+  assert.equal(chineseHome.includes("<title>AI 行业信息雷达</title>"), true, "Chinese homepage browser title must exactly match the requested product brand.");
+  const chineseTopTitles = Array.from(
+    chineseHome.matchAll(/class="hot-copy"[\s\S]*?<h2><a[^>]*>([^<]+)<\/a><\/h2>/g),
+    (match) => match[1]
+  ).slice(0, 10);
+  assert.equal(chineseTopTitles.length, 10, "Chinese homepage must expose ten inspectable hot-topic titles.");
+  for (const title of chineseTopTitles) {
+    assert.doesNotMatch(title, /(?:…|\.{3})$/, `Hot-topic title must not be pre-truncated: ${title}`);
+    assert.doesNotMatch(title, /相关 AI 法律纠纷升级|发布研究进展|基准\/评测更新/, `Hot-topic title must describe the actual event: ${title}`);
+    assert.doesNotMatch(title, /\b(?:openai|anthropic|xai|nvidia|hugging face|apple|google|meta|deepseek)\b/, `Hot-topic title must preserve official brand casing: ${title}`);
+  }
 
   const chineseRadar = readSource("dist/cloudflare-pages/radar/index.html");
   const englishRadar = readSource("dist/cloudflare-pages/en/radar/index.html");
@@ -754,7 +567,7 @@ function assertBilingualStaticContract() {
 
   const chineseSources = readSource("dist/cloudflare-pages/sources/index.html");
   const chineseAbout = readSource("dist/cloudflare-pages/about/index.html");
-  assert.equal(chineseSources.includes("公众号") && chineseSources.includes("最近更新") && chineseSources.includes("publisher-index"), true, "Chinese publisher page must provide a real reading stream.");
+  assert.equal(chineseSources.includes("<h1>来源</h1>") && !chineseSources.includes("公众号") && chineseSources.includes("最近更新") && chineseSources.includes("publisher-index"), true, "Chinese Sources page must provide a real cross-source reading stream.");
   assert.equal(chineseAbout.includes("我们怎么选") && chineseAbout.includes("内容边界"), true, "Chinese About page must explain selection and editorial boundaries.");
 
   const englishAsk = readSource("dist/cloudflare-pages/en/ask/index.html");
@@ -763,123 +576,6 @@ function assertBilingualStaticContract() {
   assert.equal(publicStyles.includes(":focus-visible") && publicStyles.includes("outline: 3px solid"), true, "Static public controls and links must expose a visible keyboard focus state.");
 }
 
-function assertBilingualStaticContractLegacy() {
-  const snapshot = JSON.parse(
-    fs.readFileSync(path.join(process.cwd(), "dist/cloudflare-pages/data/radar-snapshot.json"), "utf8")
-  ) as { radar_items: unknown[] };
-  const routePairs = [
-    ["dist/cloudflare-pages/index.html", "dist/cloudflare-pages/en/index.html"],
-    ["dist/cloudflare-pages/radar/index.html", "dist/cloudflare-pages/en/radar/index.html"],
-    ["dist/cloudflare-pages/reports/index.html", "dist/cloudflare-pages/en/reports/index.html"],
-    ["dist/cloudflare-pages/ask/index.html", "dist/cloudflare-pages/en/ask/index.html"]
-  ] as const;
-
-  for (const [chinesePath, englishPath] of routePairs) {
-    assert.equal(fs.existsSync(path.join(process.cwd(), chinesePath)), true, `${chinesePath} must exist.`);
-    assert.equal(fs.existsSync(path.join(process.cwd(), englishPath)), true, `${englishPath} must exist.`);
-    const chinese = readSource(chinesePath);
-    const english = readSource(englishPath);
-    assert.equal(chinese.includes('class="language-switch"') && chinese.includes('lang="en"'), true, `${chinesePath} must expose the top-right English switch.`);
-    assert.equal(english.includes('<html lang="en">'), true, `${englishPath} must declare the English locale.`);
-    assert.equal(english.includes('class="language-switch"') && english.includes('lang="zh-CN"'), true, `${englishPath} must expose the top-right Chinese switch.`);
-  }
-
-  const chineseHome = readSource("dist/cloudflare-pages/index.html");
-  const englishHome = readSource("dist/cloudflare-pages/en/index.html");
-  assert.equal(
-    (chineseHome.match(/class="top-story"/g) ?? []).length === 3 &&
-      chineseHome.includes('class="story-stream"') &&
-      chineseHome.includes("<summary>来源与时间线</summary>"),
-    true,
-    "Chinese homepage must expose a Top 3, chronological event stream, and expandable source timeline."
-  );
-  assert.equal(
-    (englishHome.match(/class="top-story"/g) ?? []).length === 3 &&
-      englishHome.includes('class="story-stream"') &&
-      englishHome.includes("<summary>Sources & timeline</summary>"),
-    true,
-    "English homepage must expose a Top 3, chronological event stream, and expandable source timeline."
-  );
-
-  const englishRadar = readSource("dist/cloudflare-pages/en/radar/index.html");
-  assert.equal(
-    (englishRadar.match(/class="radar-row"/g) ?? []).length,
-    snapshot.radar_items.length,
-    "English All signals must render every public-safe snapshot signal, including low-event audit rows."
-  );
-  for (const label of ["Selected", "All events", "All signals", "Latest timeline", "Needs review", "Source health"]) {
-    assert.equal(englishRadar.includes(`>${label}<`), true, `English radar must expose the ${label} tab.`);
-  }
-  assert.equal(englishRadar.includes('data-tab-panel="curated"'), true, "English radar must keep the selected event view as the default tab.");
-  assert.equal(englishRadar.includes('role="tab"') && englishRadar.includes('role="tabpanel"') && englishRadar.includes('aria-selected="true"'), true, "English radar must expose an accessible tab contract.");
-  assert.equal(englishRadar.includes('data-status="included"') && englishRadar.includes('card.dataset.status === selectedStatus'), true, "English event cards must participate in the status filter.");
-  assert.equal(englishRadar.includes('params.get("tab")') && englishRadar.includes('["ArrowLeft", "ArrowRight", "Home", "End"]'), true, "English radar must persist tab state and support keyboard tab navigation.");
-  assert.equal(englishRadar.includes('id="radar-freshness"') && englishRadar.includes('data-freshness="'), true, "English radar must expose and apply the freshness filter.");
-  assert.equal(englishRadar.includes("Source health summary") && englishRadar.includes("Broad refresh attempted") && englishRadar.includes("Rate-limit warnings (may overlap)"), true, "English radar must expose audited source-health totals and overlapping rate-limit warnings.");
-  assert.equal(englishRadar.includes('>苹果<'), false, "English radar must not render Chinese entity aliases when an English alias is available.");
-  assert.equal(englishRadar.includes("One report") && englishRadar.includes("Several reports of one type") && englishRadar.includes("Reported by different source types"), true, "English radar must distinguish reporting coverage without exposing pipeline terminology.");
-  assert.equal(englishRadar.includes('value="cross"') && englishRadar.includes('value="same"') && englishRadar.includes('id="radar-result-count"') && englishRadar.includes('id="radar-reset"'), true, "English radar must expose evidence-state filters, live result counts, and reset.");
-  assert.equal(englishRadar.includes('value="regulation"') && englishRadar.includes('value="media_interview"'), true, "English radar must expose all public event categories, including regulation and media/interview.");
-
-  const chineseRadar = readSource("dist/cloudflare-pages/radar/index.html");
-  assert.equal(
-    (chineseRadar.match(/class="radar-row"/g) ?? []).length,
-    snapshot.radar_items.length,
-    "Chinese 全部信号 must render every public-safe snapshot signal, including low-event audit rows."
-  );
-  assert.equal(chineseRadar.includes("单篇报道") && chineseRadar.includes("同类来源多篇报道") && chineseRadar.includes("不同类型来源均有报道"), true, "Chinese radar must distinguish reporting coverage in reader-facing language.");
-  assert.equal(chineseRadar.includes('id="radar-result-count"') && chineseRadar.includes('id="radar-reset"') && chineseRadar.includes('value="regulation"') && chineseRadar.includes('>监管<'), true, "Chinese radar must expose complete localized filters with count/reset controls.");
-  assert.equal(chineseRadar.includes('data-status="included"') && chineseRadar.includes('id="radar-freshness"') && chineseRadar.includes("信息源健康摘要") && chineseRadar.includes("广泛刷新尝试源") && chineseRadar.includes("限流警告（可重叠）"), true, "Chinese radar must filter event status/freshness and expose audited source-health totals.");
-
-  const englishReports = readSource("dist/cloudflare-pages/en/reports/index.html");
-  assert.equal(englishReports.includes("AI Industry Radar Daily") && englishReports.includes("AI Industry Radar Weekly") && englishReports.includes("Events and evidence") && englishReports.includes("Events and sources"), true, "English reports must present editorial daily and weekly event briefs.");
-  assert.equal(englishReports.includes("key events") && englishReports.includes("sources") && englishReports.includes("themes") && englishReports.includes("with multiple reports"), true, "English reports must show reader-facing coverage counts.");
-  assert.equal(englishReports.includes("Enough reporting to review") && englishReports.includes("Editorial check pending") && englishReports.includes("usable items") && englishReports.includes("source links"), true, "English report candidates must show quality and editorial status in reader-facing language.");
-  assert.equal(!englishReports.includes("Evidence ready") && !englishReports.includes("Editorial review") && !englishReports.includes("usable signals"), true, "English reports must not expose workflow status language.");
-  assert.equal(englishReports.includes("What still needs checking") && englishReports.includes("Sources ("), true, "English reports must keep caveats and citations available in compact disclosure sections.");
-  const chineseReports = readSource("dist/cloudflare-pages/reports/index.html");
-  assert.equal(chineseReports.includes("AI 行业雷达日报") && chineseReports.includes("AI 行业雷达周报") && chineseReports.includes("重点与证据") && chineseReports.includes("事件与来源"), true, "Chinese reports must present editorial daily and weekly event briefs.");
-  assert.equal(chineseReports.includes("个重点事件") && chineseReports.includes("个来源") && chineseReports.includes("个主题") && chineseReports.includes("多源报道") && chineseReports.includes("仍需核实"), true, "Chinese reports must expose reader-facing coverage counts and compact caveats.");
-  assert.equal(chineseReports.includes("信息量达到审阅要求") && chineseReports.includes("编辑校对中") && chineseReports.includes("条可用内容") && chineseReports.includes("个来源链接"), true, "Chinese report candidates must show quality and editorial status in reader-facing language.");
-  assert.equal(!chineseReports.includes("证据达标") && !chineseReports.includes("待编辑复核") && !chineseReports.includes("条可用信号"), true, "Chinese reports must not expose workflow status language.");
-  assert.equal(
-    chineseReports.includes("事件预览") ||
-      chineseReports.includes("证据边界：") ||
-      chineseReports.includes("重点验证新能力是否进入高频工作场景") ||
-      chineseReports.includes("继续观察"),
-    false,
-    "Chinese reports must not render legacy preview labels or explanatory boilerplate in the reading path."
-  );
-
-  const publicSnapshot = JSON.parse(readSource("dist/cloudflare-pages/data/radar-snapshot.json")) as {
-    curated_events?: Array<{ event_score_label?: string; source_count?: number; source_families?: string[] }>;
-    report_quality_summary?: { daily?: { id?: string } | null; weekly?: { id?: string } | null };
-    reports?: Array<{ mode?: string; report_type?: string; source_item_ids?: string[] }>;
-  };
-  const visibleDailyId = chineseReports.match(/data-report-id="([^"]+)"[^>]*id="report-daily"/)?.[1];
-  const visibleWeeklyId = chineseReports.match(/data-report-id="([^"]+)"[^>]*id="report-weekly"/)?.[1];
-  assert.equal(visibleDailyId, publicSnapshot.report_quality_summary?.daily?.id, "Visible daily report and daily quality summary must reference the same candidate.");
-  assert.equal(visibleWeeklyId, publicSnapshot.report_quality_summary?.weekly?.id, "Visible weekly report and weekly quality summary must reference the same candidate.");
-  for (const event of publicSnapshot.curated_events ?? []) {
-    if (event.event_score_label === "高优先级") {
-      assert.equal((event.source_count ?? 0) >= 2, true, "High-priority public events must have multi-source support.");
-      assert.equal((event.source_families?.length ?? 0) >= 2, true, "High-priority public events must span more than one source family.");
-    }
-  }
-  const candidateSignatures = (publicSnapshot.reports ?? [])
-    .filter((report) => report.mode === "saved_candidate")
-    .map((report) => `${report.report_type}:${[...(report.source_item_ids ?? [])].sort().join(",")}`);
-  assert.equal(new Set(candidateSignatures).size, candidateSignatures.length, "Public snapshot must deduplicate saved report candidates by stable content signature.");
-
-  const englishAsk = readSource("dist/cloudflare-pages/en/ask/index.html");
-  assert.equal(englishAsk.includes("Ask the radar") && englishAsk.includes("Radar results") && englishAsk.includes("../../data/radar-snapshot.json"), true, "English Ask must query the public event snapshot locally.");
-  assert.equal(englishAsk.includes("filter((entry) => entry.score !== null)") && englishAsk.includes("multiple source families") && englishAsk.includes("No matching event"), true, "English Ask must apply bilingual intent matching and a real no-match threshold.");
-  assert.equal(englishReports.includes('class="report-event"') && englishReports.includes('class="report-sources"'), true, "English reports must render event-level evidence with expandable source citations.");
-  const publicStyles = readSource("dist/cloudflare-pages/assets/styles.css");
-  assert.equal(publicStyles.includes(":focus-visible") && publicStyles.includes("outline: 3px solid"), true, "Static public controls and links must expose a visible keyboard focus state.");
-}
-
-void assertBilingualStaticContractLegacy;
 
 function assertStaticCategoryFilterContract(pagePath: string) {
   assert.equal(fs.existsSync(path.join(process.cwd(), pagePath)), true, `${pagePath} must exist after the release build.`);
@@ -983,23 +679,33 @@ function assertPublicSnapshotSourceContract(snapshotExporter: string, supabaseLo
       snapshotExporter.includes('assertStrictProductionSnapshot(snapshot)') &&
       snapshotExporter.includes('snapshot.source.kind !== "supabase_public_views"') &&
       snapshotExporter.includes('snapshot.source.data_source !== "public_evidence_store"') &&
-      snapshotExporter.includes('snapshot.source.local_data_used'),
+      snapshotExporter.includes('snapshot.source.local_data_used') &&
+      snapshotExporter.includes('CLOUDFLARE_SNAPSHOT_MAX_REFRESH_AGE_HOURS') &&
+      snapshotExporter.includes('CLOUDFLARE_SNAPSHOT_REFRESH_NOT_BEFORE') &&
+      snapshotExporter.includes('refreshAgeHours > maxRefreshAgeHours') &&
+      snapshotExporter.includes('latestRefreshTime < refreshNotBeforeTime') &&
+      snapshotExporter.includes('completeness.fetched_sources < 1') &&
+      snapshotExporter.includes('snapshot.source_health_summary.succeeded < 1') &&
+      snapshotExporter.includes('recentFailureRate > maxSourceFailureRate') &&
+      snapshotExporter.includes('CLOUDFLARE_SNAPSHOT_EXPECTED_ATTEMPTED_SOURCES'),
     true,
     "Production Cloudflare snapshot export must fail closed when authoritative Supabase public data is unavailable."
   );
   assert.equal(
-    snapshotExporter.includes('snapshot.report_quality_summary.weekly.quality_gate_passed') &&
-      snapshotExporter.includes('CLOUDFLARE_SNAPSHOT_MAX_AGE_HOURS') &&
-      snapshotExporter.includes("assertReportEvidenceInsideDeclaredWindows(snapshot)") &&
-      snapshotExporter.includes("selectReportEvents(report, eventLayer, latestTimestamp)"),
+    snapshotExporter.includes('CLOUDFLARE_SNAPSHOT_MAX_AGE_HOURS') &&
+      snapshotExporter.includes("publicItemCount < minPublicItems") &&
+      snapshotExporter.includes("snapshot.event_count < 1") &&
+      snapshotExporter.includes('snapshot.freshness.latest_timestamp_source !== "published_at"') &&
+      snapshotExporter.includes("ageHours > maxAgeHours"),
     true,
-    "Production Cloudflare snapshot export must enforce report quality, declared report windows, and publication freshness."
+    "Production Cloudflare snapshot export must enforce complete event data, minimum public rows, and publication freshness."
   );
   assert.equal(
     snapshotExporter.includes("completeness.sources_total < 1") &&
       snapshotExporter.includes("completeness.automated_eligible_sources < 1") &&
       snapshotExporter.includes("snapshot.source_health_scope.attempted_sources < 1") &&
-      snapshotExporter.includes("broadHealthOutcomes !== snapshot.source_health_scope.attempted_sources"),
+      snapshotExporter.includes("broadHealthAttempted !== snapshot.source_health_scope.attempted_sources") &&
+      snapshotExporter.includes("!broadHealthFullyAccounted"),
     true,
     "Production Cloudflare export must reject partial completeness and source-health summaries."
   );
@@ -1215,8 +921,21 @@ function assertPublicSnapshotJsonContract(snapshotPath: string) {
   assert.equal(Number((completeness as JsonRecord).automated_eligible_sources) > 0, true, `${snapshotPath} must include automated-eligible source totals.`);
   assert.equal((completeness as JsonRecord).public_radar_items, publicRadarItems.length, `${snapshotPath} completeness counts must match the public signal set.`);
   const broadAttempted = Number((sourceHealthScope as JsonRecord).attempted_sources);
-  const broadOutcomes = Number((sourceHealth as JsonRecord).succeeded) + Number((sourceHealth as JsonRecord).failed);
-  assert.equal(broadAttempted > 0 && broadOutcomes === broadAttempted, true, `${snapshotPath} must fully account for the audited broad source-health refresh.`);
+  const familyHealth = Array.isArray(snapshot.source_health_by_family) ? snapshot.source_health_by_family : [];
+  const familyAttempted = familyHealth.reduce(
+    (total, row) => total + (isRecord(row) ? Number(row.attempted) : 0),
+    0
+  );
+  const familyOutcomesAccounted = familyHealth.every((row) => {
+    if (!isRecord(row)) return false;
+    const remaining = Number(row.attempted) - Number(row.succeeded) - Number(row.failed);
+    return remaining >= 0 && remaining <= Number(row.no_items) + Number(row.skipped);
+  });
+  assert.equal(
+    broadAttempted > 0 && familyAttempted === broadAttempted && familyOutcomesAccounted,
+    true,
+    `${snapshotPath} must fully account for the audited broad source-health refresh.`
+  );
   const entityAllowedKeys = new Set(["confidence", "name", "type"]);
   const sourceFamilyAllowedValues = new Set(["公司/实验室", "分析/媒体", "其他公开来源", "开源项目", "研究订阅"]);
   const entityKeyViolations: string[] = [];
@@ -1275,28 +994,8 @@ function assertPublicSnapshotJsonContract(snapshotPath: string) {
     `${snapshotPath} credential redaction must not corrupt ordinary AI terms such as token or token-wise.`
   );
 
-  const radarById = new Map(
-    publicRadarItems
-      .filter(isRecord)
-      .map((item) => [String(item.id ?? ""), item] as const)
-      .filter(([id]) => id)
-  );
-  const reports = snapshot.reports;
-  assert.equal(Array.isArray(reports), true, `${snapshotPath}.reports must be an array.`);
-  for (const [reportIndex, reportValue] of (reports as unknown[]).entries()) {
-    assert.equal(isRecord(reportValue), true, `${snapshotPath}.reports[${reportIndex}] must be an object.`);
-    const report = reportValue as JsonRecord;
-    assert.equal(isRecord(report.time_window), true, `${snapshotPath}.reports[${reportIndex}].time_window must be an object.`);
-    const start = Date.parse(String((report.time_window as JsonRecord).start ?? ""));
-    const end = Date.parse(String((report.time_window as JsonRecord).end ?? ""));
-    assert.equal(Number.isFinite(start) && Number.isFinite(end) && start <= end, true, `${snapshotPath}.reports[${reportIndex}] must have a valid evidence window.`);
-    const sourceIds = Array.isArray(report.source_item_ids) ? report.source_item_ids.map(String) : [];
-    for (const sourceId of sourceIds) {
-      const item = radarById.get(sourceId);
-      const timestamp = item ? Date.parse(String(item.published_at ?? item.collected_at ?? "")) : Number.NaN;
-      assert.equal(Boolean(item) && timestamp >= start && timestamp <= end, true, `${snapshotPath}.reports[${reportIndex}] source item ${sourceId} must remain inside the declared evidence window.`);
-    }
-  }
+  assert.equal(Object.hasOwn(snapshot, "reports"), false, `${snapshotPath} must not publish a reports field.`);
+  assert.equal(Object.hasOwn(snapshot, "report_quality_summary"), false, `${snapshotPath} must not publish report quality metadata.`);
 }
 
 function assertPublicViewSecurityMigration(securitySql: string, privateGrantSql: string) {
@@ -1309,13 +1008,6 @@ function assertPublicViewSecurityMigration(securitySql: string, privateGrantSql:
     securitySql.includes("with (security_invoker = false)"),
     false,
     "Release security migrations must not recreate a security-definer public view."
-  );
-  assert.equal(
-    securitySql.includes("public_report_draft") &&
-      securitySql.includes("sync_report_candidate_public_draft") &&
-      securitySql.includes("sync_report_public_draft"),
-    true,
-    "Report views must read trigger-maintained public projections instead of granting raw metadata."
   );
   assert.equal(
     /grant select\s*\([^)]*\b(metadata|model_metadata|evidence_notes|raw_item_id)\b/is.test(securitySql),
@@ -1374,13 +1066,10 @@ function assertPublicStaticArtifactsDoNotExposeInternalTerms(roots: string[]) {
     "ENOTFOUND",
     "TypeError: fetch failed",
     "duplicate refresh rows",
-    "reviewed local public report snapshot",
     "Cloudflare static snapshot export",
     "Supabase public reads skipped",
     "Supabase public reads failed",
     "public_radar_items read failed",
-    "public_report_candidates read failed",
-    "public_reports read failed",
     "latest timestamp failed",
     "count failed",
     "读取失败：网络连接失败",
@@ -1442,170 +1131,9 @@ function staticHtmlJsonFiles(root: string): string[] {
   return files;
 }
 
-function assertStaticReportEntityLinksContract(reportPath: string) {
-  const html = fs.readFileSync(path.join(process.cwd(), reportPath), "utf8");
-  const sourceLinks = [...html.matchAll(/class="report-sources"[\s\S]*?<a href="([^"]+)"/g)].map((match) => match[1]);
-  assert.equal(html.includes('id="report-daily"') && html.includes('id="report-weekly"'), true, `${reportPath} must expose current daily and weekly report anchors.`);
-  assert.equal((html.match(/class="report-event"/g) ?? []).length > 0, true, `${reportPath} must render event-level report entries.`);
-  assert.equal(html.includes('class="report-notes"') && html.includes('class="report-sources"'), true, `${reportPath} must keep evidence gaps and source citations available.`);
-  assert.equal(sourceLinks.length > 0 && sourceLinks.every((href) => /^https?:\/\//.test(href)), true, `${reportPath} report citations must link to public HTTP(S) sources.`);
-}
 
-void assertStaticReportEntityLinksContract;
 
-function assertTrustedPublishingReadiness() {
-  const reviewedReport = mockReport({
-    id: "reviewed-report",
-    mode: "saved_report",
-    status: "reviewed"
-  });
-  const publishedReport = mockReport({
-    id: "published-report",
-    mode: "saved_report",
-    status: "published"
-  });
-  const publishableCandidate = mockReport({
-    id: "publishable-candidate",
-    mode: "saved_candidate",
-    status: "approved"
-  });
-  const weakApprovedCandidate = mockReport({
-    citations: [],
-    citation_count: 0,
-    distinct_source_count: 0,
-    id: "weak-approved-candidate",
-    missing_evidence: ["Independent confirmation"],
-    mode: "saved_candidate",
-    quality_gate_passed: false,
-    quality_gate_reasons: ["Missing independent citations"],
-    source_item_ids: [],
-    status: "approved",
-    usable_item_count: 0
-  });
-  const preview = mockReport({
-    id: "preview",
-    mode: "deterministic_preview",
-    read_source: "generated_preview",
-    status: "preview"
-  });
 
-  assert.equal(reportPublishingReadiness(reviewedReport).isFormalPublicReport, true);
-  assert.equal(reportPublishingReadiness(publishedReport).stage, "published_report");
-  assert.equal(reportPublishingReadiness(publishableCandidate).isPublishableCandidate, true);
-  assert.equal(reportPublishingReadiness(publishableCandidate).isFormalPublicReport, false);
-  assert.equal(reportPublishingReadiness(weakApprovedCandidate).isPublishableCandidate, false);
-  assert.equal(reportPublishingReadiness(preview).isFormalPublicReport, false);
-
-  const summary = summarizePublishingReadiness([
-    reviewedReport,
-    publishedReport,
-    publishableCandidate,
-    weakApprovedCandidate,
-    preview
-  ]);
-  assert.equal(summary.formalReports, 2);
-  assert.equal(summary.approvedCandidates, 2);
-  assert.equal(summary.publishableCandidates, 1);
-  assert.equal(summary.blocked, 2);
-}
-
-function assertTrustedPublishingRegressionGuards() {
-  const loader = readSource("lib/reports/load-report-data.ts");
-  assert.equal(
-    loader.includes("60 + sourcePriority") && !loader.includes('document.read_source === "public_snapshot") {\n    return 7;'),
-    true,
-    "Live reviewed/published reports must outrank stale public snapshot candidates."
-  );
-
-  const adminReviewPage = readSource("app/admin/review/page.tsx");
-  const adminActions = readSource("lib/admin/actions.ts");
-  assert.equal(
-    adminReviewPage.includes("Evidence blocked") && adminActions.includes("assertReportCandidatePublishable"),
-    true,
-    "Admin publish buttons and server action must share the evidence-ready publication gate."
-  );
-  assert.equal(
-    adminReviewPage.includes("usableItemCount") &&
-      adminReviewPage.includes("distinctSourceCount") &&
-      adminReviewPage.includes("qualityGatePassed") &&
-      readSource("lib/admin/review.ts").includes("reportDraftQualityGatePassed"),
-    true,
-    "Admin publishing funnel must mirror the server publish gate for usable items, distinct sources, and quality gate failures."
-  );
-
-  const cloudflareMirror = readSource("scripts/build-cloudflare-public-site.ts");
-  assert.equal(
-    cloudflareMirror.includes("const reports = latestReportsByType(snapshot.reports);") &&
-      cloudflareMirror.includes("const time = reportTime(right) - reportTime(left);") &&
-      cloudflareMirror.includes('["daily", "weekly"].flatMap'),
-    true,
-    "Cloudflare reports page must select the latest daily and weekly candidates."
-  );
-
-  const opsSummaryWriter = readSource("scripts/write-ops-summary.ts");
-  assert.equal(
-    opsSummaryWriter.includes("coverageCountsAreConsistent") &&
-      opsSummaryWriter.includes("internally inconsistent after one retry"),
-    true,
-    "The safe operations summary must reject transiently inconsistent radar/public counts after one retry."
-  );
-
-  const publicSnapshotExport = readSource("scripts/export-public-snapshot.ts");
-  assert.equal(
-    publicSnapshotExport.includes("publicSafeRadarItem") &&
-      publicSnapshotExport.includes("function publicSafeReport") &&
-      publicSnapshotExport.includes("source_health_by_family") &&
-      publicSnapshotExport.includes("aggregateSourceFamilyHealth") &&
-      publicSnapshotExport.includes("function publicSourceWarnings") &&
-      publicSnapshotExport.includes("warnings: publicSourceWarnings(snapshot)") &&
-      !/function publicSafeReport[\s\S]*?\{\s*\.\.\.report,/.test(publicSnapshotExport) &&
-      !/function sanitizePublicSnapshot[\s\S]*?return\s*\{\s*\.\.\.snapshot,/.test(publicSnapshotExport),
-    true,
-    "Public snapshot reuse must rebuild radar/report JSON and source warnings through explicit public allowlists."
-  );
-  assert.equal(
-    publicSnapshotExport.includes("[redacted secret]") && !publicSnapshotExport.includes('"$1=[redacted]"'),
-    true,
-    "Public snapshot warnings must not preserve secret environment variable names."
-  );
-
-  assert.equal(
-    fs.existsSync(path.join(process.cwd(), "scripts/build-github-pages-mirror.ts")),
-    false,
-    "Release code must not retain a GitHub Pages publishing path."
-  );
-  assert.equal(
-    fs.existsSync(path.join(process.cwd(), ".github/workflows/github-pages-public-mirror.yml")),
-    false,
-    "Release workflows must not deploy GitHub Pages."
-  );
-}
-
-async function assertLocalPublicReports() {
-  const loaded = await loadLocalPublicReportSnapshotRecords();
-  assert.equal(loaded.records.length > 0, true, "At least one reviewed local public report snapshot must exist.");
-
-  for (const record of loaded.records) {
-    assert.equal(isRecord(record), true, "Local public report snapshots must contain report objects.");
-    const report = record as JsonRecord;
-    assert.equal(Object.hasOwn(report, "model_metadata"), false, "Local public reports must not include model metadata.");
-    assert.equal(Object.hasOwn(report, "token_usage"), false, "Local public reports must not include token usage.");
-    assert.equal(report.mode === "saved_report" || report.mode === "saved_candidate", true);
-    assert.equal(
-      report.mode === "saved_report"
-        ? report.status === "reviewed" || report.status === "published"
-        : report.status === "approved" || report.status === "published",
-      true,
-      "Local public reports must be reviewed/published reports or approved candidates."
-    );
-  }
-
-  const localReportData = readSource("data/public-reports/reviewed-ai-radar-daily-2026-06-22.json");
-  assert.equal(localReportData.includes("\"mode\": \"saved_report\""), true);
-  assert.equal(localReportData.includes("\"status\": \"reviewed\""), true);
-  assert.equal(localReportData.includes("\"markdown\""), false);
-  assert.equal(localReportData.includes("external:learnprompt:"), false);
-}
 
 function assertLearnPromptAdapter() {
   const now = new Date("2026-06-30T12:00:00.000Z");
@@ -1937,10 +1465,6 @@ function assertExternalSourceGapWorkbench() {
           title: "Known source existing item",
           url: "https://known.example.com/existing"
         }
-      ],
-      reports: [
-        { id: "reviewed-report", mode: "saved_report", status: "reviewed" },
-        { id: "approved-candidate", mode: "saved_candidate", status: "approved" }
       ]
     },
     sourceRegistry: [
@@ -1986,7 +1510,6 @@ function assertExternalSourceGapWorkbench() {
   assert.equal(workbench.actionCounts.entity_extraction_gap, 0);
   assert.equal(workbench.actionCounts.ignore_low_trust, 1);
   assert.equal(workbench.actionCounts.repair_existing_source, 1);
-  assert.equal(workbench.aiRadar.reportCount, 1);
   assert.equal(workbench.readinessCounts.registryMatches, 1);
   assert.equal(workbench.readinessCounts.localFailures, 1);
   assert.equal(workbench.readinessCounts.upstreamFailures, 2);
@@ -2040,91 +1563,6 @@ function assertExternalSourceGapWorkbench() {
   assert.equal(staleWorkbench.candidates.length, 0);
 }
 
-function mockReport(overrides: Partial<ReportWorkflowDocument>): ReportWorkflowDocument {
-  const base: ReportWorkflowDocument = {
-    audience: "operator",
-    category_count: 1,
-    caveats: [],
-    citation_count: 1,
-    citations: [
-      {
-        collected_at: "2026-06-29T00:00:00.000Z",
-        confidence: 0.9,
-        id: "citation-smoke",
-        source_name: "Source",
-        status: "included",
-        title: "Source evidence",
-        url: "https://example.com/evidence"
-      }
-    ],
-    data_source: "mock_data",
-    distinct_source_count: 1,
-    evidence_items: [
-      {
-        categories: ["research"],
-        id: "citation-smoke",
-        source_name: "Source",
-        status: "included",
-        timestamp: "2026-06-29T00:00:00.000Z"
-      }
-    ],
-    executive_summary: "Evidence-backed summary.",
-    generated_at: "2026-06-29T00:00:00.000Z",
-    id: "report-smoke",
-    language: "en",
-    markdown: "# Evidence report",
-    missing_evidence: [],
-    mode: "saved_candidate",
-    model_metadata: {
-      api_call_count: 0,
-      mode: "saved_candidate",
-      provider: "deterministic"
-    },
-    one_sentence_summary: "One sentence summary.",
-    quality_gate: {
-      category_count: 1,
-      category_gate_applicable: true,
-      citation_count: 1,
-      distinct_source_count: 1,
-      passed: true,
-      reasons: [],
-      report_type: "daily",
-      thresholds: {
-        categories: 1,
-        citations: 1,
-        distinct_sources: 1,
-        usable_items: 1
-      },
-      usable_item_count: 1
-    },
-    quality_gate_passed: true,
-    quality_gate_reasons: [],
-    read_source: "public_snapshot",
-    report_type: "daily",
-    retrieved_item_count: 1,
-    saved_at: "2026-06-29T00:00:00.000Z",
-    sections: [],
-    source_item_ids: ["item-smoke"],
-    status: "needs_review",
-    time_window: {
-      end: "2026-06-29T00:00:00.000Z",
-      explanation: "Smoke-test report window.",
-      start: "2026-06-28T00:00:00.000Z"
-    },
-    title: "Evidence report",
-    usable_item_count: 1
-  };
-  const report = { ...base, ...overrides };
-
-  return {
-    ...report,
-    model_metadata: {
-      ...base.model_metadata,
-      ...overrides.model_metadata,
-      mode: report.mode
-    }
-  };
-}
 
 function readSource(file: string) {
   return fs.readFileSync(path.join(process.cwd(), file), "utf8");

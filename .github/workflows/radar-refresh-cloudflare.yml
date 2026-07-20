@@ -1,28 +1,20 @@
-name: Radar Refresh Cloudflare
+name: Radar Daily Production Refresh
 
 on:
+  schedule:
+    # 08:17 China Standard Time (Asia/Shanghai, UTC+8), equivalent to 00:17 UTC.
+    # The non-round minute reduces the chance of GitHub Actions peak-time delay.
+    - cron: "17 8 * * *"
+      timezone: "Asia/Shanghai"
   workflow_dispatch:
     inputs:
-      mode:
-        description: "Activation mode"
-        required: true
-        default: "mock"
-        type: choice
-        options:
-          - mock
-          - live
-      persist:
-        description: "Persist successful chunks and report candidates to Supabase"
-        required: true
-        default: false
-        type: boolean
       limit:
-        description: "Maximum sources to activate"
+        description: "Maximum sources to refresh in the production run"
         required: true
         default: "30"
         type: string
       chunk_size:
-        description: "Sources per activation chunk"
+        description: "Sources per resumable activation chunk"
         required: true
         default: "5"
         type: string
@@ -31,76 +23,35 @@ on:
         required: true
         default: "3"
         type: string
-      deploy_cloudflare:
-        description: "Deploy the Cloudflare Pages public mirror"
-        required: true
-        default: false
-        type: boolean
-      generate_reports:
-        description: "Generate daily and weekly report candidates"
-        required: true
-        default: true
-        type: boolean
-      run_events_cluster:
-        description: "Run deterministic event clustering after activation"
-        required: true
-        default: true
-        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: radar-refresh-cloudflare-${{ github.ref }}
+  group: radar-production-refresh
   cancel-in-progress: false
-
-env:
-  ENABLE_SUPABASE_RETRIEVAL: "true"
-  ENABLE_SUPABASE_WRITES: "false"
-  ENABLE_SCHEDULED_PERSISTENCE: "false"
-  ENABLE_LIVE_DEEPSEEK_IN_JOBS: "false"
-  ENABLE_ADMIN_REVIEW_WRITES: "false"
-  ENABLE_X_API: "false"
-  ENABLE_WECHAT_AUTH: "false"
-  NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
 jobs:
   refresh:
-    name: Reviewed refresh and Cloudflare build
+    name: Live refresh, persist, cluster, build, and deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout default branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Validate dispatch inputs
-        id: dispatch_validation
+      - name: Validate production run configuration
+        id: config
         shell: bash
         env:
-          MODE: ${{ inputs.mode }}
-          PERSIST: ${{ inputs.persist }}
-          LIMIT: ${{ inputs.limit }}
-          CHUNK_SIZE: ${{ inputs.chunk_size }}
-          MAX_ITEMS_PER_SOURCE: ${{ inputs.max_items_per_source }}
-          DEPLOY_CLOUDFLARE: ${{ inputs.deploy_cloudflare }}
-          GENERATE_REPORTS: ${{ inputs.generate_reports }}
-          RUN_EVENTS_CLUSTER: ${{ inputs.run_events_cluster }}
+          EVENT_NAME: ${{ github.event_name }}
           DISPATCH_REF: ${{ github.ref }}
+          LIMIT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.limit || '30' }}
+          CHUNK_SIZE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.chunk_size || '5' }}
+          MAX_ITEMS_PER_SOURCE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.max_items_per_source || '3' }}
+          RADAR_REFRESH_WRITE_GATE: ${{ vars.RADAR_REFRESH_WRITE_GATE }}
         run: |
           set -euo pipefail
-
-          validate_boolean() {
-            local name="$1"
-            local value="$2"
-            case "$value" in
-              true|false) ;;
-              *)
-                echo "::error title=Invalid dispatch input::${name} must be true or false."
-                exit 1
-                ;;
-            esac
-          }
 
           validate_integer() {
             local name="$1"
@@ -108,202 +59,202 @@ jobs:
             local minimum="$3"
             local maximum="$4"
             if [[ ! "$value" =~ ^[0-9]+$ || ${#value} -gt 4 ]]; then
-              echo "::error title=Invalid dispatch input::${name} must be an integer from ${minimum} to ${maximum}."
+              echo "::error title=Invalid refresh parameter::${name} must be an integer from ${minimum} to ${maximum}."
               exit 1
             fi
 
             local number=$((10#$value))
             if (( number < minimum || number > maximum )); then
-              echo "::error title=Invalid dispatch input::${name} must be an integer from ${minimum} to ${maximum}."
+              echo "::error title=Invalid refresh parameter::${name} must be an integer from ${minimum} to ${maximum}."
               exit 1
             fi
           }
 
-          case "$MODE" in
-            mock|live) ;;
+          case "$EVENT_NAME" in
+            schedule|workflow_dispatch) ;;
             *)
-              echo "::error title=Invalid dispatch input::mode must be mock or live."
+              echo "::error title=Unsupported trigger::Production refresh only accepts schedule or workflow_dispatch."
               exit 1
               ;;
           esac
 
-          validate_boolean persist "$PERSIST"
-          validate_boolean deploy_cloudflare "$DEPLOY_CLOUDFLARE"
-          validate_boolean generate_reports "$GENERATE_REPORTS"
-          validate_boolean run_events_cluster "$RUN_EVENTS_CLUSTER"
+          if [[ "$DISPATCH_REF" != "refs/heads/main" ]]; then
+            echo "::error title=Unsafe production ref::Live persistence and production deployment must run from refs/heads/main."
+            exit 1
+          fi
+
+          if [[ "$RADAR_REFRESH_WRITE_GATE" != "true" ]]; then
+            echo "::error title=Production write gate closed::Set repository variable RADAR_REFRESH_WRITE_GATE=true before enabling the daily refresh."
+            exit 1
+          fi
+
           validate_integer limit "$LIMIT" 1 100
           validate_integer chunk_size "$CHUNK_SIZE" 1 20
           validate_integer max_items_per_source "$MAX_ITEMS_PER_SOURCE" 1 20
 
           if (( 10#$CHUNK_SIZE > 10#$LIMIT )); then
-            echo "::error title=Invalid dispatch input::chunk_size cannot exceed limit."
+            echo "::error title=Invalid refresh parameter::chunk_size cannot exceed limit."
             exit 1
           fi
 
-          if [[ "$PERSIST" == "true" && "$MODE" != "live" ]]; then
-            echo "::error title=Unsafe persistence request::persist=true requires mode=live; mock data cannot be written."
-            exit 1
+          epoch_day=$(($(date -u +%s) / 86400))
+          if (( 10#$LIMIT > 10 )); then
+            rotating_slots=$((10#$LIMIT - 10))
+          else
+            rotating_slots=0
           fi
+          rotation_offset=$((epoch_day * rotating_slots))
+          refresh_started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-          if [[ "$MODE" == "live" && "$DISPATCH_REF" != "refs/heads/main" ]]; then
-            echo "::error title=Unsafe live request::Live provider access must run from refs/heads/main."
-            exit 1
-          fi
-
-          if [[ "$GENERATE_REPORTS" == "true" && "$RUN_EVENTS_CLUSTER" != "true" ]]; then
-            echo "::error title=Invalid report request::Event-aware report generation requires run_events_cluster=true."
-            exit 1
-          fi
-
-          if [[ "$DEPLOY_CLOUDFLARE" == "true" && "$DISPATCH_REF" != "refs/heads/main" ]]; then
-            echo "::error title=Unsafe deployment request::Cloudflare production deploys must run from refs/heads/main."
-            exit 1
-          fi
+          {
+            echo "limit=$LIMIT"
+            echo "chunk_size=$CHUNK_SIZE"
+            echo "max_items_per_source=$MAX_ITEMS_PER_SOURCE"
+            echo "rotation_offset=$rotation_offset"
+            echo "refresh_started_at=$refresh_started_at"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Validation preflight
-        id: validation_preflight
+      - name: Run code and data preflight
         run: |
           npm run lint
           npm run typecheck
           npm run validate:data
           npm run sensitive:scan
-          npm run supabase:public-contract
 
-      - name: Capture before counts
-        id: before_summary
-        shell: bash
+      - name: Validate Supabase public read contract
         env:
-          ENABLE_SUPABASE_WRITES: "false"
-          SUPABASE_SERVICE_ROLE_KEY: ${{ github.ref == 'refs/heads/main' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
-          RUN_ID: github_${{ github.run_id }}_${{ github.run_attempt }}
-          MODE: ${{ inputs.mode }}
-          PERSIST: ${{ inputs.persist }}
-          DEPLOY_CLOUDFLARE: ${{ inputs.deploy_cloudflare }}
-          GENERATE_REPORTS: ${{ inputs.generate_reports }}
-          RUN_EVENTS_CLUSTER: ${{ inputs.run_events_cluster }}
-          WRITE_GATE_SATISFIED: ${{ inputs.persist && vars.RADAR_REFRESH_WRITE_GATE == 'true' }}
-        run: |
-          set -euo pipefail
-          npm run ops:summary -- \
-            --stage before \
-            --run-id "$RUN_ID" \
-            --mode "$MODE" \
-            --persist "$PERSIST" \
-            --deploy-cloudflare "$DEPLOY_CLOUDFLARE" \
-            --generate-reports "$GENERATE_REPORTS" \
-            --run-events-cluster "$RUN_EVENTS_CLUSTER" \
-            --write-gate-satisfied "$WRITE_GATE_SATISFIED"
-
-      - name: Check explicit write gate
-        if: ${{ inputs.persist }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ "${RADAR_REFRESH_WRITE_GATE}" != "true" ]; then
-            echo "Persist requested, but RADAR_REFRESH_WRITE_GATE is not true. No Supabase writes were attempted."
-            exit 1
-          fi
-        env:
-          RADAR_REFRESH_WRITE_GATE: ${{ vars.RADAR_REFRESH_WRITE_GATE }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+        run: npm run supabase:public-contract
 
       - name: Restore resumable activation state
         id: activation_cache_restore
-        uses: actions/cache/restore@v4
+        continue-on-error: true
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: data/activation
-          key: radar-activation-${{ github.run_id }}-${{ github.run_attempt }}
+          key: radar-production-activation-main-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            radar-activation-${{ github.run_id }}-
+            radar-production-activation-main-
 
-      - name: Run resumable activation
+      - name: Prepare restored activation state
+        id: activation_state
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("node:fs");
+          const checkpointPath = "data/activation/latest/checkpoint.json";
+          let shouldResume = false;
+
+          if (fs.existsSync(checkpointPath)) {
+            try {
+              const checkpoint = JSON.parse(fs.readFileSync(checkpointPath, "utf8"));
+              const selectedCount = Math.min(
+                Number(checkpoint.limit) || 0,
+                Array.isArray(checkpoint.selected_source_ids) ? checkpoint.selected_source_ids.length : 0
+              );
+              const chunkSize = Number(checkpoint.chunk_size) || 0;
+              if (selectedCount < 1 || chunkSize < 1 || !Array.isArray(checkpoint.chunks)) {
+                throw new Error("checkpoint shape is invalid");
+              }
+
+              const plannedChunks = Math.ceil(selectedCount / chunkSize);
+              const chunksByIndex = new Map(checkpoint.chunks.map((chunk) => [chunk.index, chunk]));
+              const fullyPersisted = Array.from({ length: plannedChunks }, (_, index) => chunksByIndex.get(index))
+                .every((chunk) => chunk?.status === "completed" && chunk.persisted === true);
+
+              if (fullyPersisted) {
+                fs.rmSync("data/activation", { recursive: true, force: true });
+                console.log("Previous production activation completed; starting a fresh daily run.");
+              } else {
+                shouldResume = true;
+                console.log("Restored an incomplete production activation; resuming from its checkpoint.");
+              }
+            } catch (error) {
+              fs.rmSync("data/activation", { recursive: true, force: true });
+              console.warn(`Discarded an invalid activation checkpoint: ${error.message}`);
+            }
+          } else {
+            console.log("No prior activation checkpoint restored; starting a fresh daily run.");
+          }
+
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `resume=${shouldResume}\n`);
+          NODE
+
+      - name: Run live resumable activation with persistence
         id: activation
         shell: bash
         env:
-          MODE: ${{ inputs.mode }}
-          PERSIST: ${{ inputs.persist }}
-          LIMIT: ${{ inputs.limit }}
-          CHUNK_SIZE: ${{ inputs.chunk_size }}
-          MAX_ITEMS_PER_SOURCE: ${{ inputs.max_items_per_source }}
-          ENABLE_SUPABASE_WRITES: ${{ github.ref == 'refs/heads/main' && inputs.persist && vars.RADAR_REFRESH_WRITE_GATE == 'true' && 'true' || 'false' }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ github.ref == 'refs/heads/main' && inputs.persist && vars.RADAR_REFRESH_WRITE_GATE == 'true' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
-          DEEPSEEK_API_KEY: ${{ github.ref == 'refs/heads/main' && inputs.mode == 'live' && secrets.DEEPSEEK_API_KEY || '' }}
+          LIMIT: ${{ steps.config.outputs.limit }}
+          CHUNK_SIZE: ${{ steps.config.outputs.chunk_size }}
+          MAX_ITEMS_PER_SOURCE: ${{ steps.config.outputs.max_items_per_source }}
+          ROTATION_OFFSET: ${{ steps.config.outputs.rotation_offset }}
+          RESUME: ${{ steps.activation_state.outputs.resume }}
+          ACTIVATION_RESET_INVALID_CHECKPOINT: "true"
+          ENABLE_SUPABASE_WRITES: "true"
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          for name in NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY DEEPSEEK_API_KEY; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error title=Production configuration missing::${name} is required for live persisted activation."
+              exit 1
+            fi
+          done
+
           args=(
-            --limit "$LIMIT"
-            --chunk-size "$CHUNK_SIZE"
+            --limit "$LIMIT" \
+            --chunk-size "$CHUNK_SIZE" \
             --max-items-per-source "$MAX_ITEMS_PER_SOURCE"
-            --resume
+            --rotation-offset "$ROTATION_OFFSET"
           )
-          if [[ "$PERSIST" == "true" ]]; then
-            args+=(--persist)
+          if [[ "$RESUME" == "true" ]]; then
+            args+=(--resume)
           fi
-          npm run "data:activate:resumable:${MODE}" -- "${args[@]}"
+          npm run data:activate:resumable:live:persist -- "${args[@]}"
 
       - name: Save resumable activation state
-        if: ${{ always() && hashFiles('data/activation/latest/checkpoint.json') != '' }}
-        uses: actions/cache/save@v4
+        if: ${{ always() && steps.activation.outcome != 'skipped' && hashFiles('data/activation/latest/checkpoint.json') != '' }}
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: data/activation
-          key: radar-activation-${{ github.run_id }}-${{ github.run_attempt }}
+          key: radar-production-activation-main-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - name: Cluster public events
+      - name: Cluster, persist, and export the public snapshot
         id: events_cluster
-        if: ${{ inputs.run_events_cluster }}
-        shell: bash
-        env:
-          PERSIST: ${{ inputs.persist }}
-          ENABLE_SUPABASE_WRITES: ${{ github.ref == 'refs/heads/main' && inputs.persist && vars.RADAR_REFRESH_WRITE_GATE == 'true' && 'true' || 'false' }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ github.ref == 'refs/heads/main' && inputs.persist && vars.RADAR_REFRESH_WRITE_GATE == 'true' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
-        run: |
-          set -euo pipefail
-          if [[ "$PERSIST" == "true" ]]; then
-            npm run events:cluster -- --persist
-          else
-            npm run events:cluster
-          fi
-
-      - name: Generate report candidates
-        id: reports
-        if: ${{ inputs.generate_reports }}
-        shell: bash
-        env:
-          MODE: ${{ inputs.mode }}
-          PERSIST: ${{ inputs.persist }}
-          ENABLE_SUPABASE_WRITES: ${{ github.ref == 'refs/heads/main' && inputs.persist && vars.RADAR_REFRESH_WRITE_GATE == 'true' && 'true' || 'false' }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ github.ref == 'refs/heads/main' && inputs.persist && vars.RADAR_REFRESH_WRITE_GATE == 'true' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
-          DEEPSEEK_API_KEY: ${{ github.ref == 'refs/heads/main' && inputs.mode == 'live' && secrets.DEEPSEEK_API_KEY || '' }}
-        run: |
-          set -euo pipefail
-          if [[ "$PERSIST" == "true" ]]; then
-            npm run report:candidate:daily:write -- --live
-            npm run report:candidate:weekly:write -- --live
-          elif [[ "$MODE" == "live" ]]; then
-            npm run report:generate:daily:live
-            npm run report:generate:weekly:live
-          else
-            npm run report:generate:daily
-            npm run report:generate:weekly
-          fi
-
-      - name: Build Cloudflare public snapshot
-        id: cloudflare_build
         env:
           CLOUDFLARE_SNAPSHOT_READ_SUPABASE: "true"
           CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE: "true"
-          ENABLE_SUPABASE_WRITES: "false"
-          SUPABASE_SERVICE_ROLE_KEY: ${{ github.ref == 'refs/heads/main' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
-        run: npm run cloudflare:build
+          CLOUDFLARE_SNAPSHOT_EXPECTED_ATTEMPTED_SOURCES: ${{ steps.config.outputs.limit }}
+          CLOUDFLARE_SNAPSHOT_MAX_SOURCE_FAILURE_RATE: "0.5"
+          CLOUDFLARE_SNAPSHOT_MAX_REFRESH_AGE_HOURS: "6"
+          CLOUDFLARE_SNAPSHOT_REFRESH_NOT_BEFORE: ${{ steps.config.outputs.refresh_started_at }}
+          ENABLE_SUPABASE_WRITES: "true"
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          npm run events:cluster -- --persist
+          ENABLE_SUPABASE_WRITES=false npm run cloudflare:snapshot
+
+      - name: Render Cloudflare site from the verified public snapshot
+        id: cloudflare_build
+        run: npx tsx scripts/build-cloudflare-public-site.ts
 
       - name: Validate built Cloudflare artifact
         env:
@@ -311,114 +262,119 @@ jobs:
           SMOKE_REQUIRE_RELEASE_ARTIFACTS: "true"
         run: npm run test
 
-      - name: Deploy Cloudflare Pages
+      - name: Deploy Cloudflare Pages production
         id: cloudflare_deploy
-        if: ${{ inputs.deploy_cloudflare }}
         shell: bash
         env:
-          ENABLE_SUPABASE_WRITES: "false"
-          CLOUDFLARE_API_TOKEN: ${{ github.ref == 'refs/heads/main' && secrets.CLOUDFLARE_API_TOKEN || '' }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ github.ref == 'refs/heads/main' && secrets.CLOUDFLARE_ACCOUNT_ID || '' }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
           if [[ -z "${CLOUDFLARE_API_TOKEN:-}" || -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]]; then
-            echo "::error title=Cloudflare configuration missing::Deploy requested, but the Cloudflare token or account id is unavailable."
+            echo "::error title=Cloudflare configuration missing::CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are required."
             exit 1
           fi
           test -s dist/cloudflare-pages/index.html
-          npx --yes wrangler@4.86.0 pages deploy dist/cloudflare-pages --project-name=ai-industry-radar --branch=main
+          npm exec -- wrangler pages deploy dist/cloudflare-pages \
+            --project-name=ai-industry-radar \
+            --branch=main
 
-      - name: Write run summary
-        id: after_summary
+      - name: Verify production endpoint
+        id: production_verify
+        shell: bash
+        env:
+          VERIFY_CACHE_BUST: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("node:fs");
+          const local = JSON.parse(fs.readFileSync("dist/cloudflare-pages/data/radar-snapshot.json", "utf8"));
+          const cacheBust = encodeURIComponent(process.env.VERIFY_CACHE_BUST || Date.now());
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+          async function verify(attempt) {
+            const requestId = `${cacheBust}-${attempt}`;
+            const [homeResponse, snapshotResponse] = await Promise.all([
+              fetch(`https://ai-industry-radar.pages.dev/?verify=${requestId}`, { cache: "no-store" }),
+              fetch(`https://ai-industry-radar.pages.dev/data/radar-snapshot.json?verify=${requestId}`, { cache: "no-store" })
+            ]);
+            if (!homeResponse.ok || !snapshotResponse.ok) {
+              throw new Error(`production_http_status home=${homeResponse.status} snapshot=${snapshotResponse.status}`);
+            }
+
+            const home = await homeResponse.text();
+            const remote = await snapshotResponse.json();
+            if (!home.includes("<title>AI 行业信息雷达</title>")) {
+              throw new Error("production_home_title_mismatch");
+            }
+            if (remote.generated_at !== local.generated_at) {
+              throw new Error(`production_snapshot_generation_mismatch local=${local.generated_at} remote=${remote.generated_at}`);
+            }
+            if (remote.coverage?.latest_refresh !== local.coverage?.latest_refresh) {
+              throw new Error(
+                `production_snapshot_refresh_mismatch local=${local.coverage?.latest_refresh} remote=${remote.coverage?.latest_refresh}`
+              );
+            }
+            const remoteRefreshTime = Date.parse(remote.coverage?.latest_refresh || "");
+            if (!Number.isFinite(remoteRefreshTime) || Date.now() - remoteRefreshTime > 6 * 60 * 60 * 1000) {
+              throw new Error("production_snapshot_refresh_is_stale");
+            }
+            if (
+              remote.source?.kind !== "supabase_public_views" ||
+              remote.source?.data_source !== "public_evidence_store" ||
+              remote.source?.local_data_used !== false
+            ) {
+              throw new Error("production_snapshot_not_strict_supabase");
+            }
+            if (
+              Object.prototype.hasOwnProperty.call(remote, "reports") ||
+              Object.prototype.hasOwnProperty.call(remote, "report_quality_summary")
+            ) {
+              throw new Error("production_snapshot_contains_retired_report_fields");
+            }
+          }
+
+          let lastError;
+          for (let attempt = 1; attempt <= 6; attempt += 1) {
+            try {
+              await verify(attempt);
+              console.log(`Production deployment verified on attempt ${attempt}.`);
+              process.exit(0);
+            } catch (error) {
+              lastError = error;
+              console.warn(`Production verification attempt ${attempt} failed: ${error.message}`);
+              if (attempt < 6) await sleep(5000);
+            }
+          }
+          throw lastError;
+          NODE
+
+      - name: Write production refresh summary
         if: ${{ always() }}
         shell: bash
         env:
-          ENABLE_SUPABASE_WRITES: "false"
-          SUPABASE_SERVICE_ROLE_KEY: ${{ github.ref == 'refs/heads/main' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
-          RUN_ID: github_${{ github.run_id }}_${{ github.run_attempt }}
-          MODE: ${{ inputs.mode }}
-          PERSIST: ${{ inputs.persist }}
-          DEPLOY_CLOUDFLARE: ${{ inputs.deploy_cloudflare }}
-          GENERATE_REPORTS: ${{ inputs.generate_reports }}
-          RUN_EVENTS_CLUSTER: ${{ inputs.run_events_cluster }}
-          WRITE_GATE_SATISFIED: ${{ inputs.persist && vars.RADAR_REFRESH_WRITE_GATE == 'true' }}
-          VALIDATION_OUTCOME: ${{ steps.validation_preflight.outcome || 'skipped' }}
+          TRIGGER: ${{ github.event_name }}
           ACTIVATION_OUTCOME: ${{ steps.activation.outcome || 'skipped' }}
-          EVENTS_CLUSTER_OUTCOME: ${{ steps.events_cluster.outcome || 'skipped' }}
-          REPORTS_OUTCOME: ${{ steps.reports.outcome || 'skipped' }}
-          CLOUDFLARE_BUILD_OUTCOME: ${{ steps.cloudflare_build.outcome || 'skipped' }}
-          CLOUDFLARE_DEPLOY_OUTCOME: ${{ steps.cloudflare_deploy.outcome || 'skipped' }}
-          CLOUDFLARE_URL: https://ai-industry-radar.pages.dev
+          CLUSTER_OUTCOME: ${{ steps.events_cluster.outcome || 'skipped' }}
+          BUILD_OUTCOME: ${{ steps.cloudflare_build.outcome || 'skipped' }}
+          DEPLOY_OUTCOME: ${{ steps.cloudflare_deploy.outcome || 'skipped' }}
+          VERIFY_OUTCOME: ${{ steps.production_verify.outcome || 'skipped' }}
         run: |
-          set -euo pipefail
-          npm run ops:summary -- \
-            --stage after \
-            --run-id "$RUN_ID" \
-            --mode "$MODE" \
-            --persist "$PERSIST" \
-            --deploy-cloudflare "$DEPLOY_CLOUDFLARE" \
-            --generate-reports "$GENERATE_REPORTS" \
-            --run-events-cluster "$RUN_EVENTS_CLUSTER" \
-            --write-gate-satisfied "$WRITE_GATE_SATISFIED" \
-            --validation-outcome "$VALIDATION_OUTCOME" \
-            --activation-outcome "$ACTIVATION_OUTCOME" \
-            --events-cluster-outcome "$EVENTS_CLUSTER_OUTCOME" \
-            --reports-outcome "$REPORTS_OUTCOME" \
-            --cloudflare-build-outcome "$CLOUDFLARE_BUILD_OUTCOME" \
-            --cloudflare-deploy-outcome "$CLOUDFLARE_DEPLOY_OUTCOME" \
-            --cloudflare-url "$CLOUDFLARE_URL"
-
-      - name: Verify run summary contains no configured secrets
-        id: summary_safety
-        if: ${{ always() }}
-        shell: bash
-        env:
-          DEEPSEEK_API_KEY: ${{ github.ref == 'refs/heads/main' && inputs.mode == 'live' && secrets.DEEPSEEK_API_KEY || '' }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ github.ref == 'refs/heads/main' && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          CLOUDFLARE_API_TOKEN: ${{ github.ref == 'refs/heads/main' && inputs.deploy_cloudflare && secrets.CLOUDFLARE_API_TOKEN || '' }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ github.ref == 'refs/heads/main' && inputs.deploy_cloudflare && secrets.CLOUDFLARE_ACCOUNT_ID || '' }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          files=(
-            data/ops/latest/radar-refresh-summary.json
-            data/ops/latest/radar-refresh-summary.md
-          )
-          for file in "${files[@]}"; do
-            if [[ ! -s "$file" ]]; then
-              echo "::error title=Run summary missing::${file} was not created."
-              exit 1
-            fi
-          done
-
-          configured_secrets=(
-            "${DEEPSEEK_API_KEY:-}"
-            "${SUPABASE_SERVICE_ROLE_KEY:-}"
-            "${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}"
-            "${CLOUDFLARE_API_TOKEN:-}"
-            "${CLOUDFLARE_ACCOUNT_ID:-}"
-            "${GITHUB_TOKEN:-}"
-          )
-          for secret in "${configured_secrets[@]}"; do
-            if (( ${#secret} < 4 )); then
-              continue
-            fi
-            for file in "${files[@]}"; do
-              if grep -Fq -- "$secret" "$file"; then
-                echo "::error title=Unsafe run summary::A configured secret was found in the summary; artifact upload is blocked."
-                exit 1
-              fi
-            done
-          done
-
-      - name: Upload run summary artifact
-        if: ${{ always() && steps.summary_safety.outcome == 'success' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: radar-refresh-cloudflare-summary-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            data/ops/latest/radar-refresh-summary.json
-            data/ops/latest/radar-refresh-summary.md
-          if-no-files-found: error
-          retention-days: 14
+          {
+            echo "## AI 行业信息雷达生产更新"
+            echo
+            echo "- Trigger: ${TRIGGER}"
+            echo "- Schedule: 08:17 Asia/Shanghai (00:17 UTC)"
+            echo "- Mode: live"
+            echo "- Supabase persistence: enabled"
+            echo "- Snapshot source: strict Supabase (local fallback disabled)"
+            echo "- Production URL: https://ai-industry-radar.pages.dev/"
+            echo
+            echo "| Stage | Outcome |"
+            echo "| --- | --- |"
+            echo "| Live activation and persistence | ${ACTIVATION_OUTCOME} |"
+            echo "| Event clustering and persistence | ${CLUSTER_OUTCOME} |"
+            echo "| Strict Cloudflare build | ${BUILD_OUTCOME} |"
+            echo "| Cloudflare production deploy | ${DEPLOY_OUTCOME} |"
+            echo "| Production endpoint verification | ${VERIFY_OUTCOME} |"
+          } >> "$GITHUB_STEP_SUMMARY"

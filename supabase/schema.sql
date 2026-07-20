@@ -184,21 +184,6 @@ create table if not exists scores (
 
 comment on table scores is 'Versioned scoring records for auditability.';
 
-create table if not exists reports (
-  id uuid primary key default gen_random_uuid(),
-  type text not null check (type in ('daily', 'weekly', 'topic', 'source_evaluation')),
-  title text not null,
-  language text not null check (language in ('en', 'zh', 'bilingual')),
-  time_window_start timestamptz not null,
-  time_window_end timestamptz not null,
-  body text not null,
-  metadata jsonb not null default '{}'::jsonb,
-  status content_status not null default 'draft',
-  created_by uuid references users_profile(id),
-  created_at timestamptz not null default now(),
-  published_at timestamptz
-);
-
 create table if not exists saved_items (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references users_profile(id) on delete cascade,
@@ -210,7 +195,7 @@ create table if not exists saved_items (
 create table if not exists annotations (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references users_profile(id) on delete cascade,
-  target_type text not null check (target_type in ('radar_item', 'event_cluster', 'entity', 'source', 'report')),
+  target_type text not null check (target_type in ('radar_item', 'event_cluster', 'entity', 'source')),
   target_id uuid not null,
   body text not null,
   visibility text not null default 'private' check (visibility in ('private', 'team', 'public')),
@@ -268,7 +253,6 @@ create index if not exists idx_event_cluster_items_item on event_cluster_items(r
 create index if not exists idx_entities_type_name on entities(type, name);
 create index if not exists idx_item_entities_entity_id on item_entities(entity_id);
 create index if not exists idx_scores_target on scores(target_type, target_id);
-create index if not exists idx_reports_type_status on reports(type, status);
 create index if not exists idx_saved_items_user_id on saved_items(user_id);
 create index if not exists idx_annotations_target on annotations(target_type, target_id);
 create index if not exists idx_ingestion_runs_started_at on ingestion_runs(started_at desc);

@@ -1,55 +1,39 @@
 # AI Industry Radar
 
-AI Industry Radar is an event-level AI industry intelligence product. It turns public signals into deduplicated events, keeps the underlying signals auditable, and exposes source diversity, citations, timelines, report quality, source health, and coverage limits.
+AI Industry Radar is a Chinese-first, event-level AI information product. It turns public signals into deduplicated updates, keeps original sources traceable, and explains why each development deserves attention.
 
 - Primary public site: https://ai-industry-radar.pages.dev
-- Dynamic/reference app: https://ai-radar-web-luosongred-5507s-projects.vercel.app
+- Browser title brand: `AI 行业信息雷达`
 - Default language: Chinese
 - English routes: `/en/` and matching `/en/*` pages
-- Language switch: top-right `中文 / EN`
 - GitHub Pages: not used
-
-## Current Release Data
-
-| metric | value |
-| --- | ---: |
-| configured sources | 317 |
-| automated eligible sources | 91 |
-| raw / radar / public radar items | 287 / 283 / 261 |
-| public snapshot signals | 261 |
-| public display events / relationships | 203 / 205 |
-| curated events | 8 |
-| sources with public items | 64 |
-
-The public event layer currently contains two multi-item events. Four repeated signals become two event cards, reducing two duplicate readings. This is useful but still thin; cross-family coverage is shown with an explicit warning that different source families do not prove source independence.
 
 ## Public Product
 
-- `/`: current data status, `今日行业精选`, industry pulse, source health, limitations, and Ask/Write entry points.
-- `/radar/`: event-first tabs for selected events, all events, all signals, timeline, review, and source health.
-- `/reports/`: daily and weekly evidence drafts with event counts, citations, diversity, gate status, caveats, and missing evidence.
-- `/ask/`: browser-local queries over the public event snapshot. The public API response shape is unchanged.
-- `/write/`: browser-local evidence-led writing over selected events. The public API response shape is unchanged.
-- `/entities/`: public entity index and evidence detail pages.
-- `/en/*`: equivalent English product routes.
+The public information architecture has four reader-facing sections:
 
-`全部信号` contains all 261 public-safe radar rows. Low-event homepage, directory, documentation-index, and repository-metadata signals remain auditable there but do not enter event clustering or `行业精选`.
+- `/`: `今日热点`, exactly ten ranked developments with time, source, category, readable summary, and `为什么值得看`.
+- `/radar/`: `全部动态`, a continuous event feed with search, source-family filters, and topic filters.
+- `/sources/`: `来源`, explaining the public sources and source families used by the product.
+- `/about/`: `关于`, explaining the product method, boundaries, and update cadence.
+- `/en/*`: equivalent English routes.
+
+The public experience is a reading product, not an operations dashboard. Internal scores, ingestion state, write controls, and raw provider output are not navigation items or reader-facing content.
 
 ## Data Loop
 
 ```text
-source registry
-  -> bounded resumable crawl
-  -> normalized raw items
+public source registry
+  -> bounded resumable live crawl
+  -> normalized and deduplicated items
   -> bounded DeepSeek understanding
   -> controlled Supabase persistence
   -> deterministic event clustering and scoring
-  -> report quality gates
-  -> public-safe snapshot
-  -> Cloudflare Pages
+  -> strict public-safe Supabase snapshot
+  -> Cloudflare Pages production deployment
 ```
 
-Deterministic code owns public-field allowlists, relevance thresholds, merge safeguards, quality gates, and write gates. DeepSeek is used only for bounded understanding/report tasks and never becomes the public safety boundary.
+Deterministic code owns public-field allowlists, relevance thresholds, merge safeguards, title normalization, and write gates. DeepSeek is used only for bounded understanding; it is not the public safety boundary.
 
 ## Local Commands
 
@@ -66,33 +50,61 @@ npm run typecheck
 npm test
 npm run validate:data
 npm run sensitive:scan
-npm run build
-npm run check:deployment
 npm run cloudflare:build
 ```
 
-Resumable activation:
+Resumable activation and event clustering:
 
 ```powershell
 npm run data:activate:resumable:mock -- --limit 10 --chunk-size 5 --max-items-per-source 2
 npm run data:activate:resumable:live -- --limit 30 --chunk-size 5 --max-items-per-source 3
-npm run data:activate:resumable:resume -- --mode live
+npm run data:activate:resumable:live:persist -- --limit 30 --chunk-size 5 --max-items-per-source 3
 npm run data:activate:resumable:status
-```
-
-Event and report generation:
-
-```powershell
 npm run events:cluster
-npm run report:generate:daily
-npm run report:generate:weekly
 ```
 
-Persistence requires a temporary process-level write gate and an explicit persistence command. Deployed environments keep `ENABLE_SUPABASE_WRITES=false`.
+Local persistence still requires `ENABLE_SUPABASE_WRITES=true` plus valid Supabase service credentials. The public Cloudflare runtime is read-only.
 
-## Cloudflare Build
+## Daily Production Refresh
 
-Normal local builds may reuse a public-safe local snapshot. Release/deployment builds must fail closed and read Supabase public views:
+`.github/workflows/radar-refresh-cloudflare.yml` runs every day at **08:17 Asia/Shanghai** (`00:17 UTC`) and also supports `workflow_dispatch`.
+
+Every scheduled run follows one production path:
+
+1. validate the `main` ref, bounded parameters, and repository write gate;
+2. run live resumable activation and persist successful chunks to Supabase;
+3. cluster and persist public events;
+4. build a strict Supabase-backed Cloudflare snapshot;
+5. run release validation;
+6. deploy the `main` artifact to Cloudflare Pages;
+7. verify https://ai-industry-radar.pages.dev/.
+
+Manual runs expose only `limit`, `chunk_size`, and `max_items_per_source`. They still use live mode, persistence, strict snapshot export, validation, and production deployment. Production runs are restricted to `refs/heads/main`.
+
+The workflow restores incomplete activation checkpoints across runs. A fully persisted checkpoint is discarded before the next scheduled run so each successful day starts a fresh crawl. Concurrency is fixed to one production refresh at a time and an in-progress run is not cancelled by a new trigger.
+
+### Required repository configuration
+
+Repository variables:
+
+- `RADAR_REFRESH_WRITE_GATE=true`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `CLOUDFLARE_ACCOUNT_ID`
+
+Repository secrets:
+
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `DEEPSEEK_API_KEY`
+- `CLOUDFLARE_API_TOKEN`
+
+The workflow accepts secret fallbacks for the Supabase public values and Cloudflare account ID, but variables are preferred because those values are not credentials. `GITHUB_TOKEN` is supplied automatically by GitHub Actions.
+
+The workflow has only `contents: read` permission. Service-role and model credentials are exposed only to the live persistence step, the service-role credential is separately scoped to event persistence, and Cloudflare credentials are exposed only to deployment.
+
+## Strict Cloudflare Build
+
+Local development may use a public-safe local snapshot. Production must fail closed:
 
 ```powershell
 $env:CLOUDFLARE_SNAPSHOT_READ_SUPABASE="true"
@@ -100,42 +112,21 @@ $env:CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE="true"
 npm run cloudflare:build
 ```
 
-Strict export requires:
-
-- `source.kind=\"supabase_public_views\"` and `source.data_source=\"public_evidence_store\"`;
-- no local fallback;
-- public count and exported `全部信号` count parity;
-- at least 180 public signals;
-- a populated event layer and at least five curated events;
-- daily and weekly quality summaries, with the weekly gate passing;
-- a valid public `published_at` no older than the configured release threshold.
-
-## Manual Refresh Workflow
-
-`.github/workflows/radar-refresh-cloudflare.yml` is `workflow_dispatch` only. It supports mock/live mode, bounded limits, optional controlled persistence, event clustering, report generation, optional Cloudflare deployment, and a redacted run-summary artifact. There is no schedule.
-
-Live persistence additionally requires `RADAR_REFRESH_WRITE_GATE=true`, `persist=true`, `mode=live`, and `main`. Cloudflare deployment is also restricted to `main`.
+The production exporter must confirm a Supabase public-view source, no local fallback, complete public-signal parity, a populated event layer, required coverage, and a valid recent public timestamp. Missing, incomplete, stale, or unreachable Supabase data fails the build and blocks deployment.
 
 ## Public Data Boundary
 
-Public runtime reads use only:
+Cloudflare publishes one allowlisted, read-only snapshot derived from approved Supabase public views. Public fields are limited to reader-facing event, signal, source, citation, relationship, and freshness data.
 
-- `public_radar_items`
-- `public_report_candidates`
-- `public_reports`
-- `data/radar-snapshot.json`
-
-The three Supabase views use `security_invoker=true`. Anonymous roles receive only the specific safe base columns required by those views, and RLS limits rows. Raw items, raw/model metadata, evidence notes, report metadata, provider payloads, private notes, service credentials, operational logs, and wrong-domain model-radar tables are not public.
+Raw text, raw/model metadata, evidence notes, private notes, admin/audit logs, service credentials, provider payloads, cookies, operational checkpoints, and unrelated database relations are never public.
 
 ## Deliberate Limits
 
-- no scheduled writes;
 - no automatic X crawl;
 - no automatic WeChat crawl;
-- no source-health writes;
-- no automatic report publication;
-- no public service-role access;
-- no claim of complete real-time industry coverage.
+- no browser or public service-role access;
+- no claim of complete real-time industry coverage;
+- scheduled workflows may be delayed by GitHub Actions load and require an enabled Actions billing state.
 
 ## Release Documentation
 
@@ -143,8 +134,6 @@ The three Supabase views use `security_invoker=true`. Anonymous roles receive on
 - [Data status](./docs/release-candidate-data-status.md)
 - [Data completeness ledger](./docs/data-completeness-release-candidate.md)
 - [Event clustering](./docs/event-clustering-release-candidate.md)
-- [Report quality gates](./docs/report-quality-gates-milestone-m.md)
-- [Manual refresh operations](./docs/ops-refresh-cloudflare-milestone-m.md)
 - [Bilingual public surface](./docs/chinese-public-surface-milestone-m.md)
 - [Data boundary audit](./docs/data-boundary-audit-release-candidate.md)
-- [LearnPrompt reference analysis](./docs/reference-ai-news-radar-event-layer.md)
+- [AI news radar reference analysis](./docs/reference-ai-news-radar-event-layer.md)

@@ -90,7 +90,7 @@ const pipelineStages = [
     tone: "risk" as const
   },
   {
-    detail: "Radar, reports, and entities can read Supabase public view when enabled, then local output, then mock data.",
+    detail: "Radar retrieval can read the Supabase public view when enabled, then local output, then mock data.",
     label: "Retrieval",
     tone: "evidence" as const
   }
@@ -183,27 +183,6 @@ const operatingLoopCommands: Array<{
     detail: "Requires the temporary mutation gate, Supabase public config, service role credentials, and live DeepSeek readiness in the CLI process.",
     label: "mutation-gated",
     title: "Live refresh + persist",
-    tone: "risk"
-  },
-  {
-    command: "npm run ops:reports",
-    detail: "Generates daily and weekly candidate previews from current radar evidence. Add -- --persist with the temporary mutation gate to save needs_review candidates.",
-    label: "candidate generation",
-    title: "Report candidates",
-    tone: "evidence"
-  },
-  {
-    command: "npm run ops:full:dry-run",
-    detail: "Runs the full operating loop in dry-run mode without Supabase mutations, scheduled jobs, X/WeChat crawl, or live DeepSeek by default.",
-    label: "full dry-run",
-    title: "Full loop dry-run",
-    tone: "success"
-  },
-  {
-    command: "$env:ENABLE_SUPABASE_WRITES=\"true\"\nnpm run ops:full:live:persist -- --limit 10 --max-items-per-source 3\nRemove-Item Env:ENABLE_SUPABASE_WRITES",
-    detail: "Runs the combined live refresh plus report-candidate persist path only with the temporary mutation gate, Supabase credentials, and live DeepSeek readiness.",
-    label: "full mutation-gated",
-    title: "Full loop live + persist",
     tone: "risk"
   }
 ];
@@ -343,9 +322,6 @@ export default async function AdminIngestionPage() {
           <Link className="text-radar-admin hover:text-radar-evidence" href="/admin/review">
             Open admin review
           </Link>
-          <Link className="text-radar-admin hover:text-radar-evidence" href="/reports">
-            Open reports
-          </Link>
         </div>
       </section>
 
@@ -357,8 +333,8 @@ export default async function AdminIngestionPage() {
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
               Ingestion and understanding outputs can now feed review-only
-              admin queues for radar items, source changes, report candidates,
-              and audit visibility. No scheduled mutation job, live DeepSeek,
+              admin queues for radar items, source changes, and audit
+              visibility. No scheduled mutation job, live DeepSeek,
               source-health history update, or Supabase mutation is started by
               the review route.
             </p>
@@ -422,10 +398,10 @@ export default async function AdminIngestionPage() {
               value={String(config.featureFlags.enableSupabaseWrites)}
             />
             <BoundaryItem
-              detail="GitHub Actions can run dry-run summaries only. Scheduled persistence and report jobs remain disabled."
+              detail="GitHub Actions runs the production refresh on its own write-gated schedule; this admin page cannot start that job."
               label="Scheduled jobs"
               tone="caution"
-              value="dry-run only"
+              value="external workflow"
             />
             <BoundaryItem
               detail="Understanding mock mode is default. Live mode requires an explicit live request and local key."

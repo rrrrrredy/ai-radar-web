@@ -149,7 +149,7 @@ function buildCaveats(loaded: LoadedRadarItems, counts: RadarFeedCounts) {
       ? `${counts.needs_review} 条雷达条目仍待复核，需要人工确认后才能形成高置信度综合判断。`
       : "",
     counts.excluded + counts.failed > 0
-      ? "已排除或失败条目仅用于透明展示，不能作为报告证据。"
+      ? "已排除或失败条目仅用于透明展示，不能作为事件判断证据。"
       : "",
     counts.total === 0
       ? "当前没有检索到可展示的雷达证据。"

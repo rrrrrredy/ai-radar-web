@@ -62,7 +62,7 @@ export function normalizeQuery(rawQuery: string): NormalizedQuery {
   const raw_query = rawQuery.trim();
   const lowered = raw_query.toLowerCase();
   const language = detectLanguage(raw_query);
-  const intent = detectIntent(raw_query);
+  const intent: RetrievalIntent = "unknown";
   const category_hints = detectCategories(raw_query);
   const entity_hints = detectEntities(raw_query);
   const time_phrase_hints = timePhrasePatterns.filter((phrase) => lowered.includes(phrase.toLowerCase()));
@@ -94,14 +94,6 @@ function detectLanguage(value: string): RetrievalLanguage {
 
   if (hasLatin) {
     return "en";
-  }
-
-  return "unknown";
-}
-
-function detectIntent(value: string): RetrievalIntent {
-  if (/报告|周报|日报|report|brief/i.test(value)) {
-    return "report_seed";
   }
 
   return "unknown";

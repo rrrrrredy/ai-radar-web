@@ -61,22 +61,6 @@ const crawlMethods = new Set(["rss", "html", "sitemap", "api", "manual", "x_api_
 const sourceLanguages = new Set(["zh", "en", "mixed", "unknown"]);
 const sourceRegions = new Set(["china", "overseas", "global", "unknown"]);
 const sourceOrigins = new Set(["AI学习资源.md", "official-ai-sources.json"]);
-const reportTypes = new Set(["daily", "weekly"]);
-const publicReportModes = new Set(["saved_candidate", "saved_report"]);
-const publicCandidateStatuses = new Set(["approved", "published"]);
-const publicSavedReportStatuses = new Set(["reviewed", "published"]);
-const forbiddenPublicReportFields = new Set([
-  "api_key",
-  "authorization",
-  "internal_notes",
-  "markdown",
-  "model_metadata",
-  "private_notes",
-  "raw_content",
-  "raw_html",
-  "service_role",
-  "token_usage"
-]);
 
 function walk(dir: string): string[] {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -259,111 +243,10 @@ function validateImportSummary(value: Record<string, unknown> | Array<Record<str
   }
 }
 
-function validatePublicReports() {
-  const reportDir = path.join(root, "data", "public-reports");
-  if (!fs.existsSync(reportDir)) {
-    return 0;
-  }
-
-  const reportFiles = walk(reportDir).filter((file) => file.endsWith(".json"));
-  for (const file of reportFiles) {
-    const parsed = readJson(file);
-    const reports = publicReportRecords(parsed);
-    assert(reports.length > 0, `${path.relative(root, file)} must contain at least one public report`);
-
-    for (const report of reports) {
-      validatePublicReport(report, path.relative(root, file));
-    }
-  }
-
-  return reportFiles.length;
-}
-
-function publicReportRecords(value: Record<string, unknown> | Array<Record<string, unknown>>) {
-  if (Array.isArray(value)) {
-    return value;
-  }
-
-  if (Array.isArray(value.reports)) {
-    return value.reports.filter(isRecord);
-  }
-
-  return [value];
-}
-
-function validatePublicReport(report: Record<string, unknown>, sourceName: string) {
-  assertNoForbiddenPublicReportData(report, sourceName, String(report.id ?? "report"));
-
-  assertString(report.id, `${sourceName} report is missing id`);
-  assertString(report.title, `${sourceName}:${report.id}.title must be a string`);
-  assertEnum(report.report_type, reportTypes, `${sourceName}:${report.id}.report_type is invalid`);
-  assertEnum(report.mode, publicReportModes, `${sourceName}:${report.id}.mode is invalid`);
-
-  if (report.mode === "saved_report") {
-    assertEnum(report.status, publicSavedReportStatuses, `${sourceName}:${report.id}.status is invalid for saved_report`);
-  } else {
-    assertEnum(report.status, publicCandidateStatuses, `${sourceName}:${report.id}.status is invalid for saved_candidate`);
-  }
-
-  assertString(report.summary, `${sourceName}:${report.id}.summary must be a string`);
-  assert(Array.isArray(report.source_item_ids), `${sourceName}:${report.id}.source_item_ids must be an array`);
-  assert(Array.isArray(report.sections), `${sourceName}:${report.id}.sections must be an array`);
-  assert(Array.isArray(report.citations), `${sourceName}:${report.id}.citations must be an array`);
-  assert(typeof report.quality_gate_passed === "boolean", `${sourceName}:${report.id}.quality_gate_passed must be boolean`);
-
-  for (const citation of report.citations) {
-    assert(isRecord(citation), `${sourceName}:${report.id}.citations entries must be objects`);
-    assertString(citation.id, `${sourceName}:${report.id}.citation.id must be a string`);
-    assertString(citation.title, `${sourceName}:${report.id}.citation.title must be a string`);
-    assertString(citation.source_name, `${sourceName}:${report.id}.citation.source_name must be a string`);
-    assertPublicUrl(citation.url, `${report.id}.${citation.id}`, "url", false);
-  }
-}
-
-function assertNoForbiddenPublicReportData(value: unknown, sourceName: string, pathName: string) {
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => assertNoForbiddenPublicReportData(item, sourceName, `${pathName}[${index}]`));
-    return;
-  }
-
-  if (!isRecord(value)) {
-    if (typeof value === "string") {
-      assertNoPrivateUrlsInText(value, sourceName, pathName);
-    }
-    return;
-  }
-
-  for (const [key, nestedValue] of Object.entries(value)) {
-    const normalizedKey = key.toLowerCase();
-    assert(
-      !forbiddenPublicReportFields.has(normalizedKey) && !normalizedKey.startsWith("raw_"),
-      `${sourceName}:${pathName} must not contain ${key}`
-    );
-
-    if (normalizedKey.includes("url") && nestedValue !== null) {
-      if (Array.isArray(nestedValue)) {
-        nestedValue.forEach((entry, index) => assertPublicUrl(entry, `${pathName}.${key}[${index}]`, "url", false));
-      } else {
-        assertPublicUrl(nestedValue, `${pathName}.${key}`, "url", false);
-      }
-    }
-
-    assertNoForbiddenPublicReportData(nestedValue, sourceName, `${pathName}.${key}`);
-  }
-}
-
-function assertNoPrivateUrlsInText(value: string, sourceName: string, pathName: string) {
-  const urls = value.match(/https?:\/\/[^\s)]+/g) ?? [];
-  for (const url of urls) {
-    assert(isPublicInternetHttpUrl(url), `${sourceName}:${pathName} contains a private or local URL`);
-  }
-}
-
 function main() {
   const schemaCount = validateSchemas();
   const seedCount = validateSeedData();
-  const publicReportCount = validatePublicReports();
-  console.log(`Validated ${schemaCount} schema files, ${seedCount} seed data files, and ${publicReportCount} public report file(s).`);
+  console.log(`Validated ${schemaCount} schema files and ${seedCount} seed data files.`);
 }
 
 main();

@@ -23,8 +23,7 @@ export type DeepSeekPurpose =
   | "tagging"
   | "classification"
   | "entity_extraction"
-  | "scoring"
-  | "report_generation";
+  | "scoring";
 
 export type DeepSeekConfig = {
   baseUrl: string;
@@ -127,7 +126,7 @@ export function getDeepSeekConfig(): DeepSeekConfig {
     hasApiKey: deepSeek.hasApiKey,
     intendedUse: {
       fast: ["relevance_filtering", "summarization", "tagging", "classification", "entity_extraction"],
-      smart: ["scoring", "report_generation"]
+      smart: ["scoring"]
     }
   };
 }

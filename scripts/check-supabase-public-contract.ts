@@ -20,6 +20,8 @@ type CheckResult = {
   forbiddenCode?: string;
   forbiddenEvidenceCode?: string;
   forbiddenModelMetadataCode?: string;
+  retiredReportSurfaceStatuses?: Record<string, number>;
+  retiredReportSurfacesRejected?: boolean;
   wrongDomainTableStatuses?: Record<string, number>;
   wrongDomainTablesRejected?: boolean;
   reason?: string;
@@ -61,6 +63,16 @@ async function main() {
       headers
     );
     const selectAll = await requestJson(baseUrl, "public_radar_items?select=*&limit=1", headers);
+    const retiredReportChecks = await Promise.all(
+      retiredReportSurfaces.map(async (surface) => [
+        surface.name,
+        await requestJson(baseUrl, surface.path, headers)
+      ] as const)
+    );
+    const retiredReportSurfaceStatuses = Object.fromEntries(
+      retiredReportChecks.map(([table, result]) => [table, result.status])
+    );
+    const retiredReportSurfacesRejected = retiredReportChecks.every(([, result]) => !result.ok);
     const wrongDomainChecks = await Promise.all(
       wrongDomainTables.map(async (table) => [
         table,
@@ -84,6 +96,7 @@ async function main() {
       !forbidden.ok &&
       !forbiddenEvidence.ok &&
       !forbiddenModelMetadata.ok &&
+      retiredReportSurfacesRejected &&
       wrongDomainTablesRejected &&
       sameStringSet(allowedKeys, ["entities", "id", "local_id"]) &&
       sameStringSet(selectAllKeys, publicRadarItemAllowedKeys) &&
@@ -103,6 +116,8 @@ async function main() {
       forbiddenRejected: !forbidden.ok,
       forbiddenEvidenceRejected: !forbiddenEvidence.ok,
       forbiddenModelMetadataRejected: !forbiddenModelMetadata.ok,
+      retiredReportSurfaceStatuses,
+      retiredReportSurfacesRejected,
       wrongDomainTableStatuses,
       wrongDomainTablesRejected,
       forbiddenCode: isRecord(forbidden.body) ? text(forbidden.body.code) : undefined,
@@ -244,6 +259,16 @@ const wrongDomainTables = [
   "radar_refresh_runs",
   "radar_companies",
   "radar_deferred_surfaces"
+] as const;
+
+const retiredReportSurfaces = [
+  { name: "public_report_candidates", path: "public_report_candidates?select=*&limit=1" },
+  { name: "public_reports", path: "public_reports?select=*&limit=1" },
+  // Query columns that were historically granted individually. A select=* check
+  // can fail merely because one private column is denied while these rows remain
+  // publicly readable, so it is not a sufficient retirement contract by itself.
+  { name: "report_candidates", path: "report_candidates?select=id,title,status&limit=1" },
+  { name: "reports", path: "reports?select=id,title,status&limit=1" }
 ] as const;
 
 function sameStringSet(left: string[], right: string[]) {

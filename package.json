@@ -7,7 +7,7 @@
     "dev": "next dev",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "tsx scripts/smoke-test.ts && tsx scripts/static-local-query.test.ts && tsx scripts/run-resumable-activation.test.ts && tsx scripts/sitemap-fetcher.test.ts && tsx scripts/html-fetcher.test.ts && tsx scripts/event-clustering.test.ts && tsx scripts/cross-family-audit.test.ts && tsx scripts/cluster-events-persistence.test.ts && tsx scripts/report-candidate-signature.test.ts && tsx scripts/report-quality-gates.test.ts && tsx scripts/supabase-radar-read.test.ts",
+    "test": "tsx scripts/smoke-test.ts && tsx scripts/static-local-query.test.ts && tsx scripts/run-resumable-activation.test.ts && tsx scripts/sitemap-fetcher.test.ts && tsx scripts/html-fetcher.test.ts && tsx scripts/event-clustering.test.ts && tsx scripts/cross-family-audit.test.ts && tsx scripts/cluster-events-persistence.test.ts && tsx scripts/supabase-radar-read.test.ts",
     "import:sources": "tsx scripts/import-ai-learning-resources.ts",
     "ingest:sources": "tsx scripts/ingest-sources.ts",
     "ingest:sources:dry-run": "tsx scripts/ingest-sources.ts --dry-run",
@@ -27,13 +27,8 @@
     "ops:dry-run": "tsx scripts/run-operating-loop.ts --mode dry-run",
     "ops:refresh:live": "tsx scripts/run-operating-loop.ts --mode refresh-data --live",
     "ops:refresh:live:persist": "tsx scripts/run-operating-loop.ts --mode refresh-data --live --persist",
-    "ops:reports": "tsx scripts/run-operating-loop.ts --mode generate-reports",
-    "ops:full:dry-run": "tsx scripts/run-operating-loop.ts --mode full",
-    "ops:full:live:persist": "tsx scripts/run-operating-loop.ts --mode full --live --persist",
     "ops:summary": "tsx scripts/write-ops-summary.ts",
     "scheduled:hourly:dry-run": "tsx scripts/run-scheduled-radar-job.ts --mode hourly-dry-run",
-    "scheduled:daily:dry-run": "tsx scripts/run-scheduled-radar-job.ts --mode daily-report-seed",
-    "scheduled:weekly:dry-run": "tsx scripts/run-scheduled-radar-job.ts --mode weekly-report-seed",
     "supabase:import:sources": "tsx scripts/supabase-import-sources.ts",
     "supabase:persist:ingestion": "tsx scripts/supabase-persist-ingestion.ts",
     "supabase:persist:understanding": "tsx scripts/supabase-persist-understanding.ts",
@@ -43,14 +38,6 @@
     "data:completeness:audit": "tsx scripts/audit-data-completeness.ts",
     "events:cluster": "tsx scripts/cluster-events.ts",
     "events:audit-cross-family": "tsx scripts/audit-cross-family-events.ts",
-    "report:generate:daily": "tsx scripts/generate-report.ts --type daily",
-    "report:generate:weekly": "tsx scripts/generate-report.ts --type weekly",
-    "report:generate:daily:live": "tsx scripts/generate-report.ts --type daily --live",
-    "report:generate:weekly:live": "tsx scripts/generate-report.ts --type weekly --live",
-    "report:candidate:daily": "tsx scripts/persist-report-candidate.ts --type daily",
-    "report:candidate:weekly": "tsx scripts/persist-report-candidate.ts --type weekly",
-    "report:candidate:daily:write": "tsx scripts/persist-report-candidate.ts --type daily --write",
-    "report:candidate:weekly:write": "tsx scripts/persist-report-candidate.ts --type weekly --write",
     "auth:bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
     "validate:data": "tsx scripts/validate-schemas.ts",
     "sensitive:scan": "tsx scripts/sensitive-scan.ts",
@@ -67,7 +54,7 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "server-only": "^0.0.1",
-    "ws": "^8.20.1"
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
@@ -80,8 +67,9 @@
     "eslint-config-next": "^15.5.18",
     "postcss": "^8.5.10",
     "tailwindcss": "^3.4.18",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "tsx": "^4.23.1",
+    "typescript": "^5.9.3",
+    "wrangler": "4.112.0"
   },
   "overrides": {
     "postcss": "^8.5.10"

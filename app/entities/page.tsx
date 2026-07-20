@@ -234,9 +234,9 @@ function TrackingQueueItem({ entity }: { entity: EntitySummary }) {
         </Link>
         <Link
           className="rounded-md border border-radar-line bg-white px-3 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
-          href="/reports#evidence-to-report-path"
+          href="/radar#evidence-to-insight"
         >
-          报告路径
+          事件路径
         </Link>
       </div>
     </article>
@@ -350,7 +350,7 @@ function trackingTone(score: number): StatusTone {
 }
 
 function watchTone(label: string): StatusTone {
-  if (label === "报告候选") {
+  if (label === "事件线索") {
     return "evidence";
   }
 

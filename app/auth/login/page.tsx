@@ -24,7 +24,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <h1 className="text-3xl font-semibold text-radar-ink">Sign in</h1>
         <p className="mt-3 text-sm leading-6 text-radar-muted">
           Supabase Email magic links and GitHub OAuth are the supported sign-in
-          paths for editors and admins. Public radar, reports, and entities
+          paths for editors and admins. Public radar and entity pages
           remain available without signing in.
         </p>
       </section>

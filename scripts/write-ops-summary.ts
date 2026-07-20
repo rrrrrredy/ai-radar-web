@@ -7,14 +7,6 @@ import path from "node:path";
 import { loadPublicDataCompletenessSummary } from "@/lib/data-completeness/public-summary";
 import { buildEventLayer } from "@/lib/events/clustering";
 import { loadRadarFeed } from "@/lib/radar/feed";
-import { generateReportDraft } from "@/lib/reports/generate-live-report";
-import {
-  distinctSourcesFromCitations,
-  normalizeReportQualityGate
-} from "@/lib/reports/quality-gates";
-import type { ReportPreviewType, ReportQualityGate } from "@/lib/reports/types";
-import { getSupabaseServerReadClient } from "@/lib/supabase/server-read";
-import { getSupabaseServiceClient, getSupabaseServiceStatus } from "@/lib/supabase/service";
 
 type StepOutcome = "success" | "failure" | "cancelled" | "skipped" | "not_run";
 
@@ -22,7 +14,6 @@ type StepOutcomes = {
   validation: StepOutcome;
   activation: StepOutcome;
   events_cluster: StepOutcome;
-  reports: StepOutcome;
   cloudflare_build: StepOutcome;
   cloudflare_deploy: StepOutcome;
 };
@@ -33,7 +24,6 @@ type CliOptions = {
   mode: "mock" | "live";
   persist: boolean;
   deployCloudflare: boolean;
-  generateReports: boolean;
   runEventsCluster: boolean;
   cloudflareUrl?: string;
   outputDir: string;
@@ -51,13 +41,6 @@ type OpsCounts = {
   needs_review: number | null;
   excluded: number | null;
   failed: number | null;
-  report_candidates: number | null;
-};
-
-type ReportCandidateSummary = {
-  id: string | null;
-  status: string;
-  quality_gate: ReportQualityGate;
 };
 
 type ActivationSummary = {
@@ -112,21 +95,7 @@ async function main() {
     null,
     collectionWarnings
   );
-  const [dailyCandidate, weeklyCandidate, eventClusters] = await Promise.all([
-    safeResult(
-      "Daily report candidate summary",
-      () => latestReportCandidate("daily"),
-      unavailableReportCandidate("daily"),
-      collectionWarnings
-    ),
-    safeResult(
-      "Weekly report candidate summary",
-      () => latestReportCandidate("weekly"),
-      unavailableReportCandidate("weekly"),
-      collectionWarnings
-    ),
-    safeResult("Event cluster count", eventClusterCount, 0, collectionWarnings)
-  ]);
+  const eventClusters = await safeResult("Event cluster count", eventClusterCount, 0, collectionWarnings);
   const failureFamilies = safeCountMap(activation?.failure_families ?? coverage?.failureFamilies ?? {});
   const warnings = uniqueStrings([
     ...options.warnings,
@@ -146,7 +115,6 @@ async function main() {
     mode: options.mode,
     persist: options.persist,
     deploy_cloudflare: options.deployCloudflare,
-    generate_reports: options.generateReports,
     run_events_cluster: options.runEventsCluster,
     counts: {
       before: beforeCounts,
@@ -171,8 +139,6 @@ async function main() {
       "403": failureFamilies["403"] ?? 0,
       rate_limit: failureFamilies.rate_limit ?? 0
     },
-    daily_candidate: dailyCandidate,
-    weekly_candidate: weeklyCandidate,
     step_outcomes: options.outcomes,
     cloudflare_url:
       options.deployCloudflare && options.outcomes.cloudflare_deploy === "success"
@@ -185,7 +151,6 @@ async function main() {
       write_gate_satisfied: options.writeGateSatisfied,
       writes_enabled_for_persist_steps: options.persist && options.writeGateSatisfied,
       event_cluster_persist_requested: options.persist && options.runEventsCluster,
-      report_candidate_writes_requested: options.persist && options.generateReports,
       scheduled_jobs_run: false,
       x_wechat_auto_crawl_run: false,
       source_health_writes_run: false,
@@ -209,14 +174,12 @@ function parseArgs(args: string[]): CliOptions {
   const options: CliOptions = {
     deployCloudflare: false,
     errors: [],
-    generateReports: false,
     mode: "mock",
     outcomes: {
       activation: "not_run",
       cloudflare_build: "not_run",
       cloudflare_deploy: "not_run",
       events_cluster: "not_run",
-      reports: "not_run",
       validation: "not_run"
     },
     outputDir: latestOpsDir,
@@ -252,10 +215,6 @@ function parseArgs(args: string[]): CliOptions {
         options.deployCloudflare = booleanValue(readArg(args, index));
         index += 1;
         break;
-      case "--generate-reports":
-        options.generateReports = booleanValue(readArg(args, index));
-        index += 1;
-        break;
       case "--run-events-cluster":
         options.runEventsCluster = booleanValue(readArg(args, index));
         index += 1;
@@ -274,10 +233,6 @@ function parseArgs(args: string[]): CliOptions {
         break;
       case "--events-cluster-outcome":
         options.outcomes.events_cluster = stepOutcome(readArg(args, index));
-        index += 1;
-        break;
-      case "--reports-outcome":
-        options.outcomes.reports = stepOutcome(readArg(args, index));
         index += 1;
         break;
       case "--cloudflare-build-outcome":
@@ -333,8 +288,7 @@ async function loadCounts(): Promise<OpsCounts> {
     needs_review: coverage.needsReview,
     public_radar_items: coverage.publicRadarItems,
     radar_items: coverage.radarItems,
-    raw_items: coverage.rawItems,
-    report_candidates: coverage.reportCandidates
+    raw_items: coverage.rawItems
   };
 }
 
@@ -355,74 +309,6 @@ function coverageCountsAreConsistent(
   return true;
 }
 
-async function latestReportCandidate(reportType: ReportPreviewType): Promise<ReportCandidateSummary> {
-  const serviceStatus = getSupabaseServiceStatus();
-
-  if (serviceStatus.publicConfigConfigured && serviceStatus.serviceRoleConfigured) {
-    const { data } = await getSupabaseServiceClient()
-      .from("report_candidates")
-      .select("id, report_type, status, source_item_ids, metadata, created_at")
-      .eq("report_type", reportType)
-      .order("created_at", { ascending: false, nullsFirst: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (isRecord(data)) {
-      const metadata = record(data.metadata);
-      const draft = record(metadata.report_draft);
-      return summarizeCandidateDraft(data, draft, reportType);
-    }
-  }
-
-  const supabase = getSupabaseServerReadClient();
-
-  if (supabase) {
-    const { data } = await supabase
-      .from("public_report_candidates")
-      .select("id, report_type, status, source_item_ids, report_draft")
-      .eq("report_type", reportType)
-      .order("created_at", { ascending: false, nullsFirst: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (isRecord(data)) {
-      const draft = record(data.report_draft);
-      return summarizeCandidateDraft(data, draft, reportType);
-    }
-  }
-
-  const feed = await loadRadarFeed();
-  const draft = await generateReportDraft(feed, reportType, { language: "zh", live: false });
-  return {
-    id: null,
-    quality_gate: draft.quality_gate,
-    status: draft.status
-  };
-}
-
-function summarizeCandidateDraft(
-  data: Record<string, unknown>,
-  draft: Record<string, unknown>,
-  reportType: ReportPreviewType
-): ReportCandidateSummary {
-  const citations = citationsFromDraft(draft.citations);
-  const sourceItemCount = stringArray(data.source_item_ids).length || stringArray(draft.source_item_ids).length;
-  const qualityGate = normalizeReportQualityGate(draft.quality_gate, {
-    categoryCount: integer(draft.category_count),
-    categoryGateApplicable: integer(draft.category_count) > 0,
-    citationCount: integer(draft.citation_count, citations.length),
-    distinctSourceCount: integer(draft.distinct_source_count, distinctSourcesFromCitations(citations)),
-    reportType,
-    usableItemCount: integer(draft.usable_item_count, sourceItemCount)
-  });
-
-  return {
-    id: text(data.id) || null,
-    quality_gate: qualityGate,
-    status: qualityGate.passed ? text(data.status) || "draft" : "needs_review"
-  };
-}
-
 function emptyOpsCounts(): OpsCounts {
   return {
     excluded: null,
@@ -431,8 +317,7 @@ function emptyOpsCounts(): OpsCounts {
     needs_review: null,
     public_radar_items: null,
     radar_items: null,
-    raw_items: null,
-    report_candidates: null
+    raw_items: null
   };
 }
 
@@ -444,23 +329,7 @@ function normalizeOpsCounts(value: OpsCounts): OpsCounts {
     needs_review: nullableInteger(value.needs_review),
     public_radar_items: nullableInteger(value.public_radar_items),
     radar_items: nullableInteger(value.radar_items),
-    raw_items: nullableInteger(value.raw_items),
-    report_candidates: nullableInteger(value.report_candidates)
-  };
-}
-
-function unavailableReportCandidate(reportType: ReportPreviewType): ReportCandidateSummary {
-  return {
-    id: null,
-    quality_gate: normalizeReportQualityGate(null, {
-      categoryCount: 0,
-      categoryGateApplicable: false,
-      citationCount: 0,
-      distinctSourceCount: 0,
-      reportType,
-      usableItemCount: 0
-    }),
-    status: "unavailable"
+    raw_items: nullableInteger(value.raw_items)
   };
 }
 
@@ -505,7 +374,6 @@ function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never 
     mode: string;
     persist: boolean;
     deploy_cloudflare: boolean;
-    generate_reports: boolean;
     run_events_cluster: boolean;
     counts: { before: OpsCounts | null; after: OpsCounts };
     status_counts: Record<string, number | null>;
@@ -513,8 +381,6 @@ function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never 
     deepseek_api_calls: number;
     event_clusters: number;
     failure_families: Record<string, number>;
-    daily_candidate: ReportCandidateSummary;
-    weekly_candidate: ReportCandidateSummary;
     step_outcomes: StepOutcomes;
     cloudflare_url: string | null;
     warnings: string[];
@@ -524,7 +390,6 @@ function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never 
       write_gate_satisfied: boolean;
       writes_enabled_for_persist_steps: boolean;
       event_cluster_persist_requested: boolean;
-      report_candidate_writes_requested: boolean;
       summary_redaction_applied: boolean;
     };
   };
@@ -537,7 +402,6 @@ function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never 
     `Mode: ${value.mode}`,
     `Persist: ${yesNo(value.persist)}`,
     `Deploy Cloudflare: ${yesNo(value.deploy_cloudflare)}`,
-    `Generate reports: ${yesNo(value.generate_reports)}`,
     `Run event clustering: ${yesNo(value.run_events_cluster)}`,
     "",
     "## Counts",
@@ -546,7 +410,6 @@ function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never 
     `- Radar items before/after: ${formatNullable(value.counts.before?.radar_items ?? null)} / ${formatNullable(value.counts.after.radar_items)}`,
     `- Public radar items before/after: ${formatNullable(value.counts.before?.public_radar_items ?? null)} / ${formatNullable(value.counts.after.public_radar_items)}`,
     `- Included / needs_review / excluded / failed: ${formatNullable(value.status_counts.included)} / ${formatNullable(value.status_counts.needs_review)} / ${formatNullable(value.status_counts.excluded)} / ${formatNullable(value.status_counts.failed)}`,
-    `- Report candidates before/after: ${formatNullable(value.counts.before?.report_candidates ?? null)} / ${formatNullable(value.counts.after.report_candidates)}`,
     "",
     "## Run",
     "",
@@ -560,14 +423,8 @@ function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never 
     `- Validation: ${value.step_outcomes.validation}`,
     `- Activation: ${value.step_outcomes.activation}`,
     `- Event clustering: ${value.step_outcomes.events_cluster}`,
-    `- Reports: ${value.step_outcomes.reports}`,
     `- Cloudflare build: ${value.step_outcomes.cloudflare_build}`,
     `- Cloudflare deploy: ${value.step_outcomes.cloudflare_deploy}`,
-    "",
-    "## Reports",
-    "",
-    reportLine("Daily", value.daily_candidate),
-    reportLine("Weekly", value.weekly_candidate),
     "",
     "## Cloudflare",
     "",
@@ -579,7 +436,6 @@ function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never 
     `- Write gate satisfied: ${yesNo(value.safety.write_gate_satisfied)}`,
     `- Writes enabled for persist steps: ${yesNo(value.safety.writes_enabled_for_persist_steps)}`,
     `- Event cluster persistence requested: ${yesNo(value.safety.event_cluster_persist_requested)}`,
-    `- Report candidate writes requested: ${yesNo(value.safety.report_candidate_writes_requested)}`,
     `- Summary redaction applied: ${yesNo(value.safety.summary_redaction_applied)}`,
     "",
     "## Warnings",
@@ -591,41 +447,6 @@ function renderMarkdown(summary: Awaited<ReturnType<typeof main>> extends never 
     value.errors.length > 0 ? value.errors.map((error) => `- ${error}`).join("\n") : "- None.",
     ""
   ].join("\n");
-}
-
-function reportLine(label: string, candidate: ReportCandidateSummary) {
-  return `- ${label}: id=${candidate.id ?? "not available"} status=${candidate.status} quality=${candidate.quality_gate.passed ? "passed" : "needs_more_data"} usable=${candidate.quality_gate.usable_item_count} citations=${candidate.quality_gate.citation_count} sources=${candidate.quality_gate.distinct_source_count} categories=${candidate.quality_gate.category_count} reasons=${candidate.quality_gate.reasons.join("; ") || "none"}`;
-}
-
-function citationsFromDraft(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map((citation) => {
-      if (!isRecord(citation)) {
-        return null;
-      }
-
-      const id = text(citation.id);
-      const title = text(citation.title);
-      const sourceName = text(citation.source_name);
-      const url = text(citation.url);
-
-      return id && title && sourceName && url
-        ? {
-            collected_at: text(citation.collected_at) || new Date(0).toISOString(),
-            confidence: 0,
-            id,
-            source_name: sourceName,
-            status: "needs_review" as const,
-            title,
-            url
-          }
-        : null;
-    })
-    .filter((citation): citation is NonNullable<typeof citation> => Boolean(citation));
 }
 
 async function readOptionalJson<T>(filePath: string): Promise<T | null> {
@@ -712,10 +533,6 @@ function publicHttpsUrl(value: string) {
   }
 
   return normalized;
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : {};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

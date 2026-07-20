@@ -883,7 +883,7 @@ function eventCaveats(items: ClusterableRadarItem[], sourceFamilies: string[]) {
     items.length === 1 ? "目前只有单条公开信号，可信度需要后续来源补强。" : "",
     sourceFamilies.length === 1 ? "来源家族仍然集中，需关注是否有独立来源确认。" : "",
     sourceFamilies.length > 1 ? "来源家族不同，但可能转述同一原始声明；尚未建立来源独立性关系。" : "",
-    items.some((item) => item.status === "needs_review") ? "包含待复核信号，报告中应保留不确定性。" : ""
+    items.some((item) => item.status === "needs_review") ? "包含待复核信号，事件判断中应保留不确定性。" : ""
   ].filter(Boolean);
 }
 

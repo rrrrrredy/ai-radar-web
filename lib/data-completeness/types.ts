@@ -62,7 +62,6 @@ export type PublicDataCompletenessSummary = {
   needsReview: number | null;
   excluded: number | null;
   failedRadarItems: number | null;
-  reportCandidates: number | null;
   latestRefresh: string | null;
   latestIngestion: string | null;
   latestUnderstanding: string | null;

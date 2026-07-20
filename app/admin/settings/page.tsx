@@ -10,7 +10,7 @@ type ConfigRow = {
   boundary: string;
   detail: string;
   keyName: string;
-  status: boolean | "setup placeholder" | "dry-run only";
+  status: boolean | "setup placeholder" | "daily guarded refresh";
   tone?: StatusTone;
 };
 
@@ -70,10 +70,10 @@ export default function AdminSettingsPage() {
     },
     {
       boundary: "Scheduled jobs",
-      detail: "GitHub Actions runs dry-run summaries only. Scheduled persistence and report jobs stay disabled.",
-      keyName: ".github/workflows/radar-scheduled-dry-run.yml",
-      status: "dry-run only",
-      tone: "caution"
+      detail: "GitHub Actions runs a daily guarded refresh at 08:17 Asia/Shanghai, followed by strict snapshot and deployment verification.",
+      keyName: ".github/workflows/radar-refresh-cloudflare.yml",
+      status: "daily guarded refresh",
+      tone: "success"
     },
     {
       boundary: "X API placeholder",

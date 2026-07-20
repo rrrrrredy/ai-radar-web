@@ -15,7 +15,7 @@ const sections = [
     boundary: "review-only",
     href: "/admin/review",
     title: "Review queue",
-    description: "Inspect radar review needs, missing public URLs, source-change previews, report candidates, and audit rows.",
+    description: "Inspect radar review needs, missing public URLs, source-change previews, and audit rows.",
     metric: "workflow foundation",
     tone: "caution" as const
   },
@@ -236,7 +236,7 @@ export default function AdminPage() {
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
               These links inspect public read surfaces only. They do not create
-              review tasks, publish reports, run live models, or mutate Supabase.
+              review tasks, publish content, run live models, or mutate Supabase.
             </p>
           </div>
           <StatusChip label="Read-only" tone="success" />
@@ -247,12 +247,6 @@ export default function AdminPage() {
             href="/radar?status=needs_review"
           >
             Review needs_review radar rows
-          </Link>
-          <Link
-            className="rounded-md border border-radar-line bg-white px-3 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
-            href="/reports"
-          >
-            Inspect report previews
           </Link>
         </div>
       </section>

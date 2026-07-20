@@ -12,7 +12,14 @@ const snapshot = JSON.parse(
   fs.readFileSync(path.join(outputRoot, "data", "radar-snapshot.json"), "utf8")
 ) as {
   curated_events?: Array<{ event_cluster_id: string }>;
-  event_clusters?: Array<{ event_cluster_id: string; source_count: number }>;
+  event_clusters?: Array<{
+    event_cluster_id: string;
+    event_score_label: string;
+    first_seen_at?: string;
+    latest_seen_at?: string;
+    source_count: number;
+  }>;
+  freshness?: { latest_timestamp?: string };
 };
 
 test("an exact event question does not pull unrelated high-scoring events", async () => {
@@ -29,11 +36,26 @@ test("an exact event question does not pull unrelated high-scoring events", asyn
 
 test("bare Chinese today intent enforces the 24-hour evidence window", async () => {
   const askHtml = await runLocalTool("ask", "今天有哪些高优先级事件？", "zh");
+  const anchor = Date.parse(snapshot.freshness?.latest_timestamp ?? "");
+  const lowerBound = anchor - 24 * 60 * 60 * 1000;
+  const expectedIds = new Set(
+    (snapshot.event_clusters ?? [])
+      .filter((event) => {
+        const timestamp = Date.parse(event.latest_seen_at ?? event.first_seen_at ?? "");
+        return event.event_score_label === "高优先级" && timestamp >= lowerBound && timestamp <= anchor + 5 * 60 * 1000;
+      })
+      .map((event) => event.event_cluster_id)
+  );
+  const resultIds = Array.from(askHtml.matchAll(/data-event-id="([^"]+)"/g), (match) => match[1]);
 
-  assert.match(askHtml, /GPT-Red/i);
-  assert.doesNotMatch(askHtml, /Anthropic found a hidden space/i);
   assert.doesNotMatch(askHtml, /T\d{2}:\d{2}:\d{2}/);
-  assert.equal(countMatches(askHtml, /<li\b[^>]*data-event-id=/g), 1);
+  if (expectedIds.size === 0) {
+    assert.match(askHtml, /指定时间窗口内没有高优先级事件/);
+    assert.equal(resultIds.length, 0);
+  } else {
+    assert.ok(resultIds.length > 0);
+    assert.equal(resultIds.every((eventId) => expectedIds.has(eventId)), true);
+  }
 });
 
 test("an explicit Chinese count returns exactly the requested number of events", async () => {
@@ -62,9 +84,11 @@ test("source health renders numeric zeroes and a reader-friendly timestamp", asy
   assert.match(html, /Reason summary/);
 });
 
-test("public report routes are retired while report data stays available to internal workflows", () => {
+test("retired legacy report URLs stay 404 and the public snapshot carries no report payload", () => {
   assert.equal(fs.existsSync(path.join(outputRoot, "reports", "index.html")), false);
   assert.equal(fs.existsSync(path.join(outputRoot, "en", "reports", "index.html")), false);
+  assert.equal(Object.hasOwn(snapshot, "reports"), false);
+  assert.equal(Object.hasOwn(snapshot, "report_quality_summary"), false);
   const redirects = fs.readFileSync(path.join(outputRoot, "_redirects"), "utf8");
   const worker = fs.readFileSync(path.join(outputRoot, "_worker.js"), "utf8");
   assert.match(redirects, /^\/reports\/ \/404\.html 404$/m);

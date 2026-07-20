@@ -9,7 +9,6 @@ import {
   loadProductDataSummary
 } from "@/lib/product/data-summary";
 import { evidenceFreshnessStatus } from "@/lib/product/freshness";
-import type { ReportWorkflowDocument } from "@/lib/reports/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -47,12 +46,6 @@ export default async function HomePage() {
             </Link>
             <Link
               className="rounded-md border border-radar-line px-4 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
-              href="/reports"
-            >
-              查看报告
-            </Link>
-            <Link
-              className="rounded-md border border-radar-line px-4 py-2 text-sm font-semibold text-radar-ink hover:border-radar-evidence hover:text-radar-evidence"
               href="/ask"
             >
               围绕精选提问
@@ -73,10 +66,7 @@ export default async function HomePage() {
 
       <IntelligenceWorkflow summary={summary} />
 
-      <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <RadarPulse summary={summary} />
-        <LatestReports summary={summary} />
-      </section>
+      <RadarPulse summary={summary} />
 
       <RelationshipPreview summary={summary} />
 
@@ -97,7 +87,6 @@ function PublicCoveragePanel({ summary }: { summary: ProductDataSummary }) {
     { label: "公开来源", value: formatCount(coverage.sourcesWithPublicItems), tone: "success" as const },
     { label: "公开条目", value: formatCount(coverage.publicRadarItems), tone: "success" as const },
     { label: "失败/跳过", value: coverage.failedSources + coverage.skippedSources, tone: "risk" as const },
-    { label: "报告候选", value: formatCount(summary.counts.reportCandidates), tone: "admin" as const },
     { label: "引用", value: summary.counts.citations, tone: "neutral" as const }
   ];
 
@@ -140,13 +129,10 @@ function ReaderDecisionSummary({
   freshnessIsStale: boolean;
   summary: ProductDataSummary;
 }) {
-  const formalReports = formalPublicReportCount(summary);
-  const availableReports = [summary.reports.daily, summary.reports.weekly].filter(Boolean).length;
-  const evidenceDrafts = Math.max(0, availableReports - formalReports);
   const topCategory = summary.topCategories[0]?.label ?? "待补";
   const multiSourceHint =
     summary.eventCount > 0
-      ? `先读事件层，再进入实体页确认是否有多来源和报告引用。`
+      ? `先读事件层，再进入实体页确认是否有多来源引用。`
       : "当前事件层不足，先从雷达列表和来源覆盖判断是否需要补证据。";
 
   return (
@@ -163,7 +149,7 @@ function ReaderDecisionSummary({
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <DecisionCard label="优先阅读" text={`${summary.eventCount} 个事件，当前量级最高的分类是 ${topCategory}。`} />
         <DecisionCard label="证据边界" text={`${summary.counts.included} 条已纳入，${summary.counts.needsReview} 条待复核；结论优先使用已纳入证据。`} />
-        <DecisionCard label="报告状态" text={`正式报告 ${formalReports} 份，证据草稿 ${evidenceDrafts} 份；草稿只用于看缺口。`} />
+        <DecisionCard label="来源覆盖" text={`${formatCount(summary.coverage.sourcesWithPublicItems)} 个来源已有公开条目，可继续核对来源独立性。`} />
         <DecisionCard label="下一步" text={multiSourceHint} />
       </div>
     </section>
@@ -274,7 +260,6 @@ function ReaderCompass({ summary }: { summary: ProductDataSummary }) {
 }
 
 function IntelligenceWorkflow({ summary }: { summary: ProductDataSummary }) {
-  const formalReportCount = formalPublicReportCount(summary);
   const steps = [
     {
       detail: formatCount(summary.coverage.sourcesWithPublicItems),
@@ -295,10 +280,10 @@ function IntelligenceWorkflow({ summary }: { summary: ProductDataSummary }) {
       tone: "admin" as const
     },
     {
-      detail: formalReportCount,
-      label: "已审核/发布",
-      text: "未审核候选不进入公开报告；没有发布记录时只显示证据草稿。",
-      tone: formalReportCount > 0 ? "success" as const : "caution" as const
+      detail: summary.counts.citations,
+      label: "引用回溯",
+      text: "读者可通过引用回到原始来源，核对事件判断和证据边界。",
+      tone: summary.counts.citations > 0 ? "success" as const : "caution" as const
     }
   ];
 
@@ -311,8 +296,8 @@ function IntelligenceWorkflow({ summary }: { summary: ProductDataSummary }) {
             AI Radar 的公开内容从证据出发，不把模型生成文本直接当作产品结论。
           </p>
         </div>
-        <Link className="text-sm font-semibold text-radar-evidence" href="/reports">
-          查看报告状态
+        <Link className="text-sm font-semibold text-radar-evidence" href="/radar">
+          查看全部事件
         </Link>
       </div>
       <div className="mt-5 grid gap-3 md:grid-cols-4">
@@ -682,61 +667,6 @@ function RadarPulse({ summary }: { summary: ProductDataSummary }) {
   );
 }
 
-function LatestReports({ summary }: { summary: ProductDataSummary }) {
-  const reports = [summary.reports.daily, summary.reports.weekly].filter(
-    (report): report is ReportWorkflowDocument => Boolean(report)
-  );
-  const formalCount = reports.filter(isFormalPublicReport).length;
-  const draftCount = reports.length - formalCount;
-
-  return (
-    <aside className="space-y-4">
-      <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-2xl font-semibold text-radar-ink">报告状态</h2>
-          <StatusChip label="已审核/发布" tone={formalCount > 0 ? "success" : "caution"} value={formalCount} />
-          <StatusChip label="证据草稿" tone="caution" value={draftCount} />
-        </div>
-        <p className="mt-2 text-sm leading-6 text-radar-muted">
-          已审核或已发布报告可作为正式公开内容；证据草稿只用于理解当前证据，不等同于发布结论。
-        </p>
-      </div>
-      {reports.map((report) => (
-        <Link
-          className="block rounded-lg border border-radar-line bg-white p-4 shadow-soft hover:border-radar-evidence"
-          href={`/reports?type=${report.report_type}`}
-          key={report.report_type}
-        >
-          <div className="flex flex-wrap gap-2">
-            <StatusChip label={report.report_type === "weekly" ? "周报" : "日报"} tone="evidence" />
-            <StatusChip label={reportKindLabel(report)} tone={isFormalPublicReport(report) ? "success" : "caution"} />
-            <StatusChip label={report.quality_gate_passed ? "质量通过" : "需要更多数据"} tone={report.quality_gate_passed ? "success" : "caution"} />
-            <StatusChip label={statusLabel(report.status)} tone={statusTone(report.status)} />
-            <EvidenceBadge detail={String(report.citations.length)} kind="citation" label="引用" />
-            <EvidenceBadge detail={String(report.usable_item_count)} kind="evidence" label="可用" />
-            <EvidenceBadge detail={`${report.distinct_source_count}/${report.category_count}`} kind="freshness" label="来源/类别" />
-          </div>
-          <h3 className="mt-3 text-base font-semibold leading-7 text-radar-ink">
-            {report.title}
-          </h3>
-          <p className="mt-2 text-sm leading-6 text-radar-muted">
-            {report.one_sentence_summary}
-          </p>
-          <p className="mt-3 text-xs leading-5 text-radar-muted">
-            时间窗口: {formatTimestamp(report.time_window.start)} 至 {formatTimestamp(report.time_window.end)}
-          </p>
-        </Link>
-      ))}
-      <Link
-        className="inline-flex rounded-md bg-radar-ink px-4 py-2 text-sm font-semibold text-white hover:bg-black"
-        href="/reports"
-      >
-        打开报告状态
-      </Link>
-    </aside>
-  );
-}
-
 function RelationshipPreview({ summary }: { summary: ProductDataSummary }) {
   const categories = summary.topCategories.slice(0, 5);
   const sources = summary.topSources.slice(0, 5);
@@ -747,7 +677,7 @@ function RelationshipPreview({ summary }: { summary: ProductDataSummary }) {
         <div>
           <h2 className="text-2xl font-semibold text-radar-ink">关系预览</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
-            轻量关系图展示当前公开雷达条目如何连接来源、类别和已保存报告候选。
+            轻量关系图展示当前公开雷达条目如何连接来源、类别和事件。
           </p>
         </div>
         <StatusChip label="关系图预览" tone="admin" value="真实计数" />
@@ -788,7 +718,7 @@ function RelationshipPreview({ summary }: { summary: ProductDataSummary }) {
         <aside className="space-y-3">
           <GraphLegendRow label="类别节点" value={categories.length} tone="freshness" />
           <GraphLegendRow label="来源节点" value={sources.length} tone="admin" />
-          <GraphLegendRow label="报告节点" value={summary.reports.savedCount} tone="evidence" />
+          <GraphLegendRow label="事件节点" value={summary.eventCount} tone="evidence" />
           <div className="rounded-md border border-radar-caution/30 bg-radar-caution/5 p-3 text-sm leading-6 text-radar-caution">
             关系深度目前仅限公开安全的检索字段。实体抽取可在后续里程碑继续加深。
           </div>
@@ -807,9 +737,9 @@ function QueryHubPanel({ summary }: { summary: ProductDataSummary }) {
   const prompts = [
     ...categoryQueries,
     {
-      href: "/reports",
-      label: "检查哪些信号已经支撑正式报告",
-      meta: `${summary.reports.savedCount} 份已审核/发布`
+      href: "/radar",
+      label: "查看全部公开事件和来源",
+      meta: `${summary.eventCount} 个事件`
     }
   ];
 
@@ -820,7 +750,7 @@ function QueryHubPanel({ summary }: { summary: ProductDataSummary }) {
         <DataSourceChip source={summary.dataSource} />
       </div>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-radar-muted">
-        从当前数据结构出发，进入雷达筛选、实体跟踪或报告核查流程。
+        从当前数据结构出发，进入雷达筛选、实体跟踪或来源核查流程。
       </p>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         {prompts.map((prompt, index) => (
@@ -872,12 +802,8 @@ function publicText(value: string) {
       "此页面是公开只读情报快照，不提供账号、后台操作或写入能力。"
     )
     .replace(
-      "Only public-safe radar and report fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
-      "只纳入可公开引用的雷达和报告字段；私有原文、内部备注和凭据均不展示。"
-    )
-    .replace(
-      "只纳入公开安全的雷达和报告字段；私有原文、供应商元数据、内部备注、service-role 访问和密钥均已排除。",
-      "只纳入可公开引用的雷达和报告字段；私有原文、内部备注和凭据均不展示。"
+      "Only public-safe radar fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
+      "只纳入可公开引用的雷达字段；私有原文、内部备注和凭据均不展示。"
     )
     .replace(
       "Snapshot data came from Supabase public-safe read views using anon read access.",
@@ -902,7 +828,7 @@ function DataFreshnessAlert({ warning }: { warning: string }) {
     <section className="rounded-lg border border-radar-caution/40 bg-radar-caution/10 p-4 text-sm leading-6 text-radar-caution">
       <strong className="text-radar-ink">数据新鲜度提示：</strong>
       <span className="ml-1">{warning}</span>
-      <span className="ml-1">雷达、实体和报告都只基于这批公开证据。</span>
+      <span className="ml-1">雷达和实体都只基于这批公开证据。</span>
     </section>
   );
 }
@@ -1070,30 +996,6 @@ function statusLabel(status: string) {
     reviewed: "已复核"
   };
   return labels[status] ?? status;
-}
-
-function isFormalPublicReport(report: ReportWorkflowDocument | null | undefined) {
-  if (!report) {
-    return false;
-  }
-
-  return report.mode === "saved_report" && (report.status === "reviewed" || report.status === "published");
-}
-
-function formalPublicReportCount(summary: ProductDataSummary) {
-  return [summary.reports.daily, summary.reports.weekly].filter(isFormalPublicReport).length;
-}
-
-function reportKindLabel(report: ReportWorkflowDocument) {
-  if (isFormalPublicReport(report)) {
-    return report.status === "published" ? "已发布报告" : "已审核报告";
-  }
-
-  if (report.mode === "saved_candidate") {
-    return report.status === "published" ? "已发布候选" : "已批准候选";
-  }
-
-  return "证据草稿";
 }
 
 function metricToneClass(tone: StatusTone) {

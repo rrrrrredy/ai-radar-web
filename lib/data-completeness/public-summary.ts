@@ -16,8 +16,6 @@ import type { UnderstandingStatus } from "@/lib/understanding/types";
 
 export type { PublicCoverageRates, PublicDataCompletenessSummary } from "@/lib/data-completeness/types";
 
-type CountResult = number | { error: string };
-
 type SourceRow = {
   id: string;
   slug: string | null;
@@ -93,13 +91,12 @@ export async function loadPublicDataCompletenessSummary(): Promise<PublicDataCom
 
   try {
     const supabase = getSupabaseServiceClient();
-    const [sourceRows, rawRows, radarRows, publicRows, reportCandidates, ingestionRuns, latestUnderstanding] =
+    const [sourceRows, rawRows, radarRows, publicRows, ingestionRuns, latestUnderstanding] =
       await Promise.all([
         selectAll<SourceRow>("sources", "id, slug"),
         selectAll<RawItemRow>("raw_items", "source_id, source_snapshot"),
         selectAll<RadarItemRow>("radar_items", "raw_item_id, source_id, understanding_status, exclusion_reason"),
         selectAll<PublicRadarItemRow>("public_radar_items", "source_id"),
-        exactCount("report_candidates"),
         supabase
           .from("ingestion_runs")
           .select("local_run_id, started_at, finished_at, metadata")
@@ -117,7 +114,6 @@ export async function loadPublicDataCompletenessSummary(): Promise<PublicDataCom
       rawRows.warning,
       radarRows.warning,
       publicRows.warning,
-      typeof reportCandidates === "object" ? reportCandidates.error : "",
       ingestionRuns.error ? `Latest ingestion run read failed: ${sanitizeReason(ingestionRuns.error.message)}` : "",
       latestUnderstanding.error
         ? `Latest understanding run read failed: ${sanitizeReason(latestUnderstanding.error.message)}`
@@ -206,7 +202,6 @@ export async function loadPublicDataCompletenessSummary(): Promise<PublicDataCom
       radarItems: radarRows.rows.length,
       rawItems: rawRows.rows.length,
       rawItemsWithRadarItems: radarRawIds.size,
-      reportCandidates: typeof reportCandidates === "number" ? reportCandidates : null,
       skippedSourceReasons,
       skippedSources,
       sourcesWithPublicItems: publicSourceSlugs.size,
@@ -254,7 +249,6 @@ function emptySummary(input: {
     radarItems: null,
     rawItems: null,
     rawItemsWithRadarItems: null,
-    reportCandidates: null,
     skippedSourceReasons: {},
     skippedSources: 0,
     sourceFamilyHealth: input.sourceFamilyHealth,
@@ -303,19 +297,6 @@ async function selectAll<T>(table: string, columns: string): Promise<{ rows: T[]
     rows,
     warning: ""
   };
-}
-
-async function exactCount(table: string): Promise<CountResult> {
-  const supabase = getSupabaseServiceClient();
-  const { count, error } = await supabase.from(table).select("id", { count: "exact", head: true });
-
-  if (error) {
-    return {
-      error: `${table} count failed: ${sanitizeReason(error.message)}`
-    };
-  }
-
-  return count ?? 0;
 }
 
 function rawSourceSlug(row: RawItemRow, sourceIdToSlug: Map<string, string>) {

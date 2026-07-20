@@ -239,7 +239,7 @@ function watchLabel(entity: EntitySummary) {
   }
 
   if (entity.sourceCounts.size >= 2 && entity.totalSignals >= 3) {
-    return "报告候选";
+    return "事件线索";
   }
 
   return "补证据";

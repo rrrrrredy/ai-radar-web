@@ -60,6 +60,7 @@ export type CliOptions = {
   limit: number | null;
   chunkSize: number;
   maxItemsPerSource: number;
+  rotationOffset: number;
   sourceIds: string[] | null;
   persist: boolean;
   resume: boolean;
@@ -154,7 +155,6 @@ type SupabaseCounts = {
   scores: number | null;
   ingestion_runs: number | null;
   understanding_runs: number | null;
-  report_candidates: number | null;
   warnings: string[];
 };
 
@@ -184,19 +184,40 @@ async function main() {
   await fs.mkdir(latestDir, { recursive: true });
   await fs.mkdir(runsDir, { recursive: true });
 
-  const storedCheckpoint = options.resume && fsSync.existsSync(checkpointPath)
+  let storedCheckpoint = options.resume && fsSync.existsSync(checkpointPath)
     ? await readJson<ActivationCheckpoint>(checkpointPath)
     : null;
-  const initialSources = storedCheckpoint ? null : selectedSourcesForOptions(options);
-  const resumeSourceIds = storedCheckpoint
+  let initialSources = storedCheckpoint ? null : selectedSourcesForOptions(options);
+  let resumeSourceIds = storedCheckpoint
     ? expandedResumeSourceIds(storedCheckpoint, options)
     : undefined;
-  const checkpoint = storedCheckpoint
+  let checkpoint = storedCheckpoint
     ? resolveResumeCheckpoint(storedCheckpoint, options, new Date().toISOString(), resumeSourceIds)
     : initializeCheckpoint(options, initialSources ?? []);
-  const selectedSources = storedCheckpoint
-    ? selectedSourcesForCheckpoint(checkpoint)
-    : initialSources ?? [];
+  let selectedSources: SelectedSource[];
+
+  if (storedCheckpoint) {
+    try {
+      selectedSources = selectedSourcesForCheckpoint(checkpoint);
+    } catch (error) {
+      if (process.env.ACTIVATION_RESET_INVALID_CHECKPOINT !== "true") {
+        throw error;
+      }
+
+      await fs.rm(latestDir, { force: true, recursive: true });
+      await fs.mkdir(latestDir, { recursive: true });
+      storedCheckpoint = null;
+      resumeSourceIds = undefined;
+      initialSources = selectedSourcesForOptions(options);
+      checkpoint = initializeCheckpoint(options, initialSources);
+      selectedSources = initialSources;
+      checkpoint.warnings.push(
+        `Discarded an incompatible activation checkpoint: ${sanitizeLogValue(error instanceof Error ? error.message : String(error))}`
+      );
+    }
+  } else {
+    selectedSources = initialSources ?? [];
+  }
   const sourceById = new Map(selectedSources.map((source) => [source.id, source]));
   const registryById = new Map(readCleanedSources().map((source) => [source.id, source]));
   const chunks = chunkArray(checkpoint.selected_source_ids.slice(0, checkpoint.limit), checkpoint.chunk_size);
@@ -249,9 +270,41 @@ async function main() {
     printSummary(summary);
   }
 
-  if (persistFailed) {
+  if (persistFailed || hasBlockingActivationFailure(summary.totals, options)) {
     process.exitCode = 1;
   }
+}
+
+export function hasBlockingActivationFailure(
+  totals: {
+    chunks_total: number;
+    chunks_attempted: number;
+    chunks_processing_failed: number;
+    chunks_persisted: number;
+    chunks_persist_failed: number;
+    chunks_pending_persistence: number;
+  },
+  options: Pick<CliOptions, "maxChunks" | "persist">
+) {
+  if (totals.chunks_processing_failed > 0 || totals.chunks_persist_failed > 0) {
+    return true;
+  }
+
+  // --max-chunks is the explicit resumable/partial-run escape hatch. A normal
+  // production run must process every planned chunk and, when persistence is
+  // requested, persist every one before the process may exit successfully.
+  if (options.maxChunks !== null) {
+    return false;
+  }
+
+  if (totals.chunks_attempted !== totals.chunks_total) {
+    return true;
+  }
+
+  return options.persist && (
+    totals.chunks_persisted !== totals.chunks_total ||
+    totals.chunks_pending_persistence > 0
+  );
 }
 
 export function parseArgs(args: string[]): CliOptions {
@@ -261,6 +314,7 @@ export function parseArgs(args: string[]): CliOptions {
     limit: null,
     chunkSize: 5,
     maxItemsPerSource: 3,
+    rotationOffset: 0,
     sourceIds: null,
     persist: false,
     resume: false,
@@ -291,6 +345,10 @@ export function parseArgs(args: string[]): CliOptions {
         break;
       case "--max-items-per-source":
         options.maxItemsPerSource = readNumberArg(args, index);
+        index += 1;
+        break;
+      case "--rotation-offset":
+        options.rotationOffset = readNonNegativeNumberArg(args, index);
         index += 1;
         break;
       case "--source-id":
@@ -355,6 +413,14 @@ function readNumberArg(args: string[], index: number) {
   return Math.floor(value);
 }
 
+function readNonNegativeNumberArg(args: string[], index: number) {
+  const value = Number(readStringArg(args, index));
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${args[index]} must be a non-negative safe integer.`);
+  }
+  return value;
+}
+
 function selectedSourcesForOptions(options: CliOptions) {
   if (options.sourceIds?.length) {
     const sources = options.sourceIds.flatMap((sourceId) =>
@@ -375,8 +441,9 @@ function selectedSourcesForOptions(options: CliOptions) {
     return sources;
   }
 
+  const requestedLimit = options.limit ?? 10;
   const selection = selectSources({
-    limit: options.limit ?? 10,
+    limit: Number.MAX_SAFE_INTEGER,
     method: DEFAULT_SELECTION_OPTIONS.method,
     maxItemsPerSource: options.maxItemsPerSource
   });
@@ -385,7 +452,28 @@ function selectedSourcesForOptions(options: CliOptions) {
     throw new Error("No eligible sources were selected for activation.");
   }
 
-  return selection.sources;
+  return rotateSourceSelection(selection.sources, requestedLimit, options.rotationOffset);
+}
+
+export function rotateSourceSelection<T>(
+  sources: readonly T[],
+  limit: number,
+  rotationOffset: number,
+  coreCount = 10
+) {
+  const requested = Math.max(0, Math.min(Math.floor(limit), sources.length));
+  const coreSize = Math.min(requested, Math.max(0, Math.floor(coreCount)));
+  const core = sources.slice(0, coreSize);
+  const tail = sources.slice(coreSize);
+  const tailNeeded = requested - core.length;
+
+  if (tailNeeded < 1 || tail.length < 1) {
+    return [...core];
+  }
+
+  const offset = ((Math.floor(rotationOffset) % tail.length) + tail.length) % tail.length;
+  const rotatedTail = [...tail.slice(offset), ...tail.slice(0, offset)];
+  return [...core, ...rotatedTail.slice(0, tailNeeded)];
 }
 
 function selectedSourcesForCheckpoint(checkpoint: ActivationCheckpoint) {
@@ -429,14 +517,19 @@ function expandedResumeSourceIds(checkpoint: ActivationCheckpoint, options: CliO
   }
 
   const selection = selectSources({
-    limit: options.limit,
+    limit: Number.MAX_SAFE_INTEGER,
     method: DEFAULT_SELECTION_OPTIONS.method,
     maxItemsPerSource: checkpoint.max_items_per_source
   });
+  const rotatedSelection = rotateSourceSelection(
+    selection.sources,
+    options.limit,
+    options.rotationOffset
+  );
 
   return uniqueMessages([
     ...checkpoint.selected_source_ids,
-    ...selection.sources.map((source) => source.id)
+    ...rotatedSelection.map((source) => source.id)
   ]);
 }
 
@@ -1355,7 +1448,6 @@ async function loadSupabaseCounts(): Promise<SupabaseCounts> {
     scores: null,
     ingestion_runs: null,
     understanding_runs: null,
-    report_candidates: null,
     warnings: []
   };
 
@@ -1381,8 +1473,7 @@ async function loadSupabaseCounts(): Promise<SupabaseCounts> {
       "item_entities",
       "scores",
       "ingestion_runs",
-      "understanding_runs",
-      "report_candidates"
+      "understanding_runs"
     ] as const;
     const tableCounts = await Promise.all(tableNames.map((table) => exactCount(supabase, table)));
     const countsByTable = Object.fromEntries(tableCounts.map((result) => [result.table, result.count]));
@@ -1467,7 +1558,6 @@ function printSummary(summary: Awaited<ReturnType<typeof buildSummary>>) {
   console.log(`Checkpoint: ${relative(checkpointPath)}`);
   console.log(`Summary: ${relative(summaryPath)}`);
   console.log(`Supabase public_radar_items: ${formatNullable(summary.supabase_counts.public_radar_items)}`);
-  console.log(`Supabase report_candidates: ${formatNullable(summary.supabase_counts.report_candidates)}`);
 
   if (summary.warnings.length > 0 || summary.supabase_counts.warnings.length > 0) {
     console.log("Warnings/caveats:");

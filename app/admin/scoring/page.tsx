@@ -49,7 +49,7 @@ const thresholds = [
     range: "relevance < 0.35",
     outcome: "excluded",
     tone: "risk" as const,
-    rationale: "Low AI relevance is excluded before ranking, reports, or entity surfaces can treat it as signal."
+    rationale: "Low AI relevance is excluded before ranking or entity surfaces can treat it as signal."
   },
   {
     range: "0.35 <= relevance < 0.60",
@@ -95,7 +95,7 @@ export default function AdminScoringPage() {
         <p className="mt-3 max-w-3xl text-sm leading-6 text-radar-muted">
           Understanding output is validated and scored, but the model is not the
           final authority. Code thresholds, source credibility, and review states
-          control inclusion before retrieval, report, or entity surfaces use items.
+          control inclusion before retrieval or entity surfaces use items.
         </p>
       </section>
 
@@ -116,7 +116,7 @@ export default function AdminScoringPage() {
           value="0.35-0.60"
         />
         <AdminStatusCard
-          detail="Low relevance is excluded before inclusion or report/entity surfaces."
+          detail="Low relevance is excluded before inclusion or entity surfaces."
           label="Exclude"
           tone="risk"
           value="< 0.35"
@@ -220,7 +220,7 @@ export default function AdminScoringPage() {
             tone="evidence"
           />
           <BoundaryItem
-            detail="needs_review evidence must remain visually cautious in retrieval, entities, and reports."
+            detail="needs_review evidence must remain visually cautious in retrieval and entity surfaces."
             label="Review state"
             tone="caution"
           />

@@ -4,9 +4,11 @@ import type { IngestionSourceSummary } from "@/lib/ingestion/types";
 import {
   aggregateFailureFamilies,
   aggregateSourceFamilyStatuses,
+  hasBlockingActivationFailure,
   itemCountsBySourceFamily,
   parseArgs,
   resolveResumeCheckpoint,
+  rotateSourceSelection,
   type ActivationCheckpoint,
   type ChunkCheckpoint
 } from "@/scripts/run-resumable-activation";
@@ -28,6 +30,13 @@ const liveCheckpoint: ActivationCheckpoint = {
 const defaultOptions = parseArgs([]);
 assert.equal(defaultOptions.mode, "mock", "new runs must retain the existing mock default");
 assert.equal(defaultOptions.modeExplicit, false);
+assert.equal(defaultOptions.rotationOffset, 0);
+assert.equal(parseArgs(["--rotation-offset", "40"]).rotationOffset, 40);
+assert.deepEqual(
+  rotateSourceSelection(["core-a", "core-b", "tail-a", "tail-b", "tail-c", "tail-d"], 4, 2, 2),
+  ["core-a", "core-b", "tail-c", "tail-d"],
+  "daily rotation must keep core sources while rotating the long tail"
+);
 
 const implicitResume = resolveResumeCheckpoint(
   liveCheckpoint,
@@ -115,6 +124,44 @@ const failureFamilies = aggregateFailureFamilies([
   { failure_families: { timeout: 2 } }
 ]);
 assert.deepEqual(failureFamilies, { timeout: 3, rate_limit: 2 });
+
+const completePersistedTotals = {
+  chunks_total: 2,
+  chunks_attempted: 2,
+  chunks_processing_failed: 0,
+  chunks_persisted: 2,
+  chunks_persist_failed: 0,
+  chunks_pending_persistence: 0
+};
+assert.equal(
+  hasBlockingActivationFailure(completePersistedTotals, { maxChunks: null, persist: true }),
+  false,
+  "a fully persisted production activation may succeed"
+);
+assert.equal(
+  hasBlockingActivationFailure(
+    { ...completePersistedTotals, chunks_processing_failed: 1, chunks_persisted: 1 },
+    { maxChunks: null, persist: true }
+  ),
+  true,
+  "processing failures must fail the process even when persistence itself did not throw"
+);
+assert.equal(
+  hasBlockingActivationFailure(
+    { ...completePersistedTotals, chunks_attempted: 1, chunks_persisted: 1 },
+    { maxChunks: null, persist: true }
+  ),
+  true,
+  "an ordinary production run must not succeed with unattempted chunks"
+);
+assert.equal(
+  hasBlockingActivationFailure(
+    { ...completePersistedTotals, chunks_attempted: 1, chunks_persisted: 1 },
+    { maxChunks: 1, persist: true }
+  ),
+  false,
+  "an explicit partial resumable run may stop cleanly after maxChunks"
+);
 
 console.log("run-resumable-activation tests passed");
 

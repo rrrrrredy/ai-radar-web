@@ -91,7 +91,6 @@ function summaryFromSnapshot(
     radarItems,
     rawItems,
     rawItemsWithRadarItems: null,
-    reportCandidates: integer(counts?.report_candidates ?? counts?.saved_report_candidates),
     sourceFamilyHealth: sourceFamilyHealth(snapshot.source_health_by_family),
     sourceHealthScope: sourceHealthScope(snapshot.source_health_scope),
     skippedSourceReasons: numericRecord(coverage?.skipped_source_reasons),
@@ -186,7 +185,6 @@ function emptySummary(input: {
     radarItems: null,
     rawItems: null,
     rawItemsWithRadarItems: null,
-    reportCandidates: null,
     skippedSourceReasons: {},
     skippedSources: 0,
     sourceFamilyHealth: [],
@@ -327,8 +325,8 @@ function publicWarningText(value: string) {
       "Cloudflare Pages 是主要公开只读页面；登录、Admin、服务端操作和写入流程不在公开页面中运行。"
     )
     .replace(
-      "Only public-safe radar and report fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
-      "只纳入公开安全的雷达和报告字段；私有原文、供应商元数据、内部备注、service-role 访问和密钥均已排除。"
+      "Only public-safe radar fields are included. Private raw content, provider metadata, internal notes, service-role access, and secrets are excluded.",
+      "只纳入公开安全的雷达字段；私有原文、供应商元数据、内部备注、service-role 访问和密钥均已排除。"
     )
     .replace(/\b(service-role|SUPABASE_SERVICE_ROLE_KEY|api[-_]?key|token|cookie|authorization)\b/gi, "server-only")
     .trim();

@@ -7,8 +7,7 @@ import { DEFAULT_SELECTION_OPTIONS } from "@/lib/ingestion/config";
 import { readCleanedSources, selectSources } from "@/lib/ingestion/select-sources";
 import { isEnabled } from "@/lib/utils";
 
-type OperatingLoopMode = "dry-run" | "refresh-data" | "generate-reports" | "full";
-type ReportType = "daily" | "weekly";
+type OperatingLoopMode = "dry-run" | "refresh-data";
 
 type CliOptions = {
   mode: OperatingLoopMode;
@@ -16,10 +15,8 @@ type CliOptions = {
   persist: boolean;
   limit: number;
   maxItemsPerSource: number;
-  reportTypes: ReportType[];
   skipIngest: boolean;
   skipUnderstand: boolean;
-  skipReport: boolean;
   json: boolean;
 };
 
@@ -44,14 +41,8 @@ type OperatingLoopSummary = {
   needs_review: number;
   excluded: number;
   failed: number;
-  report_candidate_dry_run_count: number;
-  report_candidate_persisted_count: number;
-  report_candidate_skipped_count: number;
-  daily_candidate_id?: string;
-  weekly_candidate_id?: string;
   deepseek_api_call_count: number;
   supabase_persist_counts: Record<string, number>;
-  report_candidate_audit_event_count: number;
   supabase_write_attempted: boolean;
   scheduled_job_attempted: false;
   x_wechat_attempted: false;
@@ -81,17 +72,6 @@ async function main() {
       }
     }
 
-    if (shouldRunReports(options)) {
-      for (const reportType of options.reportTypes) {
-        const result = runReportCandidate(reportType, options);
-        summary.stages.push(result);
-        applyReportOutput(summary, reportType, result.stdout, options.persist);
-
-        if (result.status === "failed") {
-          summary.errors.push(stageError(`report-${reportType}`, result));
-        }
-      }
-    }
   } catch (error) {
     summary.errors.push(sanitizeLogValue(error instanceof Error ? error.message : String(error)));
   } finally {
@@ -114,10 +94,8 @@ function parseArgs(args: string[]): CliOptions {
     persist: false,
     limit: 20,
     maxItemsPerSource: 3,
-    reportTypes: ["daily", "weekly"],
     skipIngest: false,
     skipUnderstand: false,
-    skipReport: false,
     json: false
   };
 
@@ -143,18 +121,11 @@ function parseArgs(args: string[]): CliOptions {
         options.maxItemsPerSource = readPositiveNumber(args, index);
         index += 1;
         break;
-      case "--report-types":
-        options.reportTypes = readReportTypes(readArg(args, index));
-        index += 1;
-        break;
       case "--skip-ingest":
         options.skipIngest = true;
         break;
       case "--skip-understand":
         options.skipUnderstand = true;
-        break;
-      case "--skip-report":
-        options.skipReport = true;
         break;
       case "--json":
         options.json = true;
@@ -169,7 +140,7 @@ function parseArgs(args: string[]): CliOptions {
 
 function assertSafeOptions(options: CliOptions) {
   if (options.mode === "dry-run" && options.persist) {
-    throw new Error("--mode dry-run cannot be combined with --persist. Use --mode refresh-data, generate-reports, or full for controlled writes.");
+    throw new Error("--mode dry-run cannot be combined with --persist. Use --mode refresh-data for controlled writes.");
   }
 
   if (options.persist && !isEnabled(process.env.ENABLE_SUPABASE_WRITES)) {
@@ -178,11 +149,7 @@ function assertSafeOptions(options: CliOptions) {
 }
 
 function shouldRunRefresh(options: CliOptions) {
-  return options.mode === "dry-run" || options.mode === "refresh-data" || options.mode === "full";
-}
-
-function shouldRunReports(options: CliOptions) {
-  return !options.skipReport && (options.mode === "dry-run" || options.mode === "generate-reports" || options.mode === "full");
+  return options.mode === "dry-run" || options.mode === "refresh-data";
 }
 
 function runActivation(options: CliOptions): StageResult {
@@ -211,20 +178,6 @@ function runActivation(options: CliOptions): StageResult {
   }
 
   return runStage("refresh-data", args);
-}
-
-function runReportCandidate(reportType: ReportType, options: CliOptions): StageResult {
-  const args = ["scripts/persist-report-candidate.ts", "--type", reportType];
-
-  if (options.live) {
-    args.push("--live");
-  }
-
-  if (options.persist) {
-    args.push("--write");
-  }
-
-  return runStage(`report-${reportType}`, args);
 }
 
 function runStage(label: string, args: string[]): StageResult {
@@ -266,12 +219,8 @@ function initialSummary(options: CliOptions, startedAt: string): OperatingLoopSu
     needs_review: 0,
     excluded: 0,
     failed: 0,
-    report_candidate_dry_run_count: 0,
-    report_candidate_persisted_count: 0,
-    report_candidate_skipped_count: 0,
     deepseek_api_call_count: 0,
     supabase_persist_counts: {},
-    report_candidate_audit_event_count: 0,
     supabase_write_attempted: options.persist,
     scheduled_job_attempted: false,
     x_wechat_attempted: false,
@@ -295,38 +244,6 @@ function applyActivationOutput(summary: OperatingLoopSummary, stdout: string) {
   summary.warnings.push(...warningsFromOutput(stdout));
 }
 
-function applyReportOutput(
-  summary: OperatingLoopSummary,
-  reportType: ReportType,
-  stdout: string,
-  persist: boolean
-) {
-  summary.deepseek_api_call_count += numberAfter(stdout, "API calls:", 0);
-  summary.warnings.push(...warningsFromOutput(stdout));
-
-  const candidateId = textAfter(stdout, "Report candidate id:");
-  if (textAfter(stdout, "Admin audit event id:")) {
-    summary.report_candidate_audit_event_count += 1;
-  }
-  const duplicateSuppressed = stdout.includes("Duplicate suppression:");
-
-  if (persist) {
-    if (candidateId) {
-      summary.report_candidate_persisted_count += 1;
-      if (reportType === "daily") {
-        summary.daily_candidate_id = candidateId;
-      } else {
-        summary.weekly_candidate_id = candidateId;
-      }
-    } else if (duplicateSuppressed) {
-      summary.report_candidate_skipped_count += 1;
-    }
-    return;
-  }
-
-  summary.report_candidate_dry_run_count += 1;
-}
-
 function numberAfter(output: string, label: string, fallback: number) {
   const line = output.split(/\r?\n/).find((value) => value.trim().startsWith(label));
   if (!line) {
@@ -335,11 +252,6 @@ function numberAfter(output: string, label: string, fallback: number) {
 
   const value = Number(line.slice(label.length).trim().match(/^-?\d+(?:\.\d+)?/)?.[0]);
   return Number.isFinite(value) ? value : fallback;
-}
-
-function textAfter(output: string, label: string) {
-  const line = output.split(/\r?\n/).find((value) => value.trim().startsWith(label));
-  return line ? line.slice(label.length).trim() : undefined;
 }
 
 function countsAfter(output: string, label: string) {
@@ -386,16 +298,8 @@ function nextAction(summary: OperatingLoopSummary, options: CliOptions) {
     return "Resolve the listed errors, then rerun npm run ops:dry-run before attempting any write-gated command.";
   }
 
-  if (!options.persist && (options.mode === "dry-run" || options.mode === "full")) {
-    return "Review data quality, then use npm run ops:refresh:live or a temporary ENABLE_SUPABASE_WRITES=true npm run ops:full:live:persist run if persistence is approved.";
-  }
-
-  if (options.persist && summary.report_candidate_persisted_count > 0) {
-    return "Open /admin/review to approve, defer, or reject report candidates, then inspect /reports saved candidate mode.";
-  }
-
-  if (options.mode === "generate-reports" && !options.persist) {
-    return "If candidate quality is usable, rerun with --persist and ENABLE_SUPABASE_WRITES=true to save needs_review candidates.";
+  if (!options.persist) {
+    return "Review data quality, then use npm run ops:refresh:live or a temporary ENABLE_SUPABASE_WRITES=true refresh command if persistence is approved.";
   }
 
   return "Open /admin/ingestion for current operating-loop state and exact safe commands.";
@@ -419,14 +323,8 @@ function printSummary(summary: OperatingLoopSummary, json: boolean) {
   console.log(`Needs review: ${summary.needs_review}`);
   console.log(`Excluded: ${summary.excluded}`);
   console.log(`Failed: ${summary.failed}`);
-  console.log(`Report candidates dry-run: ${summary.report_candidate_dry_run_count}`);
-  console.log(`Report candidates persisted: ${summary.report_candidate_persisted_count}`);
-  console.log(`Report candidates duplicate-skipped: ${summary.report_candidate_skipped_count}`);
-  console.log(`Daily candidate id: ${summary.daily_candidate_id ?? "not created"}`);
-  console.log(`Weekly candidate id: ${summary.weekly_candidate_id ?? "not created"}`);
   console.log(`DeepSeek API calls: ${summary.deepseek_api_call_count}`);
   console.log(`Supabase persistence counts: ${formatCounts(summary.supabase_persist_counts)}`);
-  console.log(`Report candidate audit events: ${summary.report_candidate_audit_event_count}`);
   console.log(`Supabase write attempted: ${summary.supabase_write_attempted ? "yes" : "no"}`);
   console.log("Scheduled job attempted: false");
   console.log("X/WeChat attempted: false");
@@ -465,26 +363,11 @@ function readArg(args: string[], index: number) {
 }
 
 function readMode(value: string): OperatingLoopMode {
-  if (value === "dry-run" || value === "refresh-data" || value === "generate-reports" || value === "full") {
+  if (value === "dry-run" || value === "refresh-data") {
     return value;
   }
 
-  throw new Error("--mode must be dry-run, refresh-data, generate-reports, or full.");
-}
-
-function readReportTypes(value: string): ReportType[] {
-  const reportTypes = value.split(",").map((item) => item.trim()).filter(Boolean);
-  if (reportTypes.length === 0) {
-    throw new Error("--report-types must include daily, weekly, or both.");
-  }
-
-  for (const reportType of reportTypes) {
-    if (reportType !== "daily" && reportType !== "weekly") {
-      throw new Error("--report-types must be a comma-separated list using daily and/or weekly.");
-    }
-  }
-
-  return Array.from(new Set(reportTypes)) as ReportType[];
+  throw new Error("--mode must be dry-run or refresh-data.");
 }
 
 function readPositiveNumber(args: string[], index: number) {

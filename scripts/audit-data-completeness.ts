@@ -153,7 +153,6 @@ type SupabaseAuditData = {
   rawItems: SupabaseRawRow[];
   radarItems: SupabaseRadarRow[];
   publicRadarItems: SupabasePublicRadarRow[];
-  reportCandidateCount: number | null;
   ingestionRunCount: number | null;
   understandingRunCount: number | null;
   latestIngestion: string | null;
@@ -188,7 +187,6 @@ type PipelineAudit = {
   radar_items_excluded: number;
   radar_items_failed: number;
   public_radar_items_total: number;
-  report_candidates_total: number | null;
   latest_ingestion_timestamp: string | null;
   latest_understanding_timestamp: string | null;
   excluded_reasons_distribution: Record<string, number>;
@@ -360,7 +358,6 @@ async function loadSupabaseAuditData(): Promise<SupabaseAuditData> {
     publicRadarItems: [],
     radarItems: [],
     rawItems: [],
-    reportCandidateCount: null,
     sources: [],
     understandingRunCount: null,
     warnings: []
@@ -375,7 +372,7 @@ async function loadSupabaseAuditData(): Promise<SupabaseAuditData> {
 
   try {
     const supabase = getSupabaseServiceClient();
-    const [sources, rawItems, radarItems, publicItems, reportCandidates, ingestionRuns, understandingRuns, latestIngestion, latestUnderstanding] =
+    const [sources, rawItems, radarItems, publicItems, ingestionRuns, understandingRuns, latestIngestion, latestUnderstanding] =
       await Promise.all([
         selectAll<SupabaseSourceRow>(supabase, "sources", "id, slug, status, risk_flags"),
         selectAll<SupabaseRawRow>(
@@ -393,7 +390,6 @@ async function loadSupabaseAuditData(): Promise<SupabaseAuditData> {
           "public_radar_items",
           "id, local_id, source_id, title, url, collected_at, processed_at, understanding_status"
         ),
-        exactCount(supabase, "report_candidates"),
         exactCount(supabase, "ingestion_runs"),
         exactCount(supabase, "understanding_runs"),
         supabase
@@ -412,7 +408,6 @@ async function loadSupabaseAuditData(): Promise<SupabaseAuditData> {
       rawItems.warning,
       radarItems.warning,
       publicItems.warning,
-      countWarning(reportCandidates),
       countWarning(ingestionRuns),
       countWarning(understandingRuns),
       latestIngestion.error ? `Latest ingestion read failed: ${sanitizeLogValue(latestIngestion.error.message)}` : "",
@@ -429,7 +424,6 @@ async function loadSupabaseAuditData(): Promise<SupabaseAuditData> {
       publicRadarItems: publicItems.rows,
       radarItems: radarItems.rows,
       rawItems: rawItems.rows,
-      reportCandidateCount: readCount(reportCandidates),
       sources: sources.rows,
       understandingRunCount: readCount(understandingRuns),
       warnings
@@ -745,7 +739,6 @@ function buildPipelineAudit(input: {
     radar_items_total: radarRows.length,
     raw_items_total: rawTotal,
     raw_items_with_radar_items: rawWithRadar,
-    report_candidates_total: input.supabase.reportCandidateCount,
     sources_attempted_latest_run: attempted.size,
     sources_blocked_manual: input.sources.filter(isManualOnlySource).length,
     sources_failed_latest_run: failedResults.length,
@@ -1082,7 +1075,6 @@ function renderMarkdown(report: DataCompletenessReport) {
     `- Sources with at least one public radar item: ${report.pipeline.sources_with_at_least_one_public_radar_item}`,
     `- Raw items with radar items: ${report.pipeline.raw_items_with_radar_items}`,
     `- Included / needs_review / excluded / failed radar items: ${report.pipeline.radar_items_included} / ${report.pipeline.radar_items_needs_review} / ${report.pipeline.radar_items_excluded} / ${report.pipeline.radar_items_failed}`,
-    `- Report candidates: ${report.pipeline.report_candidates_total ?? "unavailable"}`,
     `- Latest ingestion timestamp: ${report.pipeline.latest_ingestion_timestamp ?? "unavailable"}`,
     `- Latest understanding timestamp: ${report.pipeline.latest_understanding_timestamp ?? "unavailable"}`,
     "",

@@ -8,7 +8,7 @@ import type { CrawlMethodFilter, RunStatus } from "@/lib/ingestion/types";
 import { runUnderstanding } from "@/lib/understanding/run";
 import type { UnderstandingMode, UnderstandingRunStatus } from "@/lib/understanding/types";
 
-type ScheduledMode = "hourly-dry-run" | "daily-report-seed" | "weekly-report-seed";
+type ScheduledMode = "hourly-dry-run";
 
 type ModeConfig = {
   ingestion: {
@@ -64,24 +64,6 @@ const modeConfigs: Record<ScheduledMode, ModeConfig> = {
       maxItemsPerSource: 3
     },
     understandingLimit: 9,
-    maxTextChars: 6000
-  },
-  "daily-report-seed": {
-    ingestion: {
-      limit: 5,
-      method: "all",
-      maxItemsPerSource: 3
-    },
-    understandingLimit: 15,
-    maxTextChars: 6000
-  },
-  "weekly-report-seed": {
-    ingestion: {
-      limit: 5,
-      method: "all",
-      maxItemsPerSource: 5
-    },
-    understandingLimit: 25,
     maxTextChars: 6000
   }
 };
@@ -150,7 +132,7 @@ async function main() {
 
     if (understanding.run.mode !== "mock" || understanding.run.api_call_count > 0) {
       hardFailure = true;
-      summary.errors.push("Scheduled understanding must remain mock-only and report zero API calls.");
+      summary.errors.push("Scheduled understanding must remain mock-only and record zero API calls.");
     }
   } catch (error) {
     hardFailure = true;
@@ -227,7 +209,7 @@ function parseArgs(args: string[]): ScheduledMode {
   }
 
   if (!mode) {
-    throw new Error("--mode is required. Use hourly-dry-run, daily-report-seed, or weekly-report-seed.");
+    throw new Error("--mode is required. Use hourly-dry-run.");
   }
 
   return mode;
@@ -240,8 +222,8 @@ function readMode(args: string[], index: number): ScheduledMode {
     throw new Error("--mode requires a value.");
   }
 
-  if (value !== "hourly-dry-run" && value !== "daily-report-seed" && value !== "weekly-report-seed") {
-    throw new Error("--mode must be hourly-dry-run, daily-report-seed, or weekly-report-seed.");
+  if (value !== "hourly-dry-run") {
+    throw new Error("--mode must be hourly-dry-run.");
   }
 
   return value;
