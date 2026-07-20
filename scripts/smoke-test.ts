@@ -434,6 +434,8 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       (refreshWorkflow.match(/timezone: "Asia\/Shanghai"/g) || []).length === 3 &&
       refreshWorkflow.includes("workflow_dispatch:") &&
       refreshWorkflow.includes("production_already_fresh") &&
+      refreshWorkflow.includes("Manual dispatch ignores a completed checkpoint") &&
+      refreshWorkflow.includes('EVENT_NAME: ${{ github.event_name }}') &&
       refreshWorkflow.includes("needs: freshness_gate") &&
       refreshWorkflow.includes("HAS_CLOUDFLARE_API_TOKEN") &&
       refreshWorkflow.includes("Production configuration missing") &&

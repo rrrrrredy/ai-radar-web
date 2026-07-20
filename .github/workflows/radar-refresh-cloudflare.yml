@@ -354,7 +354,10 @@ jobs:
               const fullyPersisted = Array.from({ length: plannedChunks }, (_, index) => chunksByIndex.get(index))
                 .every((chunk) => chunk?.status === "completed" && chunk.persisted === true);
 
-              if (fullyPersisted) {
+              if (fullyPersisted && process.env.EVENT_NAME === "workflow_dispatch") {
+                fs.rmSync("data/activation", { recursive: true, force: true });
+                console.log("Manual dispatch ignores a completed checkpoint and starts a fresh production refresh.");
+              } else if (fullyPersisted) {
                 reuseCompleted = true;
                 refreshNotBefore = checkpoint.started_at;
                 effectiveLimit = String(checkpoint.limit);
@@ -378,6 +381,7 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `effective_limit=${effectiveLimit}\n`);
           NODE
         env:
+          EVENT_NAME: ${{ github.event_name }}
           REFRESH_STARTED_AT: ${{ steps.config.outputs.refresh_started_at }}
           REQUESTED_LIMIT: ${{ steps.config.outputs.limit }}
 
