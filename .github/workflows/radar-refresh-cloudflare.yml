@@ -166,6 +166,12 @@ jobs:
           CHUNK_SIZE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.chunk_size || '5' }}
           MAX_ITEMS_PER_SOURCE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.max_items_per_source || '3' }}
           RADAR_REFRESH_WRITE_GATE: ${{ vars.RADAR_REFRESH_WRITE_GATE }}
+          HAS_NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL != '' || secrets.NEXT_PUBLIC_SUPABASE_URL != '' }}
+          HAS_NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY != '' || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY != '' }}
+          HAS_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+          HAS_DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY != '' }}
+          HAS_CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID != '' || secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+          HAS_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
         run: |
           set -euo pipefail
 
@@ -203,6 +209,20 @@ jobs:
             echo "::error title=Production write gate closed::Set repository variable RADAR_REFRESH_WRITE_GATE=true before enabling the daily refresh."
             exit 1
           fi
+
+          for required_flag in \
+            HAS_NEXT_PUBLIC_SUPABASE_URL \
+            HAS_NEXT_PUBLIC_SUPABASE_ANON_KEY \
+            HAS_SUPABASE_SERVICE_ROLE_KEY \
+            HAS_DEEPSEEK_API_KEY \
+            HAS_CLOUDFLARE_ACCOUNT_ID \
+            HAS_CLOUDFLARE_API_TOKEN; do
+            if [[ "${!required_flag:-false}" != "true" ]]; then
+              config_name="${required_flag#HAS_}"
+              echo "::error title=Production configuration missing::${config_name} must be configured before live refresh starts."
+              exit 1
+            fi
+          done
 
           validate_integer limit "$LIMIT" 1 100
           validate_integer chunk_size "$CHUNK_SIZE" 1 20

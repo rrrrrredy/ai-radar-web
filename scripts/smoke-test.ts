@@ -416,6 +416,8 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       refreshWorkflow.includes("workflow_dispatch:") &&
       refreshWorkflow.includes("production_already_fresh") &&
       refreshWorkflow.includes("needs: freshness_gate") &&
+      refreshWorkflow.includes("HAS_CLOUDFLARE_API_TOKEN") &&
+      refreshWorkflow.includes("Production configuration missing") &&
       refreshWorkflow.includes('"$DISPATCH_REF" != "refs/heads/main"') &&
       refreshWorkflow.includes('"$RADAR_REFRESH_WRITE_GATE" != "true"'),
     true,
