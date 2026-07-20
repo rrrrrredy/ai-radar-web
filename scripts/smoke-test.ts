@@ -392,6 +392,9 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   const snapshotExporter = readSource("scripts/export-public-snapshot.ts");
   const eventClustering = readSource("lib/events/clustering.ts");
   const refreshWorkflow = readSource(".github/workflows/radar-refresh-cloudflare.yml");
+  const clusterWorkflowStep = refreshWorkflow.match(
+    /- name: Cluster, persist, and export the public snapshot[\s\S]*?(?=\n\s+- name: Render Cloudflare site)/
+  )?.[0] ?? "";
   const supabasePublicContract = readSource("scripts/check-supabase-public-contract.ts");
   const supabaseLoader = readSource("lib/retrieval/load-supabase-radar-items.ts");
   const publicEntityMigration = readSource("supabase/migrations/202607010001_public_radar_items_entities.sql");
@@ -429,8 +432,9 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   );
   assert.equal(
     refreshWorkflow.includes("npm run data:activate:resumable:live:persist") &&
-      refreshWorkflow.includes("npm run events:cluster -- --persist") &&
-      refreshWorkflow.includes('ENABLE_SUPABASE_WRITES: "true"') &&
+      clusterWorkflowStep.includes("npm run events:cluster -- --persist") &&
+      clusterWorkflowStep.includes('ENABLE_SUPABASE_RETRIEVAL: "true"') &&
+      clusterWorkflowStep.includes('ENABLE_SUPABASE_WRITES: "true"') &&
       refreshWorkflow.includes('CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE: "true"') &&
       refreshWorkflow.includes('CLOUDFLARE_SNAPSHOT_READ_SUPABASE: "true"') &&
       refreshWorkflow.includes("ENABLE_SUPABASE_WRITES=false npm run cloudflare:snapshot") &&
