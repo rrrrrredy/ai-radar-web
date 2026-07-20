@@ -512,8 +512,11 @@ jobs:
             if (!home.includes("<title>AI 行业信息雷达</title>")) {
               throw new Error("production_home_title_mismatch");
             }
-            if ((home.match(/<article class="top-story"/g) || []).length !== 10) {
+            if ((home.match(/<article class="top-story(?:\s[^"]*)?"/g) || []).length !== 10) {
               throw new Error("production_home_hotspot_count_mismatch");
+            }
+            if (!/<time datetime="[^"]+" title="[^"]+">[^<]+ · \d{2}:\d{2}<\/time>/.test(home)) {
+              throw new Error("production_home_datetime_mismatch");
             }
             if (
               !home.includes("Created by Song Luo") ||

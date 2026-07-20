@@ -454,6 +454,8 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       refreshWorkflow.includes('remote.source?.local_data_used !== false') &&
       refreshWorkflow.includes("remote.coverage?.latest_refresh !== local.coverage?.latest_refresh") &&
       refreshWorkflow.includes("production_snapshot_refresh_is_stale") &&
+      refreshWorkflow.includes('class="top-story(?:\\s[^"]*)?"') &&
+      refreshWorkflow.includes("production_home_datetime_mismatch") &&
       refreshWorkflow.includes("Created by Song Luo") &&
       refreshWorkflow.includes('href="https://github.com/rrrrrredy"') &&
       refreshWorkflow.includes("production_home_hotspot_count_mismatch") &&
