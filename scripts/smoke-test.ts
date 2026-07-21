@@ -628,6 +628,19 @@ function assertBilingualStaticContract() {
 
   const chineseRadar = readSource("dist/cloudflare-pages/radar/index.html");
   const englishRadar = readSource("dist/cloudflare-pages/en/radar/index.html");
+  const chineseReaderTitles = [chineseHome, chineseRadar].flatMap((page) =>
+    Array.from(page.matchAll(/<h2><a[^>]*>([^<]+)<\/a><\/h2>/g), (match) => match[1])
+  );
+  assert.ok(chineseReaderTitles.length >= 30, "Chinese reader pages must expose enough headlines for a full quality audit.");
+  for (const title of chineseReaderTitles) {
+    assert.ok(Array.from(title).length <= 56, "Chinese reader headline exceeds 56 characters: " + title);
+    assert.doesNotMatch(title, /^(?:本文|本论文|该论文|这篇论文|本研究|该研究|这项研究|基于摘要|这篇文章|本报告|该报告)/u);
+    assert.ok((title.match(/[：:]/gu) ?? []).length <= 1, "Chinese reader headline uses multiple colons: " + title);
+    assert.ok((title.match(/[（(\[]/gu) ?? []).length <= 1, "Chinese reader headline uses multiple bracket groups: " + title);
+    for (const [open, close] of [["（", "）"], ["(", ")"], ["[", "]"], ["“", "”"], ["《", "》"]] as const) {
+      assert.equal(title.split(open).length, title.split(close).length, "Chinese reader headline punctuation is unbalanced: " + title);
+    }
+  }
   for (const [page, label] of [[chineseRadar, "Chinese"], [englishRadar, "English"]] as const) {
     assert.equal(page.includes('data-feed-family="公司/实验室"') && page.includes('data-feed-category="model_release,benchmark"'), true, `${label} all-updates page must expose source and topic filters.`);
     assert.equal(page.includes('class="radar-tabs"') || page.includes("Source health summary") || page.includes("信息源健康摘要"), false, `${label} all-updates page must not expose internal radar tabs or source-health dashboards.`);

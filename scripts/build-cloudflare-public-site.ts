@@ -1094,9 +1094,15 @@ const chineseReaderContentOverrides = [
   },
   {
     match: "Anthropic Python SDK 发布 v0.117.0",
-    title: "Anthropic Python SDK v0.117.0 增加 MCP Tunnels 并修复凭证泄露",
+    title: "Anthropic SDK v0.117.0 修复凭证泄露并加入 MCP Tunnels",
     summary: "Anthropic Python SDK v0.117.0 新增 MCP Tunnels 支持，并修复可能泄露凭证的安全问题；使用相关功能的开发者应核对变更并及时升级。",
     why: "凭证泄露修复会直接影响生产安全；使用旧版 SDK 或 MCP 集成的团队应优先核对升级。"
+  },
+  {
+    match: "Hugging Face Transformers 发布 v5.14.0",
+    title: "Hugging Face Transformers v5.14.0 加入 Inkling 与 TIPSv2",
+    summary: "Hugging Face Transformers v5.14.0 新增 Inkling 多模态模型与 TIPSv2 模型支持，并包含其他兼容性更新。",
+    why: "主流开源模型库新增架构会直接影响加载、推理和生态适配，开发者应结合变更记录评估升级。"
   },
   {
     match: "Why teens deserve access to safe AI",
@@ -1109,6 +1115,120 @@ const chineseReaderContentOverrides = [
     title: "Cars24 用 OpenAI 语音与聊天智能体每月处理超 100 万分钟对话",
     summary: "Cars24 使用 OpenAI 驱动的语音与聊天智能体，每月处理超过 100 万分钟对话，并称由此挽回部分流失线索、加快内部智能体工作流落地。",
     why: "这是智能体进入高频业务流程的规模化案例，但成本、成功率和人工接管比例仍需结合完整数据评估。"
+  },
+  {
+    match: "OmniPMNet:",
+    title: "OmniPM-Net 融合站点与网格数据，改进 PM10 预测",
+    summary: "论文提出 OmniPM-Net，把离散监测站预测与网格化气象数据融合，用于生成更一致的 PM10 预测；跨地区泛化能力仍需独立验证。",
+    why: "同时兼顾站点精度和连续空间预测，可改善污染预警，但真实部署价值取决于不同地区和极端天气下的稳定性。"
+  },
+  {
+    match: "Anomalous Frame Detection Using VLM-Based Description Comparison",
+    title: "研究用 VLM 检测异常视频帧，提取专家操作与决策场景",
+    summary: "论文利用视觉语言模型比较视频帧描述并分析视频内相似性，尝试自动识别专家特定动作和情境决策场景。",
+    why: "如果能稳定提取专家隐性操作，这类方法可用于培训与流程分析；目前样本规模和识别准确率仍有限。"
+  },
+  {
+    match: "G-SHARE:",
+    title: "G-SHARE 用结构化推理辅助核电厂人因事件诊断",
+    summary: "论文提出 G-SHARE，把核电厂人因事件诊断指南转化为证据提取、逐步推理和一致性修复流程。",
+    why: "高风险诊断需要过程可追溯；结构化推理有助于审计，但仍需更多真实场景和独立评估。"
+  },
+  {
+    match: "TSCA-Net:",
+    title: "TSCA-Net 用时空团注意网络预测多模态行人轨迹",
+    summary: "论文提出 TSCA-Net，通过时空团注意、成对关系建模和自适应解码预测多模态行人轨迹。",
+    why: "更准确的轨迹预测会影响自动驾驶和机器人安全，但基准成绩还需要跨场景复现。"
+  },
+  {
+    match: "CANDI: Contextual Alignment",
+    title: "CANDI-QA 评估大模型在专业领域的上下文问答能力",
+    summary: "论文发布 CANDI-QA 数据集，评估大模型在医疗、金融等专业领域进行事实提取和多步推理的能力。",
+    why: "专业问答是否真正依赖上下文，直接影响模型在高风险领域的可信度；数据集覆盖与基线仍需继续验证。"
+  },
+  {
+    match: "GenDiff:",
+    title: "GenDiff 用扩散模型改进低剂量 CT 重建",
+    summary: "论文提出 GenDiff，联合建模辐射剂量和解剖信息，用于提高低剂量 CT 重建质量与跨场景泛化能力。",
+    why: "降低辐射剂量同时保持成像质量具有临床价值，但仍需外部数据集和真实工作流验证。"
+  },
+  {
+    match: "Semidirect Fourier Delta Attention",
+    title: "SFDA 用傅里叶控制扩展 Kimi Delta 注意力",
+    summary: "论文提出相位控制傅里叶 Delta 注意力（SFDA），以块旋转傅里叶控制扩展 Kimi Delta 注意力。",
+    why: "该方法尝试增强循环记忆能力，但当前主要证据来自玩具任务，距离大模型有效性验证仍有距离。"
+  },
+  {
+    match: "Repairing Shape-Prior Shortcuts",
+    title: "PhiCalNet 修复单次条纹投影测量中的形状先验捷径",
+    summary: "论文提出 PhiCalNet，通过固定可微标定层约束深度重建，减少模型依赖物体边界而非条纹相位的捷径。",
+    why: "从架构上消除错误捷径有助于提高测量可信度，但结果仍需在真实设备和复杂场景中复现。"
+  },
+  {
+    match: "Empowering India’s next generation of innovators with ATL Saathi",
+    title: "Google DeepMind 推出 ATL Saathi，支持印度学生学习与创新",
+    summary: "Google DeepMind 介绍 ATL Saathi 项目，尝试把 Gemini 能力用于印度学生的学习与创新活动；实际覆盖与效果仍需更多公开数据。",
+    why: "本地教育项目能否形成可复制的 AI 学习模式，取决于可及性、教师参与和长期学习效果。"
+  },
+  {
+    match: "Here’s how to make study notebooks in the Gemini app",
+    title: "Gemini 应用支持制作学习笔记本",
+    summary: "Google 介绍如何在 Gemini 应用中制作学习笔记本，把资料整理和学习辅助集中到同一工作流。",
+    why: "学习笔记本把生成式 AI 从单次问答推进到持续学习场景，关键仍是资料准确性和用户控制。"
+  },
+  {
+    match: "TabPFN-MT:",
+    title: "TabPFN-MT 面向表格数据进行原生多任务上下文学习",
+    summary: "论文提出 TabPFN-MT，探索在表格数据上进行原生多任务上下文学习；当前证据主要来自单篇论文。",
+    why: "如果同一模型能在表格任务间共享上下文能力，可能降低任务切换成本，但仍需跨数据集复现。"
+  },
+  {
+    match: "How data science teams use Codex",
+    title: "OpenAI 介绍数据科学团队如何用 Codex 自动化分析工作流",
+    summary: "OpenAI 介绍数据科学团队如何使用 Codex 自动生成根因简报、影响报告、KPI 备忘录和仪表板规范。",
+    why: "这类案例展示 Codex 如何进入真实分析流程，但效率提升、人工复核和结果可靠性仍需结合团队数据评估。"
+  },
+  {
+    match: "Format Sensitivity Index:",
+    title: "FSI 与 PSI 衡量 LLM 提示格式鲁棒性与输出合规性",
+    summary: "论文提出格式敏感度指数 FSI 和可解析性敏感度指数 PSI，用于衡量提示包装变化对 LLM 性能与输出合规性的影响。",
+    why: "只看准确率可能掩盖提示格式带来的波动；这组指标有助于更完整地评估结构化输出可靠性。"
+  },
+  {
+    match: "Improved Vision-to-Chart Buoy Association",
+    title: "QueryMLP 用图像投影改进视觉与海图浮标关联",
+    summary: "论文使用 QueryMLP 预测浮标在图像中的位置，为视觉与海图数据关联提供空间先验。",
+    why: "显式加入几何先验可减轻模型推理负担，但排行榜结果仍需在更多海况与设备上复现。"
+  },
+  {
+    match: "Query-Adaptive Semantic Chunking",
+    title: "QASC 动态调整语义分块，提升 RAG 检索效果",
+    summary: "论文提出 QASC，根据查询相关度动态扩展上下文窗口并聚合分块分数，用于改进 RAG 检索。",
+    why: "分块策略直接影响检索质量与成本；当前提升仍需在更大规模和不同文档类型上验证。"
+  },
+  {
+    match: "A Survey of Text and Speech Resources for Hausa and Fongbe",
+    title: "研究盘点豪萨语与丰贝语的文本和语音资源缺口",
+    summary: "调查整理豪萨语与丰贝语的公开文本和语音资源，比较其可用性、质量与关键缺口。",
+    why: "低资源语言的数据基础会直接限制模型覆盖与公平性，这份盘点有助于确定优先建设方向。"
+  },
+  {
+    match: "Deep Pre-Alignment for VLMs",
+    title: "DPA 深度预对齐架构提升 VLM 多模态表现",
+    summary: "论文提出 DPA，用小型视觉语言模型替换标准视觉编码器，使视觉特征更贴近目标语言模型的文本空间。",
+    why: "预对齐有望在减少语言能力遗忘的同时提升多模态表现，但仍需独立复现和成本比较。"
+  },
+  {
+    match: "Improving Quantized Model Performance in Qualitative Analysis",
+    title: "多轮提示验证改善低比特 LLaMA 定性分析稳定性",
+    summary: "论文研究不同量化级别对 LLaMA 定性分析的影响，并提出量化感知的多轮提示验证方法。",
+    why: "低成本部署若能保持分析稳定性，会扩大本地模型用途；结论仍受模型、数据与任务范围限制。"
+  },
+  {
+    match: "Neural Estimation of Pairwise Mutual Information",
+    title: "神经互信息估计减少掩码扩散模型解码开销",
+    summary: "论文从掩码扩散模型隐藏状态估计成对条件互信息，用于识别可并行解码的变量。",
+    why: "减少前向传播次数可能降低生成成本，但需要在更广泛模型与任务上验证质量和稳定性。"
   }
 ] as const;
 
@@ -1177,6 +1297,8 @@ function chineseEventSummary(event: SnapshotEvent) {
 
 function humanizeChineseHeadline(value: string) {
   let headline = value.trim().replace(/^据报道[，,]\s*/u, "");
+  const articleExplainer = headline.match(/^(.{2,24}?)发布了?一篇文章[，,]\s*(?:解释|介绍)(.+)$/u);
+  if (articleExplainer) headline = articleExplainer[1] + "介绍" + articleExplainer[2];
   const release = headline.match(/^(.{2,20}?)发布了?([^，,]+)[，,]一种([^，,]+)[，,]/u);
   if (release) {
     headline = `${release[1]}发布${release[2]}：${release[3].replace(/的系统$/u, "")}`;
@@ -1237,6 +1359,8 @@ function normalizeChineseTitleStyle(value: string) {
     .replace(/\bgrok\b/giu, "Grok")
     .replace(/\btransformers\b/giu, "Transformers")
     .replace(/\bvllm\b/giu, "vLLM")
+    .replace(/AI\s*代理/gu, "AI 智能体")
+    .replace(/LLM\s*Agent/giu, "LLM 智能体")
     .replace(/苹果/gu, "Apple")
     .replace(/谷歌/gu, "Google")
     .replace(/英伟达/gu, "NVIDIA")
@@ -1252,8 +1376,9 @@ function normalizeChineseTitleStyle(value: string) {
 
 function chineseEventTitle(event: SnapshotEvent) {
   const canonical = publicText(event.canonical_title).trim();
+  const fallback = genericChineseEventTitle(event);
   const override = chineseReaderContentOverride(event);
-  if (override) return shortenChineseTitle(override.title);
+  if (override) return normalizeChineseTitleStyle(override.title);
 
   const rawSummary = normalizeReaderSummary(event.summary_zh ?? "");
   const summary = chineseEventSummary(event);
@@ -1262,7 +1387,8 @@ function chineseEventTitle(event: SnapshotEvent) {
   const summaryCanLead = /\p{Script=Han}/u.test(rawSummary) &&
     !containsReaderPipelineBoilerplate(rawSummary) &&
     !/^(?:公开信息|这条|该事件|这项公开研究)/u.test(rawSummary);
-  return shortenChineseTitle(compact || (/\p{Script=Han}/u.test(canonical) ? canonical : summaryCanLead ? sentence : genericChineseEventTitle(event)));
+  if (compact) return normalizeChineseTitleStyle(compact);
+  return shortenChineseTitle(/\p{Script=Han}/u.test(canonical) ? canonical : summaryCanLead ? sentence : fallback, fallback);
 }
 
 function compactChineseEventTitle(canonical: string, summary: string) {
@@ -1277,7 +1403,7 @@ function compactChineseEventTitle(canonical: string, summary: string) {
   if (/Deutsche Telekom|德意志电信/i.test(text) && /OpenAI/i.test(text)) return "德意志电信与 OpenAI 合作推进 AI 原生电信转型";
   if (/salespeople|销售人员/i.test(text) && /Microsoft|微软/i.test(text) && /OpenAI/i.test(text) && /Anthropic/i.test(text)) return "Microsoft 培训销售团队对比 OpenAI 与 Anthropic 模型";
   if (/Sarah Friar/i.test(text) && /scorecard|评分卡|ROI|回报/i.test(text)) return "OpenAI 首席财务官 Sarah Friar 提出 AI 投资回报评分卡";
-  if (/teens?|青少年/i.test(text) && /safe AI|安全|parental controls?|家长控制/i.test(text)) return "OpenAI 为青少年 ChatGPT 增加安全保护与家长控制";
+  if (/OpenAI/i.test(text) && /teens?|青少年/i.test(text) && /safe AI|安全|parental controls?|家长控制/i.test(text)) return "OpenAI 为青少年 ChatGPT 增加安全保护与家长控制";
   if (/Anthropic Python SDK/i.test(text) && /0\.117\.0/i.test(text)) return "Anthropic Python SDK v0.117.0 增加 MCP Tunnels 并修复凭证泄露";
   if (/bioresilience|生物韧性/i.test(text) && /Isomorphic Labs/i.test(text)) return "Google DeepMind 与 Isomorphic Labs 公布 AI 生物韧性方案";
   if (/prior authorization|预授权/i.test(text) && /insurance|保险/i.test(text)) return "美国试点用 AI 审核医疗保险预授权，效果与风险仍待检验";
@@ -1290,11 +1416,117 @@ function compactChineseEventTitle(canonical: string, summary: string) {
   if (/How Canada uses Claude|加拿大如何使用\s*Claude/i.test(text)) return "Anthropic 研究加拿大市场如何使用 Claude";
   if (/Southeast Asia|东南亚/i.test(text) && /Gemini/i.test(text)) return "Gemini 凭本地语言能力加速进入东南亚市场";
   if (/last wave of tech winners|科技创始人再次投身创业/i.test(text)) return "科技赢家重返创业：押注 AI 关键窗口";
+  if (/VentureBeat/i.test(text) && /101\s*家企业|101 enterprises?/i.test(text) && /代理编排|agentic orchestration/i.test(text)) return "企业调查：AI 智能体编排正向模型平台集中";
   return "";
 }
 
-function shortenChineseTitle(value: string) {
-  return normalizeChineseTitleStyle(value.replace(/[。！？；].*$/u, ""));
+function firstReaderHeadlineClause(value: string, maxLength = 56) {
+  const clauses = value
+    .split(/[，；]/u)
+    .map((clause) => clause.trim())
+    .filter(Boolean);
+  if (clauses.length === 0) return value.trim();
+
+  let candidate = clauses[0];
+  for (let index = 1; index < clauses.length && candidate.length < 18; index += 1) {
+    const combined = candidate + "，" + clauses[index];
+    if (combined.length > maxLength) break;
+    candidate = combined;
+  }
+  return candidate;
+}
+
+function removeUnclosedHeadlinePunctuation(value: string) {
+  return value
+    .replace(/（[^）]*$/u, "")
+    .replace(/“[^”]*$/u, "")
+    .replace(/《[^》]*$/u, "")
+    .replace(/[，,:：、\s]+$/u, "")
+    .trim();
+}
+
+function headlinePunctuationIsBalanced(value: string) {
+  const pairs = [["（", "）"], ["(", ")"], ["[", "]"], ["“", "”"], ["《", "》"]] as const;
+  for (const [open, close] of pairs) {
+    if (value.split(open).length !== value.split(close).length) return false;
+  }
+  const bracketGroups = (value.match(/[（(\[]/gu) ?? []).length;
+  const colonCount = (value.match(/[：:]/gu) ?? []).length;
+  return bracketGroups <= 1 && colonCount <= 1;
+}
+
+function readerTitleFallback(value: string, fallback: string) {
+  const method = value.match(/^([A-Z][A-Za-z0-9+.^_-]{1,30})\b/u)?.[1];
+  const suffix = fallback.match(/(?:公布|发布|关注|报道|分析|解读|聚焦).+$/u)?.[0];
+  return normalizeChineseTitleStyle(method && suffix ? method + " " + suffix : fallback);
+}
+
+function editorializeChineseTitle(value: string, fallback: string) {
+  const maxLength = 56;
+  let headline = normalizeChineseTitleStyle(value.replace(/[。！？；].*$/u, ""));
+  const quotedPaper = headline.match(/^论文《([^》]+)》(?:于.+)?$/u);
+  if (quotedPaper) headline = quotedPaper[1];
+
+  headline = headline
+    .replace(/^arXiv\s+cs\.[A-Za-z]+\s+新论文\s*/iu, "")
+    .replace(/^基于摘要[，,]\s*(?:文章|论文|报告)?(?:讨论|探讨|介绍|总结)了?\s*/u, "研究梳理")
+    .replace(/^文章报道[，,]\s*/u, "")
+    .replace(/^本文是\s*arXiv\s*上的一篇立场论文[，,]?\s*/iu, "立场论文指出")
+    .replace(/^The Verge\s+的一篇报道(?:称|指出)?[，,]?\s*/iu, "The Verge：")
+    .replace(/^(.{2,28}?)(?:官方)?(?:博客)?文章(?:讨论|探讨|介绍|总结)了?\s*/u, "$1：")
+    .replace(/^(.{2,28}?)博客(?:介绍|讨论|探讨|总结)了?(?:如何)?\s*/u, "$1：")
+    .replace(/^一起诉讼/u, "诉讼")
+    .replace(/^立场论文指出指出/u, "立场论文指出")
+    .replace(
+      /^(?:本文|本论文|该论文|这篇论文|论文|本研究|该研究|这项研究|本报告|该报告|这篇文章)\s*(?:首次|系统性地?|系统地?)?(?:发现了?|指出了?)\s*[，,]?/u,
+      "研究发现"
+    )
+    .replace(
+      /^(?:本文|本论文|该论文|这篇论文|论文|本研究|该研究|这项研究|本报告|该报告|这篇文章)\s*(?:首次|系统性地?|系统地?)?(?:提出|介绍|研究|分析|评估|探索|讨论|探讨|总结|报告)(?:了一种|了一个|了一款|了)?\s*/u,
+      ""
+    )
+    .replace(/^(?:本文|本论文|该论文|这篇论文|论文|本研究|该研究|这项研究|本报告|该报告|这篇文章)\s*/u, "研究")
+    .replace(/^(?:一种|一个|一款)\s*/u, "")
+    .replace(/：并/u, "，并")
+    .trim();
+
+  const namedDefinition = headline.match(/^([A-Za-z][A-Za-z0-9+.^_-]{1,30})\s*(?:是|为)(?:一个|一种|一款)?(.+)$/u);
+  if (namedDefinition) {
+    const descriptor = firstReaderHeadlineClause(
+      namedDefinition[2]
+        .replace(/^基于(.{2,24}?)的/u, "基于$1的")
+        .replace(/^统一的/u, "统一"),
+      maxLength - namedDefinition[1].length - 1
+    );
+    headline = namedDefinition[1] + "：" + descriptor;
+  } else {
+    const namedProposal = headline.match(/^([A-Za-z][A-Za-z0-9+.^_-]{1,30})\s*提出了?(?:一种|一个|一款)?(.+)$/u);
+    if (namedProposal) {
+      headline = namedProposal[1] + " 提出" + firstReaderHeadlineClause(namedProposal[2], maxLength - namedProposal[1].length - 3);
+    }
+  }
+
+  headline = normalizeChineseTitleStyle(
+    headline
+      .replace(/（(?:如|例如|包括|即)[^）]+）/gu, "")
+      .replace(/（[^）]{28,}）/gu, "")
+  );
+  if (headline.length > maxLength) headline = firstReaderHeadlineClause(headline, maxLength);
+
+  if (headline.length > maxLength) {
+    const transition = headline.search(/(?:通过|用于|旨在|同时|从而|并|以便|将|把|覆盖|包含|包括|实现|达到|帮助)/u);
+    if (transition >= 20 && transition <= maxLength) headline = headline.slice(0, transition);
+  }
+
+  headline = removeUnclosedHeadlinePunctuation(headline);
+  const safeFallback = readerTitleFallback(headline, fallback);
+  return headline.length >= 8 && headline.length <= maxLength && headlinePunctuationIsBalanced(headline)
+    ? headline
+    : safeFallback;
+}
+
+function shortenChineseTitle(value: string, fallback = "AI 行业动态") {
+  return editorializeChineseTitle(value, fallback);
 }
 
 function freshnessBucket(timestamp: string) {
@@ -1689,6 +1921,8 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
 
   function humanizeChineseTitle(value) {
     let headline = String(value || "").trim().replace(/^据报道[，,]\s*/, "");
+    const articleExplainer = headline.match(/^(.{2,24}?)发布了?一篇文章[，,]\s*(?:解释|介绍)(.+)$/);
+    if (articleExplainer) headline = articleExplainer[1] + "介绍" + articleExplainer[2];
     const release = headline.match(/^(.{2,20}?)发布了?([^，,]+)[，,]一种([^，,]+)[，,]/);
     if (release) headline = release[1] + "发布" + release[2] + "：" + release[3].replace(/的系统$/, "");
     const namedTechnique = headline.match(/^(.{2,24}?)\s*开发了一种名为“([^”]+)”的技术[，,](.+)$/);
@@ -1748,6 +1982,8 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
       .replace(/\bgrok\b/gi, "Grok")
       .replace(/\btransformers\b/gi, "Transformers")
       .replace(/\bvllm\b/gi, "vLLM")
+      .replace(/AI\s*代理/g, "AI 智能体")
+      .replace(/LLM\s*Agent/gi, "LLM 智能体")
       .replace(/苹果/g, "Apple")
       .replace(/谷歌/g, "Google")
       .replace(/英伟达/g, "NVIDIA")
@@ -1816,8 +2052,9 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
 
   function eventTitle(snapshot, event) {
     if (language === "en") return relatedItem(snapshot, event)?.title || event.timeline?.[0]?.title || event.canonical_title;
+    const fallback = genericChineseTitle(event);
     const override = readerContentOverride(event);
-    if (override) return shortChineseTitle(override.title);
+    if (override) return normalizeChineseTitle(override.title);
     const canonical = String(event.canonical_title || "").trim();
     const rawSummary = normalizeReaderSummary(event.summary_zh);
     const fullSummary = eventSummary(snapshot, event);
@@ -1826,7 +2063,8 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
     const summaryCanLead = /[\u3400-\u9fff]/.test(rawSummary) &&
       !containsPipelineBoilerplate(rawSummary) &&
       !/^(?:公开信息|这条|该事件|这项公开研究)/.test(rawSummary);
-    return shortChineseTitle(compact || (/[\u3400-\u9fff]/.test(canonical) ? canonical : summaryCanLead ? summary : genericChineseTitle(event)));
+    if (compact) return normalizeChineseTitle(compact);
+    return shortChineseTitle(/[\u3400-\u9fff]/.test(canonical) ? canonical : summaryCanLead ? summary : fallback, fallback);
   }
 
   function compactChineseTitle(canonical, summary) {
@@ -1845,8 +2083,105 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
     return "";
   }
 
-  function shortChineseTitle(value) {
-    return normalizeChineseTitle(String(value || "").replace(/[。！？；].*$/, ""));
+  function firstReaderHeadlineClause(value, maxLength) {
+    const clauses = String(value || "").split(/[，；]/).map((clause) => clause.trim()).filter(Boolean);
+    if (clauses.length === 0) return String(value || "").trim();
+    let candidate = clauses[0];
+    for (let index = 1; index < clauses.length && candidate.length < 18; index += 1) {
+      const combined = candidate + "，" + clauses[index];
+      if (combined.length > maxLength) break;
+      candidate = combined;
+    }
+    return candidate;
+  }
+
+  function removeUnclosedHeadlinePunctuation(value) {
+    return String(value || "")
+      .replace(/（[^）]*$/, "")
+      .replace(/“[^”]*$/, "")
+      .replace(/《[^》]*$/, "")
+      .replace(/[，,:：、\s]+$/, "")
+      .trim();
+  }
+
+  function headlinePunctuationIsBalanced(value) {
+    const pairs = [["（", "）"], ["(", ")"], ["[", "]"], ["“", "”"], ["《", "》"]];
+    for (const pair of pairs) {
+      if (String(value || "").split(pair[0]).length !== String(value || "").split(pair[1]).length) return false;
+    }
+    const bracketGroups = (String(value || "").match(/[（(\[]/g) || []).length;
+    const colonCount = (String(value || "").match(/[：:]/g) || []).length;
+    return bracketGroups <= 1 && colonCount <= 1;
+  }
+
+  function readerTitleFallback(value, fallback) {
+    const method = String(value || "").match(/^([A-Z][A-Za-z0-9+.^_-]{1,30})\b/)?.[1];
+    const suffix = String(fallback || "").match(/(?:公布|发布|关注|报道|分析|解读|聚焦).+$/)?.[0];
+    return normalizeChineseTitle(method && suffix ? method + " " + suffix : fallback);
+  }
+
+  function editorializeChineseTitle(value, fallback) {
+    const maxLength = 56;
+    let headline = normalizeChineseTitle(String(value || "").replace(/[。！？；].*$/, ""));
+    const quotedPaper = headline.match(/^论文《([^》]+)》(?:于.+)?$/);
+    if (quotedPaper) headline = quotedPaper[1];
+
+    headline = headline
+      .replace(/^arXiv\s+cs\.[A-Za-z]+\s+新论文\s*/i, "")
+      .replace(/^基于摘要[，,]\s*(?:文章|论文|报告)?(?:讨论|探讨|介绍|总结)了?\s*/, "研究梳理")
+      .replace(/^文章报道[，,]\s*/, "")
+      .replace(/^本文是\s*arXiv\s*上的一篇立场论文[，,]?\s*/i, "立场论文指出")
+      .replace(/^The Verge\s+的一篇报道(?:称|指出)?[，,]?\s*/i, "The Verge：")
+      .replace(/^(.{2,28}?)(?:官方)?(?:博客)?文章(?:讨论|探讨|介绍|总结)了?\s*/, "$1：")
+      .replace(/^(.{2,28}?)博客(?:介绍|讨论|探讨|总结)了?(?:如何)?\s*/, "$1：")
+      .replace(/^一起诉讼/, "诉讼")
+      .replace(/^立场论文指出指出/, "立场论文指出")
+      .replace(
+        /^(?:本文|本论文|该论文|这篇论文|论文|本研究|该研究|这项研究|本报告|该报告|这篇文章)\s*(?:首次|系统性地?|系统地?)?(?:发现了?|指出了?)\s*[，,]?/,
+        "研究发现"
+      )
+      .replace(
+        /^(?:本文|本论文|该论文|这篇论文|论文|本研究|该研究|这项研究|本报告|该报告|这篇文章)\s*(?:首次|系统性地?|系统地?)?(?:提出|介绍|研究|分析|评估|探索|讨论|探讨|总结|报告)(?:了一种|了一个|了一款|了)?\s*/,
+        ""
+      )
+      .replace(/^(?:本文|本论文|该论文|这篇论文|论文|本研究|该研究|这项研究|本报告|该报告|这篇文章)\s*/, "研究")
+      .replace(/^(?:一种|一个|一款)\s*/, "")
+      .replace(/：并/, "，并")
+      .trim();
+
+    const namedDefinition = headline.match(/^([A-Za-z][A-Za-z0-9+.^_-]{1,30})\s*(?:是|为)(?:一个|一种|一款)?(.+)$/);
+    if (namedDefinition) {
+      const descriptor = firstReaderHeadlineClause(
+        namedDefinition[2].replace(/^基于(.{2,24}?)的/, "基于$1的").replace(/^统一的/, "统一"),
+        maxLength - namedDefinition[1].length - 1
+      );
+      headline = namedDefinition[1] + "：" + descriptor;
+    } else {
+      const namedProposal = headline.match(/^([A-Za-z][A-Za-z0-9+.^_-]{1,30})\s*提出了?(?:一种|一个|一款)?(.+)$/);
+      if (namedProposal) {
+        headline = namedProposal[1] + " 提出" + firstReaderHeadlineClause(namedProposal[2], maxLength - namedProposal[1].length - 3);
+      }
+    }
+
+    headline = normalizeChineseTitle(
+      headline
+        .replace(/（(?:如|例如|包括|即)[^）]+）/g, "")
+        .replace(/（[^）]{28,}）/g, "")
+    );
+    if (headline.length > maxLength) headline = firstReaderHeadlineClause(headline, maxLength);
+    if (headline.length > maxLength) {
+      const transition = headline.search(/(?:通过|用于|旨在|同时|从而|并|以便|将|把|覆盖|包含|包括|实现|达到|帮助)/);
+      if (transition >= 20 && transition <= maxLength) headline = headline.slice(0, transition);
+    }
+    headline = removeUnclosedHeadlinePunctuation(headline);
+    const safeFallback = readerTitleFallback(headline, fallback);
+    return headline.length >= 8 && headline.length <= maxLength && headlinePunctuationIsBalanced(headline)
+      ? headline
+      : safeFallback;
+  }
+
+  function shortChineseTitle(value, fallback) {
+    return editorializeChineseTitle(value, fallback || "AI 行业动态");
   }
 
   function eventSummary(snapshot, event) {

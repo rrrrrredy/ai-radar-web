@@ -73,6 +73,19 @@ test("an explicit Chinese count returns exactly the requested number of events",
   );
 });
 
+test("Chinese Ask results keep the same reader-headline quality contract", async () => {
+  const html = await runLocalTool("ask", "把行业精选最值得关注的三件事列出来", "zh");
+  const titles = Array.from(html.matchAll(/<li\b[^>]*><strong>([^<]+)<\/strong><p>/g), (match) => match[1]);
+
+  assert.equal(titles.length, 3);
+  for (const title of titles) {
+    assert.ok(Array.from(title).length <= 56, "Chinese Ask headline exceeds 56 characters: " + title);
+    assert.doesNotMatch(title, /^(?:本文|本论文|该论文|这篇论文|本研究|该研究|这项研究|基于摘要|这篇文章|本报告|该报告)/u);
+    assert.ok((title.match(/[：:]/gu) ?? []).length <= 1, "Chinese Ask headline uses multiple colons: " + title);
+    assert.ok((title.match(/[（(\[]/gu) ?? []).length <= 1, "Chinese Ask headline uses multiple bracket groups: " + title);
+  }
+});
+
 test("source health renders numeric zeroes and a reader-friendly timestamp", async () => {
   const html = await runLocalTool("ask", "Which sources failed or had no new items today?");
 
