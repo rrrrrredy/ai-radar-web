@@ -233,7 +233,8 @@ jobs:
             exit 1
           fi
 
-          epoch_day=$(($(date -u +%s) / 86400))
+          shanghai_date=$(TZ=Asia/Shanghai date +%F)
+          epoch_day=$(($(date -u -d "${shanghai_date}T00:00:00Z" +%s) / 86400))
           if (( 10#$LIMIT > 10 )); then
             rotating_slots=$((10#$LIMIT - 10))
           else

@@ -2172,15 +2172,17 @@
     "weight": 0.58,
     "crawl_method": "html",
     "update_frequency": "daily",
-    "status": "active",
+    "status": "deferred",
     "tags": [
       "overseas-media",
       "tech-media"
     ],
     "risk_flags": [
+      "low_crawlability",
+      "paywall_possible",
       "rss_missing"
     ],
-    "notes": "",
+    "notes": "Repeated HTTP 403/Cloudflare challenge from GitHub-hosted runners on 2026-07-20 and 2026-07-21; no stable unauthenticated public feed.",
     "source_origin": "AI学习资源.md",
     "created_at": "2026-05-13",
     "updated_at": "2026-05-13"

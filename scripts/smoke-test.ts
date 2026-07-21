@@ -287,6 +287,10 @@ function assertPublicReaderSurfaces() {
       cloudflareSite.includes("function renderStoryStream") &&
       cloudflareSite.includes("function readerReadyEvent") &&
       cloudflareSite.includes("function humanizeChineseHeadline") &&
+      cloudflareSite.includes("function genericChineseEventTitle") &&
+      cloudflareSite.includes("OpenAI 总结长程模型部署经验：安全与对齐风险随任务时长上升") &&
+      cloudflareSite.includes("美国探索用无人机扑灭早期野火，应对全年化火灾风险") &&
+      cloudflareSite.includes("中国 AI 模型在特朗普阵营内部引发路线争议") &&
       cloudflareSite.includes("今日热点") &&
       cloudflareSite.includes("TOP 10") &&
       cloudflareSite.includes("为什么值得看") &&
@@ -435,6 +439,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       refreshWorkflow.includes("workflow_dispatch:") &&
       refreshWorkflow.includes("production_already_fresh") &&
       refreshWorkflow.includes("Manual dispatch ignores a completed checkpoint") &&
+      refreshWorkflow.includes("shanghai_date=$(TZ=Asia/Shanghai date +%F)") &&
       refreshWorkflow.includes('EVENT_NAME: ${{ github.event_name }}') &&
       refreshWorkflow.includes("needs: freshness_gate") &&
       refreshWorkflow.includes("HAS_CLOUDFLARE_API_TOKEN") &&
@@ -609,6 +614,17 @@ function assertBilingualStaticContract() {
     assert.doesNotMatch(title, /相关 AI 法律纠纷升级|发布研究进展|基准\/评测更新/, `Hot-topic title must describe the actual event: ${title}`);
     assert.doesNotMatch(title, /\b(?:openai|anthropic|xai|nvidia|hugging face|apple|google|meta|deepseek)\b/, `Hot-topic title must preserve official brand casing: ${title}`);
   }
+
+  const sourceRegistry = JSON.parse(readSource("data/seed/sources/ai-learning-resources.cleaned.json")) as Array<{
+    id: string;
+    notes: string;
+    risk_flags: string[];
+    status: string;
+  }>;
+  const informationSource = sourceRegistry.find((source) => source.id === "the-information");
+  assert.equal(informationSource?.status, "deferred", "The Information must stay out of automated rotation after repeated hosted-runner 403 responses.");
+  assert.equal(informationSource?.risk_flags.includes("low_crawlability"), true, "The Information must retain its crawlability caveat.");
+  assert.match(informationSource?.notes ?? "", /2026-07-20.*2026-07-21/, "The Information deferral must preserve dated production evidence.");
 
   const chineseRadar = readSource("dist/cloudflare-pages/radar/index.html");
   const englishRadar = readSource("dist/cloudflare-pages/en/radar/index.html");

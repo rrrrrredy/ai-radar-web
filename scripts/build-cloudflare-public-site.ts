@@ -1009,6 +1009,24 @@ const chineseReaderContentOverrides = [
     why: "这场诉讼会影响 AI 公司的人才招聘、硬件研发边界和商业机密合规，后续证据与判决值得持续跟踪。"
   },
   {
+    match: "Safety and alignment in an era of long-horizon models",
+    title: "OpenAI 总结长程模型部署经验：安全与对齐风险随任务时长上升",
+    summary: "OpenAI 总结长程模型的部署经验，指出模型运行时间拉长后会出现新的安全风险与失败模式，并介绍通过迭代部署改进防护的做法。",
+    why: "长程智能体正在进入真实工作流，任务持续时间带来的失控与累积误差会直接影响产品安全边界。"
+  },
+  {
+    match: "Firefighting drones in the works as wildfires plague US nearly year-round",
+    title: "美国探索用无人机扑灭早期野火，应对全年化火灾风险",
+    summary: "加州与 XPRIZE 正测试无人机能否在野火扩散前完成识别和扑救，以应对美国野火季逐渐全年化的趋势；实际效果仍需现场数据验证。",
+    why: "自主无人机若能缩短发现和处置时间，可能改变高风险应急体系，但识别准确率、调度与安全责任同样关键。"
+  },
+  {
+    match: "China’s AI models have Trump’s AI world at war with itself",
+    title: "中国 AI 模型在特朗普阵营内部引发路线争议",
+    summary: "围绕是否以及如何使用中国 AI 模型，特朗普阵营的现任与前任 AI 顾问公开交锋，反映美国 AI 政策内部在开放竞争、安全与产业保护之间的分歧。",
+    why: "这场争议可能影响美国对中国模型、开源生态与采购限制的政策走向，值得继续跟踪实际规则变化。"
+  },
+  {
     match: "AI is more likely than humans to form biases when hiring",
     title: "研究发现 AI 招聘筛选比人类更容易形成偏见",
     summary: "研究发现，在招聘筛选场景中，AI 比人类更容易形成或放大偏见，提醒企业重新审视自动化招聘的评估与问责机制。",
@@ -1111,8 +1129,32 @@ function normalizeReaderSummary(value: string) {
     .trim();
 }
 
+function genericChineseEventTitle(event: SnapshotEvent) {
+  const source = publicText(event.citations[0]?.source_name ?? event.timeline[0]?.source_name ?? "")
+    .replace(/\s+(?:AI|News)$/iu, "")
+    .trim() || "公开来源";
+  const category = categoryFilterValue(event.category);
+  const suffixByCategory: Record<string, string> = {
+    agent: "关注 AI 智能体进展",
+    benchmark: "公布 AI 评测结果",
+    business: "报道 AI 行业新动向",
+    funding: "报道 AI 融资新动向",
+    infrastructure: "关注 AI 基础设施进展",
+    model_release: "发布 AI 模型更新",
+    open_source: "发布开源 AI 项目",
+    opinion: "分析 AI 行业争议",
+    policy: "解读 AI 政策变化",
+    product_update: "发布 AI 产品更新",
+    regulation: "解读 AI 监管变化",
+    research: "公布 AI 研究发现",
+    safety: "聚焦 AI 安全与对齐",
+    tooling: "发布 AI 开发工具更新"
+  };
+  return `${source} ${suffixByCategory[category] ?? "发布 AI 行业动态"}`;
+}
+
 function genericChineseEventSummary(event: SnapshotEvent, canonical: string) {
-  const title = canonical || "这条 AI 行业动态";
+  const title = /\p{Script=Han}/u.test(canonical) ? canonical : genericChineseEventTitle(event);
   const category = categoryFilterValue(event.category);
   if (category === "research" || category === "benchmark") {
     return `这项公开研究围绕“${title}”展开；当前证据主要来自 ${event.source_count} 个来源，方法、实验与结论仍需回到原文核对。`;
@@ -1158,6 +1200,19 @@ function humanizeChineseHeadline(value: string) {
   const product = headline.match(/^(.{2,20}?)推出了?([^，,]+)[，,]这是一个由(.+?)驱动的AI工具/u);
   if (product) headline = `${product[1]}推出${product[2]}：由${product[3]}驱动`;
 
+  if (/^Anthropic\s*发布了?面向金融服务的.+Cowork.+Claude Code.*插件/u.test(headline)) {
+    headline = "Anthropic 发布金融服务智能体与 Claude Code 插件";
+  } else {
+    const launch = headline.match(/^(.{2,32}?)(发布|推出|上线|开源)了?\s*([^，,。；]{2,90})(?:[，,](.+))?$/u);
+    if (launch && launch[3].length <= 48) {
+      const detail = (launch[4] ?? "")
+        .split(/[，,；;]/u)[0]
+        .replace(/^(?:这是(?:一种|一个)|该版本|主要为了|旨在)/u, "")
+        .trim();
+      headline = `${launch[1]}${launch[2]}${launch[3]}${detail && detail.length <= 38 ? `：${detail}` : ""}`;
+    }
+  }
+
   return headline.replace(/发布了/u, "发布").replace(/推出了/u, "推出");
 }
 
@@ -1176,6 +1231,12 @@ function normalizeChineseTitleStyle(value: string) {
     .replace(/microsoft/giu, "Microsoft")
     .replace(/github/giu, "GitHub")
     .replace(/xai/giu, "xAI")
+    .replace(/\bclaude\b/giu, "Claude")
+    .replace(/\bcodex\b/giu, "Codex")
+    .replace(/\bgemini\b/giu, "Gemini")
+    .replace(/\bgrok\b/giu, "Grok")
+    .replace(/\btransformers\b/giu, "Transformers")
+    .replace(/\bvllm\b/giu, "vLLM")
     .replace(/苹果/gu, "Apple")
     .replace(/谷歌/gu, "Google")
     .replace(/英伟达/gu, "NVIDIA")
@@ -1196,19 +1257,16 @@ function chineseEventTitle(event: SnapshotEvent) {
 
   const rawSummary = normalizeReaderSummary(event.summary_zh ?? "");
   const summary = chineseEventSummary(event);
-  const compact = compactChineseEventTitle(event, canonical, summary);
+  const compact = compactChineseEventTitle(canonical, summary);
   const sentence = humanizeChineseHeadline(summary.replace(/\s+/g, " ").split(/[。！？]/u)[0]?.trim() ?? "");
   const summaryCanLead = /\p{Script=Han}/u.test(rawSummary) &&
     !containsReaderPipelineBoilerplate(rawSummary) &&
     !/^(?:公开信息|这条|该事件|这项公开研究)/u.test(rawSummary);
-  return shortenChineseTitle(compact || (/\p{Script=Han}/u.test(canonical) ? canonical : summaryCanLead ? sentence : canonical));
+  return shortenChineseTitle(compact || (/\p{Script=Han}/u.test(canonical) ? canonical : summaryCanLead ? sentence : genericChineseEventTitle(event)));
 }
 
-function compactChineseEventTitle(event: SnapshotEvent, canonical: string, summary: string) {
+function compactChineseEventTitle(canonical: string, summary: string) {
   const text = `${canonical} ${summary}`;
-  const entities = event.related_entities.map((entity) => entityDisplayLabel(entity.trim())).filter(Boolean);
-  const mainEntity = entities.find((entity) => /OpenAI|Anthropic|Google|DeepMind|Meta|Microsoft|NVIDIA|DeepSeek|Qwen|Kimi|Claude|Gemini|GPT|Codex|Apple|xAI|Hugging Face/i.test(entity)) ?? entities[0];
-  const product = entities.find((entity) => /GPT-Red|Codex Micro|Claude|Gemini|DeepSeek|Qwen|Kimi|Jacobian|DeepStream|Transformers|Grok|ATL Saathi|workspace|keyboard/i.test(entity));
 
   if (/GPT-Red/i.test(text)) return "OpenAI 发布 GPT-Red 红队系统";
   if (/Codex Micro|keyboard|键盘/i.test(text)) return "OpenAI 推出 Codex 硬件键盘";
@@ -1232,8 +1290,6 @@ function compactChineseEventTitle(event: SnapshotEvent, canonical: string, summa
   if (/How Canada uses Claude|加拿大如何使用\s*Claude/i.test(text)) return "Anthropic 研究加拿大市场如何使用 Claude";
   if (/Southeast Asia|东南亚/i.test(text) && /Gemini/i.test(text)) return "Gemini 凭本地语言能力加速进入东南亚市场";
   if (/last wave of tech winners|科技创始人再次投身创业/i.test(text)) return "科技赢家重返创业：押注 AI 关键窗口";
-  if (/release|launch|发布|推出|上线/i.test(text) && mainEntity && product && mainEntity !== product) return shortenChineseTitle(`${mainEntity} 发布 ${product}`);
-
   return "";
 }
 
@@ -1645,6 +1701,18 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
     if (survey) headline = survey[1].replace(/\s+Pulse Research$/i, "") + "对" + survey[2] + "家企业调查：" + survey[3].split(/[，,：:]/)[0];
     const product = headline.match(/^(.{2,20}?)推出了?([^，,]+)[，,]这是一个由(.+?)驱动的AI工具/);
     if (product) headline = product[1] + "推出" + product[2] + "：由" + product[3] + "驱动";
+    if (/^Anthropic\s*发布了?面向金融服务的.+Cowork.+Claude Code.*插件/.test(headline)) {
+      headline = "Anthropic 发布金融服务智能体与 Claude Code 插件";
+    } else {
+      const launch = headline.match(/^(.{2,32}?)(发布|推出|上线|开源)了?\s*([^，,。；]{2,90})(?:[，,](.+))?$/);
+      if (launch && launch[3].length <= 48) {
+        const detail = String(launch[4] || "")
+          .split(/[，,；;]/)[0]
+          .replace(/^(?:这是(?:一种|一个)|该版本|主要为了|旨在)/, "")
+          .trim();
+        headline = launch[1] + launch[2] + launch[3] + (detail && detail.length <= 38 ? "：" + detail : "");
+      }
+    }
     return headline.replace(/发布了/, "发布").replace(/推出了/, "推出");
   }
 
@@ -1674,6 +1742,12 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
       .replace(/microsoft/gi, "Microsoft")
       .replace(/github/gi, "GitHub")
       .replace(/xai/gi, "xAI")
+      .replace(/\bclaude\b/gi, "Claude")
+      .replace(/\bcodex\b/gi, "Codex")
+      .replace(/\bgemini\b/gi, "Gemini")
+      .replace(/\bgrok\b/gi, "Grok")
+      .replace(/\btransformers\b/gi, "Transformers")
+      .replace(/\bvllm\b/gi, "vLLM")
       .replace(/苹果/g, "Apple")
       .replace(/谷歌/g, "Google")
       .replace(/英伟达/g, "NVIDIA")
@@ -1704,8 +1778,32 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
       .trim();
   }
 
+  function genericChineseTitle(event) {
+    const source = String(event.citations?.[0]?.source_name || event.timeline?.[0]?.source_name || "")
+      .replace(/\s+(?:AI|News)$/i, "")
+      .trim() || "公开来源";
+    const suffixByCategory = {
+      agent: "关注 AI 智能体进展",
+      benchmark: "公布 AI 评测结果",
+      business: "报道 AI 行业新动向",
+      funding: "报道 AI 融资新动向",
+      infrastructure: "关注 AI 基础设施进展",
+      model_release: "发布 AI 模型更新",
+      open_source: "发布开源 AI 项目",
+      opinion: "分析 AI 行业争议",
+      policy: "解读 AI 政策变化",
+      product_update: "发布 AI 产品更新",
+      regulation: "解读 AI 监管变化",
+      research: "公布 AI 研究发现",
+      safety: "聚焦 AI 安全与对齐",
+      tooling: "发布 AI 开发工具更新"
+    };
+    return source + " " + (suffixByCategory[String(event.category || "")] || "发布 AI 行业动态");
+  }
+
   function genericChineseSummary(event) {
-    const canonical = String(event.canonical_title || "").trim() || "这条 AI 行业动态";
+    const rawCanonical = String(event.canonical_title || "").trim();
+    const canonical = /[\u3400-\u9fff]/.test(rawCanonical) ? rawCanonical : genericChineseTitle(event);
     const category = String(event.category || "");
     if (category === "research" || category === "benchmark") {
       return "这项公开研究围绕“" + canonical + "”展开；当前证据主要来自 " + Number(event.source_count || 0) + " 个来源，方法、实验与结论仍需回到原文核对。";
@@ -1723,19 +1821,16 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
     const canonical = String(event.canonical_title || "").trim();
     const rawSummary = normalizeReaderSummary(event.summary_zh);
     const fullSummary = eventSummary(snapshot, event);
-    const compact = compactChineseTitle(event, canonical, fullSummary);
+    const compact = compactChineseTitle(canonical, fullSummary);
     const summary = humanizeChineseTitle(fullSummary.replace(/\s+/g, " ").split(/[。！？]/)[0].trim());
     const summaryCanLead = /[\u3400-\u9fff]/.test(rawSummary) &&
       !containsPipelineBoilerplate(rawSummary) &&
       !/^(?:公开信息|这条|该事件|这项公开研究)/.test(rawSummary);
-    return shortChineseTitle(compact || (/[\u3400-\u9fff]/.test(canonical) ? canonical : summaryCanLead ? summary : canonical));
+    return shortChineseTitle(compact || (/[\u3400-\u9fff]/.test(canonical) ? canonical : summaryCanLead ? summary : genericChineseTitle(event)));
   }
 
-  function compactChineseTitle(event, canonical, summary) {
+  function compactChineseTitle(canonical, summary) {
     const text = [canonical, summary].join(" ");
-    const entities = (event.related_entities || []).map(displayChineseEntity).filter(Boolean);
-    const main = entities.find((entity) => /OpenAI|Anthropic|Google|DeepMind|Meta|Microsoft|NVIDIA|DeepSeek|Qwen|Kimi|Claude|Gemini|GPT|Codex|Apple|xAI|Hugging Face/i.test(entity)) || entities[0] || "";
-    const product = entities.find((entity) => /GPT-Red|Codex Micro|Claude|Gemini|DeepSeek|Qwen|Kimi|Jacobian|DeepStream|Transformers|Grok|ATL Saathi|workspace|keyboard/i.test(entity)) || "";
     if (/GPT-Red/i.test(text)) return "OpenAI 发布 GPT-Red 红队系统";
     if (/Codex Micro|keyboard|键盘/i.test(text)) return "OpenAI 推出 Codex 硬件键盘";
     if (/Jacobian|hidden space|雅可比/i.test(text) && /Anthropic|Claude/i.test(text)) return "Anthropic 披露 Claude 内部表征研究";
@@ -1747,7 +1842,6 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
     if (/How Canada uses Claude|加拿大如何使用\s*Claude/i.test(text)) return "Anthropic 研究加拿大市场如何使用 Claude";
     if (/Southeast Asia|东南亚/i.test(text) && /Gemini/i.test(text)) return "Gemini 凭本地语言能力加速进入东南亚市场";
     if (/last wave of tech winners|科技创始人再次投身创业/i.test(text)) return "科技赢家重返创业：押注 AI 关键窗口";
-    if (/release|launch|发布|推出|上线/i.test(text) && main && product && main !== product) return shortChineseTitle(main + " 发布 " + product);
     return "";
   }
 
