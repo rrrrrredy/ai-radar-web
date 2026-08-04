@@ -102,10 +102,8 @@ test("retired legacy report URLs stay 404 and the public snapshot carries no rep
   assert.equal(fs.existsSync(path.join(outputRoot, "en", "reports", "index.html")), false);
   assert.equal(Object.hasOwn(snapshot, "reports"), false);
   assert.equal(Object.hasOwn(snapshot, "report_quality_summary"), false);
-  const redirects = fs.readFileSync(path.join(outputRoot, "_redirects"), "utf8");
   const worker = fs.readFileSync(path.join(outputRoot, "_worker.js"), "utf8");
-  assert.match(redirects, /^\/reports\/ \/404\.html 404$/m);
-  assert.match(redirects, /^\/en\/reports\/ \/404\.html 404$/m);
+  assert.equal(fs.existsSync(path.join(outputRoot, "_redirects")), false);
   assert.match(worker, /"\/reports"/);
   assert.match(worker, /"\/en\/reports"/);
 });

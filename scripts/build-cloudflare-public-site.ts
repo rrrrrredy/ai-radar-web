@@ -1,7 +1,10 @@
+import "@/lib/config/load-cli-env";
+
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { getSupabasePublicConfig } from "@/lib/config";
 import type { UnderstandingEntity } from "@/lib/understanding/types";
 
 type SnapshotItem = {
@@ -209,10 +212,12 @@ async function main() {
 }
 
 async function writeSite(snapshot: Snapshot) {
+  const liveFeedConfig = getSupabasePublicConfig();
   const generatedDirectories = ["about", "ask", "assets", "en", "radar", "sources"];
   await Promise.all(generatedDirectories.map((directory) =>
     fs.rm(path.join(outputDir, directory), { force: true, recursive: true })
   ));
+  await fs.rm(path.join(outputDir, "_redirects"), { force: true });
   const allowedDirectories = new Set([...generatedDirectories, "data"]);
   const existingEntries = await fs.readdir(outputDir, { withFileTypes: true }).catch(() => []);
   await Promise.all(existingEntries
@@ -236,6 +241,7 @@ async function writeSite(snapshot: Snapshot) {
     fs.writeFile(path.join(outputDir, "data", "radar-snapshot.json"), `${JSON.stringify(snapshot, null, 2)}\n`, "utf8"),
     fs.writeFile(path.join(outputDir, "about", "index.html"), renderAbout(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "ask", "index.html"), renderAsk(snapshot), "utf8"),
+    fs.writeFile(path.join(outputDir, "assets", "live-feed.js"), liveFeedClientScript(), "utf8"),
     fs.writeFile(path.join(outputDir, "assets", "styles.css"), stylesheet(), "utf8"),
     fs.writeFile(path.join(outputDir, "404.html"), renderNotFound(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "en", "about", "index.html"), renderEnglishAbout(snapshot), "utf8"),
@@ -246,42 +252,175 @@ async function writeSite(snapshot: Snapshot) {
     fs.writeFile(path.join(outputDir, "index.html"), renderHome(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "radar", "index.html"), renderRadar(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "sources", "index.html"), renderSources(snapshot), "utf8"),
-    fs.writeFile(path.join(outputDir, "_redirects"), retiredRouteRedirects(), "utf8"),
     fs.writeFile(path.join(outputDir, "_routes.json"), retiredRouteWorkerRoutes(), "utf8"),
-    fs.writeFile(path.join(outputDir, "_worker.js"), retiredRouteWorker(), "utf8"),
+    fs.writeFile(path.join(outputDir, "_worker.js"), retiredRouteWorker(liveFeedConfig), "utf8"),
     fs.writeFile(path.join(outputDir, "version.json"), `${JSON.stringify(publicVersion(snapshot), null, 2)}\n`, "utf8")
   ]);
 }
 
-function retiredRouteRedirects() {
-  return [
-    "/write /404.html 404",
-    "/write/ /404.html 404",
-    "/en/write /404.html 404",
-    "/en/write/ /404.html 404",
-    "/entities /404.html 404",
-    "/entities/ /404.html 404",
-    "/entities/* /404.html 404",
-    "/reports /404.html 404",
-    "/reports/ /404.html 404",
-    "/reports/* /404.html 404",
-    "/en/entities /404.html 404",
-    "/en/entities/ /404.html 404",
-    "/en/entities/* /404.html 404",
-    "/en/reports /404.html 404",
-    "/en/reports/ /404.html 404",
-    "/en/reports/* /404.html 404",
-    "/api/writing-assistant /404.html 404",
-    "/api/writing-assistant/ /404.html 404"
-  ].join("\n") + "\n";
+function retiredRouteWorker(config: ReturnType<typeof getSupabasePublicConfig>) {
+  const liveFeedColumns = [
+    "id",
+    "local_id",
+    "source_name",
+    "title",
+    "url",
+    "published_at",
+    "collected_at",
+    "processed_at",
+    "language",
+    "summary_zh",
+    "summary_en",
+    "categories",
+    "tags",
+    "understanding_status",
+    "ai_relevance_score",
+    "importance_score",
+    "credibility_score",
+    "novelty_score",
+    "freshness_score",
+    "overall_score",
+    "source_tier",
+    "confidence",
+    "why_it_matters",
+    "updated_at"
+  ].join(",");
+
+  return `const retiredPrefixes = ["/write", "/en/write", "/entities", "/en/entities", "/reports", "/en/reports", "/api/writing-assistant"];
+const liveFeedPath = "/api/live-feed";
+const supabaseUrl = ${JSON.stringify(config?.url ?? "")};
+const supabaseKey = ${JSON.stringify(config?.anonKey ?? "")};
+const liveFeedColumns = ${JSON.stringify(liveFeedColumns)};
+
+function jsonResponse(body, status, extraHeaders = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "x-content-type-options": "nosniff",
+      ...extraHeaders
+    }
+  });
 }
 
-function retiredRouteWorker() {
-  return `const retiredPrefixes = ["/write", "/en/write", "/entities", "/en/entities", "/reports", "/en/reports", "/api/writing-assistant"];
+async function supabaseJson(query) {
+  const response = await fetch(supabaseUrl + "/rest/v1/" + query, {
+    headers: {
+      accept: "application/json",
+      apikey: supabaseKey,
+      authorization: "Bearer " + supabaseKey
+    }
+  });
+  if (!response.ok) {
+    throw new Error("Supabase REST " + response.status);
+  }
+  const payload = await response.json();
+  if (!Array.isArray(payload)) {
+    throw new Error("Supabase REST returned a non-array payload");
+  }
+  return payload;
+}
+
+function chunkValues(values, size) {
+  const result = [];
+  for (let index = 0; index < values.length; index += size) {
+    result.push(values.slice(index, index + size));
+  }
+  return result;
+}
+
+async function buildLiveFeed(request, context) {
+  if (!supabaseUrl || !supabaseKey) {
+    return jsonResponse({ ok: false, error: "live_feed_not_configured" }, 503, {
+      "cache-control": "no-store"
+    });
+  }
+
+  const requestUrl = new URL(request.url);
+  const requestedLimit = Number.parseInt(requestUrl.searchParams.get("limit") || "120", 10);
+  const limit = Number.isFinite(requestedLimit) ? Math.min(200, Math.max(10, requestedLimit)) : 120;
+  const cacheUrl = new URL(requestUrl.origin + liveFeedPath);
+  cacheUrl.searchParams.set("limit", String(limit));
+  const cacheRequest = new Request(cacheUrl.toString(), { method: "GET" });
+  const edgeCache = typeof caches === "undefined" ? null : caches.default;
+  const cached = edgeCache ? await edgeCache.match(cacheRequest) : null;
+  if (cached) {
+    return request.method === "HEAD"
+      ? new Response(null, { status: cached.status, headers: cached.headers })
+      : cached;
+  }
+
+  const manifestParams = new URLSearchParams({
+    select: "id,processed_at,published_at",
+    order: "published_at.desc.nullslast,processed_at.desc.nullslast,id.desc",
+    limit: String(limit)
+  });
+  const manifest = await supabaseJson("public_radar_items?" + manifestParams.toString());
+  const ids = Array.from(new Set(manifest.map((row) => String(row.id || "").trim()).filter(Boolean)));
+  if (ids.length === 0) {
+    return jsonResponse({
+      ok: true,
+      generated_at: new Date().toISOString(),
+      latest_processed_at: null,
+      item_count: 0,
+      items: []
+    }, 200, {
+      "cache-control": "public, max-age=15, s-maxage=45, stale-while-revalidate=300",
+      "x-radar-live-source": "supabase_public_radar"
+    });
+  }
+
+  const detailPages = await Promise.all(chunkValues(ids, 50).map(async (idChunk) => {
+    const detailParams = new URLSearchParams({
+      select: liveFeedColumns,
+      id: "in.(" + idChunk.join(",") + ")"
+    });
+    return supabaseJson("public_radar_items?" + detailParams.toString());
+  }));
+  const rowsById = new Map(detailPages.flat().map((row) => [String(row.id || ""), row]));
+  const items = ids.map((id) => rowsById.get(id)).filter(Boolean);
+  if (items.length !== ids.length) {
+    throw new Error("Supabase live feed detail rows were incomplete");
+  }
+
+  const response = jsonResponse({
+    ok: true,
+    generated_at: new Date().toISOString(),
+    latest_processed_at: items.map((item) => item.processed_at).filter(Boolean).sort().at(-1) || null,
+    item_count: items.length,
+    items
+  }, 200, {
+    "cache-control": "public, max-age=15, s-maxage=45, stale-while-revalidate=300",
+    "x-radar-live-source": "supabase_public_radar"
+  });
+  if (edgeCache) {
+    context.waitUntil(edgeCache.put(cacheRequest, response.clone()));
+  }
+  return request.method === "HEAD"
+    ? new Response(null, { status: response.status, headers: response.headers })
+    : response;
+}
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, context) {
     const url = new URL(request.url);
+    if (url.pathname === liveFeedPath || url.pathname === liveFeedPath + "/") {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return jsonResponse({ ok: false, error: "method_not_allowed" }, 405, {
+          allow: "GET, HEAD",
+          "cache-control": "no-store"
+        });
+      }
+      try {
+        return await buildLiveFeed(request, context);
+      } catch (error) {
+        return jsonResponse({
+          ok: false,
+          error: "live_feed_temporarily_unavailable",
+          detail: error instanceof Error ? error.message.slice(0, 120) : "unknown_error"
+        }, 502, { "cache-control": "no-store" });
+      }
+    }
     if (retiredPrefixes.some((prefix) => url.pathname === prefix || url.pathname.startsWith(prefix + "/"))) {
       return new Response("<!doctype html><meta charset=\\"utf-8\\"><title>页面不存在 - AI 行业信息雷达</title><h1>404</h1><p>This public route is not available.</p>", {
         headers: { "content-type": "text/html; charset=utf-8" },
@@ -313,7 +452,9 @@ function retiredRouteWorkerRoutes() {
       "/en/reports",
       "/en/reports/*",
       "/api/writing-assistant",
-      "/api/writing-assistant/*"
+      "/api/writing-assistant/*",
+      "/api/live-feed",
+      "/api/live-feed/*"
     ],
     exclude: []
   }, null, 2)}\n`;
@@ -496,7 +637,6 @@ function storyFilterScript() {
     const input=document.querySelector("#feed-search");
     const buttons=Array.from(document.querySelectorAll("[data-feed-category]"));
     const familyButtons=Array.from(document.querySelectorAll("[data-feed-family]"));
-    const rows=Array.from(document.querySelectorAll(".story-row"));
     if(!input||buttons.length===0)return;
     let category="all";
     let family="all";
@@ -504,14 +644,277 @@ function storyFilterScript() {
       const query=input.value.trim().toLowerCase();
       const values=category==="all"?[]:category.split(",");
       const familyValues=family==="all"?[]:family.split(",");
-      rows.forEach(row=>{const categoryText=(row.dataset.category||"").toLowerCase();const familyText=(row.dataset.family||"").toLowerCase();const matchesCategory=values.length===0||values.some(value=>categoryText.includes(value));const matchesFamily=familyValues.length===0||familyValues.some(value=>familyText.includes(value));const matchesQuery=!query||(row.dataset.search||"").includes(query);row.hidden=!(matchesCategory&&matchesFamily&&matchesQuery);});
+      Array.from(document.querySelectorAll(".story-row")).forEach(row=>{const categoryText=(row.dataset.category||"").toLowerCase();const familyText=(row.dataset.family||"").toLowerCase();const matchesCategory=values.length===0||values.some(value=>categoryText.includes(value));const matchesFamily=familyValues.length===0||familyValues.some(value=>familyText.includes(value));const matchesQuery=!query||(row.dataset.search||"").includes(query);row.hidden=!(matchesCategory&&matchesFamily&&matchesQuery);});
     }
     input.addEventListener("input",apply);
     buttons.forEach(button=>button.addEventListener("click",()=>{category=button.dataset.feedCategory||"all";buttons.forEach(candidate=>{const active=candidate===button;candidate.classList.toggle("active",active);candidate.setAttribute("aria-pressed",active?"true":"false");});apply();}));
     familyButtons.forEach(button=>button.addEventListener("click",()=>{family=button.dataset.feedFamily||"all";familyButtons.forEach(candidate=>{const active=candidate===button;candidate.classList.toggle("active",active);candidate.setAttribute("aria-pressed",active?"true":"false");});apply();}));
     buttons.forEach((button,index)=>button.setAttribute("aria-pressed",index===0?"true":"false"));
     familyButtons.forEach((button,index)=>button.setAttribute("aria-pressed",index===0?"true":"false"));
+    window.addEventListener("radar:feed-updated",apply);
   })();`;
+}
+
+function liveFeedClientScript() {
+  return String.raw`(function () {
+  const root = document.querySelector("[data-live-feed]");
+  if (!root) return;
+  const stream = root.querySelector("[data-live-stream]");
+  const status = document.querySelector("[data-live-status]");
+  const liveDate = document.querySelector("[data-live-date]");
+  const locale = document.documentElement.lang.toLowerCase().startsWith("zh") ? "zh" : "en";
+  const mode = root.dataset.liveMode || "home";
+  let requestInFlight = false;
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function safeUrl(value) {
+    try {
+      const parsed = new URL(String(value || ""));
+      return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed.toString() : "#";
+    } catch {
+      return "#";
+    }
+  }
+
+  function values(value) {
+    return Array.isArray(value) ? value.map((item) => String(item || "").trim()).filter(Boolean) : [];
+  }
+
+  function score(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(0, Math.min(1, number)) : 0;
+  }
+
+  function effectiveTime(item) {
+    for (const value of [item.published_at, item.collected_at, item.processed_at, item.updated_at]) {
+      const timestamp = Date.parse(String(value || ""));
+      if (Number.isFinite(timestamp)) return timestamp;
+    }
+    return 0;
+  }
+
+  function dateTime(value) {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return { date: "--", time: "--:--" };
+    const options = locale === "zh"
+      ? { timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }
+      : { timeZone: "UTC", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
+    const parts = Object.fromEntries(new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-GB", options).formatToParts(date).map((part) => [part.type, part.value]));
+    return {
+      date: locale === "zh" ? parts.month + "-" + parts.day : parts.day + " " + parts.month,
+      time: parts.hour + ":" + parts.minute
+    };
+  }
+
+  function categoryKey(item) {
+    return values(item.categories)[0] || "other";
+  }
+
+  function categoryLabel(value) {
+    const zh = {
+      agent: "智能体", benchmark: "评测", business: "商业", funding: "融资", infrastructure: "基础设施",
+      model_release: "模型", open_source: "开源", policy: "政策", product_update: "产品", regulation: "监管",
+      research: "论文", safety: "安全", tooling: "工具", opinion: "观点"
+    };
+    const en = {
+      agent: "Agents", benchmark: "Benchmarks", business: "Business", funding: "Funding", infrastructure: "Infrastructure",
+      model_release: "Models", open_source: "Open source", policy: "Policy", product_update: "Products", regulation: "Regulation",
+      research: "Research", safety: "Safety", tooling: "Tools", opinion: "Opinion"
+    };
+    return (locale === "zh" ? zh : en)[value] || (locale === "zh" ? "其他" : "Other");
+  }
+
+  function sourceFamily(item) {
+    const categories = values(item.categories);
+    if (categories.includes("research")) return "研究订阅";
+    if (categories.includes("open_source")) return "开源项目";
+    if (/^T1(?:\.5)?$/i.test(String(item.source_tier || ""))) return "公司/实验室";
+    return "分析/媒体";
+  }
+
+  function readerTitle(item) {
+    const source = String(item.source_name || "").trim();
+    let title = String(item.title || "").trim()
+      .replace(/^据报道[，,]\s*/, "")
+      .replace(/\s*\|\s*(?:Microsoft Community Hub|Substack)$/i, "")
+      .replace(/\s+-\s+Alibaba Cloud$/i, "");
+    if (/^b\d+$/i.test(title) && source) {
+      return locale === "zh" ? source + " 更新至 " + title : source + " updated to " + title;
+    }
+    if (/^v?\d+(?:\.\d+){1,3}(?:[-+._a-z0-9]*)?$/i.test(title) && source) {
+      return locale === "zh" ? source + " 发布 " + title : source + " released " + title;
+    }
+    if (/\brepository metadata$/i.test(title) && source) {
+      return locale === "zh" ? source + " 开源仓库更新" : source + " repository update";
+    }
+    if (title.length > 110) title = title.slice(0, 108).replace(/[，,：:;；\s]+$/u, "") + "…";
+    return title;
+  }
+
+  function genericSummary(value) {
+    return /^(?:公开信息(?:显示|目前只提供)|当前材料主要来自)|\b(?:Metadata-level item|Item summary|Evidence text)\b/i.test(value);
+  }
+
+  function fallbackSummary(item, title) {
+    const source = String(item.source_name || (locale === "zh" ? "该来源" : "The source"));
+    const category = categoryKey(item);
+    if (locale === "en") {
+      if (category === "model_release") return source + " published a model or version update. Check the release notes for capability and compatibility details.";
+      if (category === "open_source") return source + " published an open-source update that may affect compatibility and deployment choices.";
+      if (category === "product_update") return source + " changed a product workflow or capability; availability and migration impact still need verification.";
+      return "This is a newly processed public signal. Open the original source to verify the full context.";
+    }
+    if (category === "model_release") return source + "发布了模型或版本更新，能力变化、兼容性和使用限制仍需结合发布说明核对。";
+    if (category === "open_source") return source + "更新了开源项目，版本变化可能影响兼容性、部署方式和技术选型。";
+    if (category === "product_update") return source + "更新了产品能力或工作流，实际可用范围和迁移影响仍需继续确认。";
+    if (category === "research") return "这项研究可能影响对技术路线的判断，但结论仍需结合论文方法与实验设置核对。";
+    return "这是刚完成处理的公开信息，具体背景、数字和适用范围仍应回到原始来源核对。";
+  }
+
+  function readerSummary(item, title) {
+    const preferred = locale === "zh" ? String(item.summary_zh || "") : String(item.summary_en || "");
+    const cleaned = preferred.trim();
+    return cleaned && !genericSummary(cleaned) ? cleaned : fallbackSummary(item, title);
+  }
+
+  function readerJudgment(item) {
+    const value = String(item.why_it_matters || "").trim();
+    const usable = value && !/^(?:Potentially relevant AI signal|May affect model capability tracking|May change available building blocks)/i.test(value);
+    if (usable && (locale === "en" || /[\u3400-\u9fff]/u.test(value))) return value;
+    const category = categoryKey(item);
+    if (locale === "en") {
+      if (category === "model_release") return "It may change capability, cost or model-selection decisions.";
+      if (category === "product_update") return "It may directly change user workflows and product choices.";
+      if (category === "open_source") return "It may lower adoption costs or change the available technical stack.";
+      return "It may affect product decisions, technical choices or the direction of the AI market.";
+    }
+    if (category === "model_release") return "它可能改变能力边界、成本和模型选型，需要继续核对实际表现。";
+    if (category === "product_update") return "它可能直接改变用户工作流和产品选型，值得关注真实可用性。";
+    if (category === "open_source") return "它可能降低使用门槛并改变技术栈选择，值得评估兼容性与维护状态。";
+    if (category === "research") return "它可能改变对技术机制或路线的理解，但距离稳定产品化仍需验证。";
+    return "它可能影响产品判断、技术选型或后续行业走向，值得继续跟踪。";
+  }
+
+  function eligible(item) {
+    const title = readerTitle(item);
+    const url = safeUrl(item.url);
+    const time = effectiveTime(item);
+    return Boolean(item && title.length >= 4 && url !== "#" && time > 0 && ["included", "needs_review"].includes(String(item.understanding_status || "included")));
+  }
+
+  function selectItems(items) {
+    const maximumAge = mode === "home" ? 30 * 24 * 60 * 60 * 1000 : 120 * 24 * 60 * 60 * 1000;
+    const newest = items.filter(eligible).filter((item) => Date.now() - effectiveTime(item) <= maximumAge).sort((left, right) => effectiveTime(right) - effectiveTime(left));
+    const selected = [];
+    const urls = new Set(mode === "home"
+      ? Array.from(document.querySelectorAll(".top-story h2 a"))
+          .map((link) => safeUrl(link.getAttribute("href"))).filter((url) => url !== "#")
+          .map((url) => url.replace(/\/$/, "").toLowerCase())
+      : []);
+    const perSource = new Map();
+    const sourceLimit = mode === "home" ? 3 : 8;
+    for (const item of newest) {
+      const url = safeUrl(item.url).replace(/\/$/, "").toLowerCase();
+      const source = String(item.source_name || "unknown");
+      if (urls.has(url) || (perSource.get(source) || 0) >= sourceLimit) continue;
+      urls.add(url);
+      perSource.set(source, (perSource.get(source) || 0) + 1);
+      selected.push(item);
+      if (selected.length >= (mode === "home" ? 32 : 100)) break;
+    }
+    return selected;
+  }
+
+  function rowHtml(item) {
+    const title = readerTitle(item);
+    const summary = readerSummary(item, title);
+    const judgment = readerJudgment(item);
+    const timestampValue = item.published_at || item.collected_at || item.processed_at;
+    const timestamp = dateTime(timestampValue);
+    const categories = values(item.categories);
+    const category = categoryKey(item);
+    const family = sourceFamily(item);
+    const source = String(item.source_name || (locale === "zh" ? "公开来源" : "Public source"));
+    const sourceCount = locale === "zh" ? "1 个来源" : "1 source";
+    const search = [title, summary, source, categories.join(" ")].join(" ").toLowerCase();
+    return '<article class="event-card story-row" data-category="' + escapeHtml(categories.join(" ") + " " + category) + '" data-family="' + escapeHtml(family) + '" data-search="' + escapeHtml(search) + '">' +
+      '<div class="story-time"><time datetime="' + escapeHtml(String(timestampValue || "")) + '" title="' + escapeHtml(timestamp.date + " " + timestamp.time + (locale === "zh" ? " · 北京时间" : " · UTC")) + '"><span class="story-date">' + escapeHtml(timestamp.date) + '</span><span class="story-clock">' + escapeHtml(timestamp.time) + '</span></time><i aria-hidden="true"></i></div>' +
+      '<div class="story-content"><div class="story-meta"><span>' + escapeHtml(source) + '</span><strong>' + sourceCount + '</strong></div>' +
+      '<h2><a href="' + escapeHtml(safeUrl(item.url)) + '">' + escapeHtml(title) + '</a></h2>' +
+      '<p>' + escapeHtml(summary) + '</p><p class="story-judgment"><strong>' + (locale === "zh" ? "为什么值得看" : "Why it matters") + '</strong>' + escapeHtml(judgment) + '</p>' +
+      '<div class="story-foot"><span>' + escapeHtml(categoryLabel(category)) + '</span><span>' + sourceCount + '</span></div></div></article>';
+  }
+
+  function streamHtml(items) {
+    let day = "";
+    return items.map((item) => {
+      const timestampValue = item.published_at || item.collected_at || item.processed_at;
+      const timestamp = dateTime(timestampValue);
+      const heading = timestamp.date === day ? "" : '<h2 class="feed-day"><span>' + escapeHtml(timestamp.date) + '</span></h2>';
+      day = timestamp.date;
+      return heading + rowHtml(item);
+    }).join("");
+  }
+
+  function updateStatus(payload, itemCount) {
+    const latest = payload.latest_processed_at || payload.generated_at;
+    const timestamp = dateTime(latest);
+    if (status) {
+      status.textContent = locale === "zh"
+        ? "实时 · 更新于 " + timestamp.date + " " + timestamp.time
+        : "Live · updated " + timestamp.date + " " + timestamp.time + " UTC";
+      status.dataset.state = "ready";
+    }
+    if (liveDate && latest) liveDate.textContent = timestamp.date + " · " + timestamp.time;
+    const count = root.querySelector("[data-live-count]");
+    if (count) count.textContent = locale === "zh" ? itemCount + " 条" : itemCount + " items";
+  }
+
+  async function refresh() {
+    if (requestInFlight || document.visibilityState === "hidden") return;
+    requestInFlight = true;
+    try {
+      const response = await fetch("/api/live-feed?limit=" + (mode === "home" ? "120" : "200"), {
+        cache: "no-store",
+        headers: { accept: "application/json" }
+      });
+      if (!response.ok) throw new Error("live feed HTTP " + response.status);
+      const payload = await response.json();
+      if (!payload || payload.ok !== true || !Array.isArray(payload.items)) throw new Error("invalid live feed payload");
+      const items = selectItems(payload.items);
+      if (items.length > 0 && stream) {
+        stream.innerHTML = streamHtml(items);
+        root.dataset.liveState = "ready";
+        updateStatus(payload, items.length);
+        window.dispatchEvent(new CustomEvent("radar:feed-updated"));
+      }
+    } catch {
+      if (status) {
+        status.textContent = locale === "zh" ? "实时连接暂时中断 · 显示最近已验证数据" : "Live connection interrupted · showing last verified data";
+        status.dataset.state = "fallback";
+      }
+      root.dataset.liveState = "fallback";
+    } finally {
+      requestInFlight = false;
+    }
+  }
+
+  refresh();
+  window.setInterval(refresh, 60 * 1000);
+  window.addEventListener("online", refresh);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refresh();
+  });
+})();
+`;
 }
 
 function sourceEvents(snapshot: Snapshot) {
@@ -582,10 +985,10 @@ function renderEnglishHome(snapshot: Snapshot) {
   const topIds = new Set(topEvents.map((event) => event.event_cluster_id));
   const latestEvents = events.filter((event) => !topIds.has(event.event_cluster_id)).slice(0, 26);
   return englishShell(snapshot, "home", 0, "Today's hot topics", `
-    <section class="reader-heading"><div><div class="reader-title-line"><h1>Today's hot topics</h1><time>${escapeHtml(feedDayLabel(snapshot.generated_at, "en"))}</time></div><p>Noise filtered out. Only the AI developments worth reading remain.</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search updates, companies or products" aria-label="Search headlines, summaries and sources"></div></section>
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>Today's hot topics</h1><time data-live-date>${escapeHtml(feedDayLabel(snapshot.generated_at, "en"))}</time><span class="live-indicator" data-live-status data-state="connecting">Connecting live feed</span></div><p>Noise filtered out. Only the AI developments worth reading remain.</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search updates, companies or products" aria-label="Search headlines, summaries and sources"></div></section>
     <section class="feed-toolbar"><div class="feed-chips"><button class="active" data-feed-category="all" type="button">All</button><button data-feed-category="model_release,benchmark" type="button">Models</button><button data-feed-category="product_update,agent,tooling" type="button">Products</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">Industry</button><button data-feed-category="research" type="button">Research</button><button data-feed-category="open_source" type="button">Open source</button></div></section>
     <section class="top-stories"><div class="section-heading"><h2>Today's hot topics</h2><span>TOP 10</span></div>${renderTopStories(topEvents, snapshot, "en")}</section>
-    <section class="latest-feed"><div class="section-heading"><h2>Latest updates</h2><a href="radar/?tab=events">View all</a></div><div class="story-stream">${renderStoryStream(latestEvents, snapshot, "en")}</div></section>
+    <section class="latest-feed" data-live-feed data-live-mode="home" data-live-state="connecting"><div class="section-heading"><h2>Latest updates</h2><a href="radar/?tab=events">View all</a></div><div class="story-stream" data-live-stream>${renderStoryStream(latestEvents, snapshot, "en")}</div></section>
     <div class="feed-more"><a class="button primary" href="radar/?tab=events">Browse all events</a></div>
     <script>${storyFilterScript()}</script>
   `);
@@ -594,12 +997,12 @@ function renderEnglishHome(snapshot: Snapshot) {
 function renderEnglishRadar(snapshot: Snapshot) {
   const events = eventFeed(snapshot).filter((event) => readerReadyEventForLocale(event, snapshot, "en"));
   return englishShell(snapshot, "radar", 1, "All updates", `
-    <section class="reader-heading"><div><div class="reader-title-line"><h1>All AI updates</h1><span>${events.length} items</span></div><p>Browse the complete event stream by source type, topic or keyword.</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search title, summary or source" aria-label="Search updates"></div></section>
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>All AI updates</h1><span data-live-count>${events.length} items</span><span class="live-indicator" data-live-status data-state="connecting">Connecting live feed</span></div><p>Browse the complete event stream by source type, topic or keyword.</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search title, summary or source" aria-label="Search updates"></div></section>
     <section class="feed-toolbar full-toolbar">
       <div class="filter-line"><span>Sources</span><div class="feed-chips"><button class="active" data-feed-family="all" type="button">All</button><button data-feed-family="公司/实验室" type="button">First-party</button><button data-feed-family="分析/媒体,其他公开来源" type="button">News</button><button data-feed-family="研究订阅" type="button">Research</button><button data-feed-family="开源项目" type="button">Open source</button></div></div>
       <div class="filter-line"><span>Topics</span><div class="feed-chips"><button class="active" data-feed-category="all" type="button">All</button><button data-feed-category="model_release,benchmark" type="button">Models</button><button data-feed-category="product_update,agent,tooling" type="button">Products</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">Industry</button><button data-feed-category="research" type="button">Research</button><button data-feed-category="open_source" type="button">Open source</button></div></div>
     </section>
-    <section class="latest-feed"><div class="section-heading"><h2>Latest</h2><span>${events.length}</span></div><div class="story-stream">${renderStoryStream(events, snapshot, "en")}</div></section>
+    <section class="latest-feed" data-live-feed data-live-mode="radar" data-live-state="connecting"><div class="section-heading"><h2>Latest</h2><span data-live-date>${escapeHtml(feedDayLabel(snapshot.generated_at, "en"))}</span></div><div class="story-stream" data-live-stream>${renderStoryStream(events, snapshot, "en")}</div></section>
     <script>${storyFilterScript()}</script>
   `);
 }
@@ -637,10 +1040,10 @@ function renderHome(snapshot: Snapshot) {
   const topIds = new Set(topEvents.map((event) => event.event_cluster_id));
   const latestEvents = events.filter((event) => !topIds.has(event.event_cluster_id)).slice(0, 26);
   return shell(snapshot, "home", 0, "今日热点", `
-    <section class="reader-heading"><div><div class="reader-title-line"><h1>今日热点</h1><time>${escapeHtml(feedDayLabel(snapshot.generated_at, "zh"))}</time></div><p>每天筛掉噪声，只留下真正值得看的 AI 动态。</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索动态、公司、产品或关键词" aria-label="搜索标题、摘要和来源"></div></section>
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>今日热点</h1><time data-live-date>${escapeHtml(feedDayLabel(snapshot.generated_at, "zh"))}</time><span class="live-indicator" data-live-status data-state="connecting">正在连接实时数据</span></div><p>每天筛掉噪声，只留下真正值得看的 AI 动态。</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索动态、公司、产品或关键词" aria-label="搜索标题、摘要和来源"></div></section>
     <section class="feed-toolbar"><div class="feed-chips"><button class="active" data-feed-category="all" type="button">全部</button><button data-feed-category="model_release,benchmark" type="button">模型</button><button data-feed-category="product_update,agent,tooling" type="button">产品</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">行业</button><button data-feed-category="research" type="button">论文</button><button data-feed-category="open_source" type="button">开源</button></div></section>
     <section class="top-stories"><div class="section-heading"><h2>今日热点</h2><span>TOP 10</span></div>${renderTopStories(topEvents, snapshot, "zh")}</section>
-    <section class="latest-feed"><div class="section-heading"><h2>最新动态</h2><a href="radar/?tab=events">查看全部</a></div><div class="story-stream">${renderStoryStream(latestEvents, snapshot, "zh")}</div></section>
+    <section class="latest-feed" data-live-feed data-live-mode="home" data-live-state="connecting"><div class="section-heading"><h2>最新动态</h2><a href="radar/?tab=events">查看全部</a></div><div class="story-stream" data-live-stream>${renderStoryStream(latestEvents, snapshot, "zh")}</div></section>
     <div class="feed-more"><a class="button primary" href="radar/?tab=events">查看全部事件</a></div>
     <script>${storyFilterScript()}</script>
   `);
@@ -649,12 +1052,12 @@ function renderHome(snapshot: Snapshot) {
 function renderRadar(snapshot: Snapshot) {
   const events = eventFeed(snapshot).filter(readerReadyEvent);
   return shell(snapshot, "radar", 1, "全部动态", `
-    <section class="reader-heading"><div><div class="reader-title-line"><h1>全部 AI 动态</h1><span>${events.length} 条</span></div><p>按来源、主题或关键词浏览完整信息流。</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索标题、摘要或来源" aria-label="搜索全部动态"></div></section>
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>全部 AI 动态</h1><span data-live-count>${events.length} 条</span><span class="live-indicator" data-live-status data-state="connecting">正在连接实时数据</span></div><p>按来源、主题或关键词浏览完整信息流。</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索标题、摘要或来源" aria-label="搜索全部动态"></div></section>
     <section class="feed-toolbar full-toolbar">
       <div class="filter-line"><span>来源</span><div class="feed-chips"><button class="active" data-feed-family="all" type="button">全部</button><button data-feed-family="公司/实验室" type="button">一手信源</button><button data-feed-family="分析/媒体,其他公开来源" type="button">资讯</button><button data-feed-family="研究订阅" type="button">论文</button><button data-feed-family="开源项目" type="button">开源</button></div></div>
       <div class="filter-line"><span>分类</span><div class="feed-chips"><button class="active" data-feed-category="all" type="button">全部</button><button data-feed-category="model_release,benchmark" type="button">模型</button><button data-feed-category="product_update,agent,tooling" type="button">产品</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">行业</button><button data-feed-category="research" type="button">论文</button><button data-feed-category="open_source" type="button">开源</button></div></div>
     </section>
-    <section class="latest-feed"><div class="section-heading"><h2>最新动态</h2><span>${events.length}</span></div><div class="story-stream">${renderStoryStream(events, snapshot, "zh")}</div></section>
+    <section class="latest-feed" data-live-feed data-live-mode="radar" data-live-state="connecting"><div class="section-heading"><h2>最新动态</h2><span data-live-date>${escapeHtml(feedDayLabel(snapshot.generated_at, "zh"))}</span></div><div class="story-stream" data-live-stream>${renderStoryStream(events, snapshot, "zh")}</div></section>
     <script>${storyFilterScript()}</script>
   `);
 }
@@ -756,6 +1159,7 @@ function englishShell(
     <nav class="mobile-nav" aria-label="Mobile navigation">
       ${nav.map(([id, label, href]) => `<a${id === current ? ' aria-current="page"' : ""} href="${escapeAttr(href)}">${navIcon(id)}<span>${escapeHtml(label)}</span></a>`).join("")}
     </nav>
+    <script src="${assetPrefix}assets/live-feed.js" defer></script>
     <script>${languageSwitchStateScript()}</script>
   </body>
 </html>`;
@@ -933,6 +1337,7 @@ function shell(snapshot: Snapshot, current: "home" | "radar" | "ask" | "sources"
     <nav class="mobile-nav" aria-label="移动导航">
       ${nav.map(([id, label, href]) => `<a${id === current ? ' aria-current="page"' : ""} href="${escapeAttr(href)}">${navIcon(id)}<span>${escapeHtml(label)}</span></a>`).join("")}
     </nav>
+    <script src="${prefix}assets/live-feed.js" defer></script>
     <script>${languageSwitchStateScript()}</script>
   </body>
 </html>`;
@@ -2611,6 +3016,12 @@ main > * + * { margin-top: 0; }
 .reader-heading.compact { grid-template-columns: 1fr; }
 .reader-title-line { align-items: baseline; display: flex; flex-wrap: wrap; gap: 22px; }
 .reader-title-line time, .reader-title-line > span { color: var(--muted); font-size: 13px; }
+.reader-title-line .live-indicator { align-items: center; color: #667085; display: inline-flex; font-size: 11px; font-weight: 650; gap: 7px; }
+.live-indicator::before { background: #9aa1aa; border-radius: 50%; content: ""; height: 7px; width: 7px; }
+.live-indicator[data-state="ready"] { color: #20724c; }
+.live-indicator[data-state="ready"]::before { background: #24a56a; box-shadow: 0 0 0 4px rgba(36,165,106,.12); }
+.live-indicator[data-state="fallback"] { color: #97651c; }
+.live-indicator[data-state="fallback"]::before { background: #d89a37; }
 .reader-heading p { color: #5f646e; font-size: 13px; margin-top: 5px; }
 .feed-heading { align-items: end; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; padding: 0 0 18px; }
 .feed-heading p, .tool-heading p { color: var(--muted); font-size: 13px; margin-top: 3px; }

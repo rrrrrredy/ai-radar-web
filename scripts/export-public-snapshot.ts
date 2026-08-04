@@ -24,6 +24,11 @@ import { buildRadarFeed } from "@/lib/radar/feed";
 import { isExternalSourceRepairSignal } from "@/lib/radar/public-source-boundary";
 import { publicInternetHttpUrl } from "@/lib/public-url";
 import { loadRadarItems } from "@/lib/retrieval/load-radar-items";
+import {
+  publicRadarReadFailureMessage,
+  readCompletePublicRadarRows,
+  type PublicRadarRow
+} from "@/lib/retrieval/read-public-radar-rows";
 import type {
   RetrievalDataSource,
   RetrievalLanguage,
@@ -42,7 +47,7 @@ import {
 
 const cloudflareUrl = "https://ai-industry-radar.pages.dev";
 const outputPath = path.join(process.cwd(), "dist", "cloudflare-pages", "data", "radar-snapshot.json");
-const radarLimit = 500;
+const maxPublicSnapshotItems = 5_000;
 const publicEntityTypes = new Set<string>(ENTITY_TYPES);
 
 type SnapshotSourceKind = "supabase_public_views" | "local_files";
@@ -214,14 +219,7 @@ type SupabaseRadarRead = {
   warnings: string[];
 };
 
-type SupabaseReadError = {
-  code?: string;
-  details?: string;
-  hint?: string;
-  message: string;
-};
-
-type SupabaseRadarRow = Record<string, unknown>;
+type SupabaseRadarRow = PublicRadarRow;
 
 function debugStep(message: string) {
   if (process.env.CLOUDFLARE_SNAPSHOT_DEBUG === "true") {
@@ -442,54 +440,16 @@ async function readSupabaseSnapshot(
 
 async function readSupabaseRadarItems(supabase: SupabaseClient): Promise<SupabaseRadarRead> {
   try {
-    const { count, data, error } = await supabase
-      .from("public_radar_items")
-      .select(
-        [
-          "id",
-          "local_id",
-          "source_name",
-          "title",
-          "url",
-          "published_at",
-          "collected_at",
-          "processed_at",
-          "language",
-          "summary_zh",
-          "summary_en",
-          "topics",
-          "categories",
-          "tags",
-          "status",
-          "understanding_status",
-          "exclusion_reason",
-          "ai_relevance_score",
-          "importance_score",
-          "credibility_score",
-          "novelty_score",
-          "freshness_score",
-          "overall_score",
-          "source_tier",
-          "confidence",
-          "why_it_matters",
-          "entities",
-          "updated_at"
-        ].join(","),
-        { count: "exact" }
-      )
-      .in("understanding_status", ["included", "needs_review"])
-      .order("processed_at", { ascending: false, nullsFirst: false })
-      .limit(radarLimit);
-
-    if (error) {
+    const read = await readCompletePublicRadarRows(supabase, { maxRows: maxPublicSnapshotItems });
+    if (!read.ok) {
       return {
         count: 0,
         items: [],
-        warnings: [readErrorMessage("public_radar_items", error as SupabaseReadError)]
+        warnings: [`public_radar_items read failed: ${publicRadarReadFailureMessage(read.error)}`]
       };
     }
 
-    const rows = (data ?? []) as unknown as SupabaseRadarRow[];
+    const rows = read.rows;
     const items = rows
       .map(normalizeSupabaseRadarRow)
       .filter((item): item is PublicRadarSnapshotItem => Boolean(item));
@@ -498,12 +458,12 @@ async function readSupabaseRadarItems(supabase: SupabaseClient): Promise<Supabas
         ? ["Some Supabase public radar rows were skipped because required public fields were missing."]
         : [];
 
-    if ((count ?? items.length) > items.length) {
-      warnings.push(`Snapshot includes the newest ${items.length} of ${count ?? items.length} visible public radar rows.`);
+    if (read.count > items.length) {
+      warnings.push(`Snapshot normalization retained ${items.length} of ${read.count} visible public radar rows.`);
     }
 
     return {
-      count: count ?? items.length,
+      count: read.count,
       items,
       warnings
     };
@@ -838,7 +798,7 @@ function mergePublicRadarItems(items: PublicRadarSnapshotItem[]) {
 
   return [...byKey.values()]
     .sort((left, right) => itemTime(right) - itemTime(left))
-    .slice(0, radarLimit);
+    .slice(0, maxPublicSnapshotItems);
 }
 
 function radarItemKey(item: PublicRadarSnapshotItem) {
@@ -1062,28 +1022,6 @@ function mapRetrievalItem(item: RetrievalRadarItem): PublicRadarSnapshotItem {
     url: item.url,
     why_it_matters: item.why_it_matters
   };
-}
-
-function readErrorMessage(tableName: string, error: SupabaseReadError) {
-  if (isMissingPublicViewError(tableName, error)) {
-    return `${tableName} is not available to anon reads; local generated data was used.`;
-  }
-
-  return `${tableName} read failed: ${sanitizeError(error.message)}`;
-}
-
-function isMissingPublicViewError(tableName: string, error: SupabaseReadError) {
-  const haystack = [error.code, error.message, error.details, error.hint].filter(Boolean).join(" ").toLowerCase();
-
-  return (
-    error.code === "42P01" ||
-    error.code === "PGRST205" ||
-    (haystack.includes(tableName.toLowerCase()) &&
-      (haystack.includes("does not exist") ||
-        haystack.includes("not find") ||
-        haystack.includes("not found") ||
-        haystack.includes("schema cache")))
-  );
 }
 
 function latestTimestamp(items: PublicRadarSnapshotItem[]) {

@@ -2,13 +2,9 @@ name: Radar Daily Production Refresh
 
 on:
   schedule:
-    # Three non-round launch windows provide time for a full refresh and recovery
-    # before the 09:00 Asia/Shanghai freshness target.
+    # One coordinated run starts early enough to complete bounded internal
+    # retries before the 09:00 Asia/Shanghai freshness target.
     - cron: "17 6 * * *"
-      timezone: "Asia/Shanghai"
-    - cron: "17 7 * * *"
-      timezone: "Asia/Shanghai"
-    - cron: "17 8 * * *"
       timezone: "Asia/Shanghai"
   workflow_dispatch:
     inputs:
@@ -162,7 +158,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           SCHEDULE_EXPRESSION: ${{ github.event.schedule || '' }}
           DISPATCH_REF: ${{ github.ref }}
-          LIMIT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.limit || github.event.schedule == '17 8 * * *' && '10' || '30' }}
+          LIMIT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.limit || '30' }}
           CHUNK_SIZE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.chunk_size || '5' }}
           MAX_ITEMS_PER_SOURCE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.max_items_per_source || '3' }}
           RADAR_REFRESH_WRITE_GATE: ${{ vars.RADAR_REFRESH_WRITE_GATE }}
@@ -389,7 +385,7 @@ jobs:
       - name: Run live resumable activation with persistence
         id: activation
         if: ${{ steps.activation_state.outputs.reuse_completed != 'true' }}
-        timeout-minutes: ${{ github.event_name == 'schedule' && github.event.schedule == '17 8 * * *' && 20 || 45 }}
+        timeout-minutes: 45
         shell: bash
         env:
           LIMIT: ${{ steps.config.outputs.limit }}
@@ -419,10 +415,21 @@ jobs:
             --max-items-per-source "$MAX_ITEMS_PER_SOURCE"
             --rotation-offset "$ROTATION_OFFSET"
           )
-          if [[ "$RESUME" == "true" ]]; then
-            args+=(--resume)
-          fi
-          npm run data:activate:resumable:live:persist -- "${args[@]}"
+          for attempt in 1 2 3; do
+            run_args=("${args[@]}")
+            if [[ "$RESUME" == "true" || "$attempt" != "1" ]]; then
+              run_args+=(--resume)
+            fi
+            if npm run data:activate:resumable:live:persist -- "${run_args[@]}"; then
+              exit 0
+            fi
+            if [[ "$attempt" == "3" ]]; then
+              echo "::error title=Production activation failed::Resumable activation failed after 3 attempts in one workflow run."
+              exit 1
+            fi
+            echo "Activation attempt ${attempt} failed; retrying from the local checkpoint."
+            sleep $((attempt * 30))
+          done
 
       - name: Save resumable activation state
         if: ${{ always() && steps.activation.outcome != 'skipped' && hashFiles('data/activation/latest/checkpoint.json') != '' }}
@@ -447,11 +454,24 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          npm run events:cluster -- --persist
-          ENABLE_SUPABASE_WRITES=false npm run cloudflare:snapshot
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if npm run events:cluster -- --persist && ENABLE_SUPABASE_WRITES=false npm run cloudflare:snapshot; then
+              exit 0
+            fi
+            if [[ "$attempt" == "3" ]]; then
+              echo "::error title=Cluster and snapshot failed::Authoritative clustering and snapshot export failed after 3 attempts in one workflow run."
+              exit 1
+            fi
+            echo "Cluster/snapshot attempt ${attempt} failed; retrying the failed production stage."
+            sleep $((attempt * 20))
+          done
 
       - name: Render Cloudflare site from the verified public snapshot
         id: cloudflare_build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: npx tsx scripts/build-cloudflare-public-site.ts
 
       - name: Validate built Cloudflare artifact
@@ -503,19 +523,21 @@ jobs:
 
           async function verify(attempt) {
             const requestId = `${cacheBust}-${attempt}`;
-            const [homeResponse, sourcesResponse, snapshotResponse, reportsResponse] = await Promise.all([
+            const [homeResponse, sourcesResponse, snapshotResponse, liveFeedResponse, reportsResponse] = await Promise.all([
               fetch(`https://ai-industry-radar.pages.dev/?verify=${requestId}`, { cache: "no-store" }),
               fetch(`https://ai-industry-radar.pages.dev/sources/?verify=${requestId}`, { cache: "no-store" }),
               fetch(`https://ai-industry-radar.pages.dev/data/radar-snapshot.json?verify=${requestId}`, { cache: "no-store" }),
+              fetch(`https://ai-industry-radar.pages.dev/api/live-feed?limit=50&verify=${requestId}`, { cache: "no-store" }),
               fetch(`https://ai-industry-radar.pages.dev/reports/?verify=${requestId}`, { cache: "no-store", redirect: "manual" })
             ]);
-            if (!homeResponse.ok || !sourcesResponse.ok || !snapshotResponse.ok) {
-              throw new Error(`production_http_status home=${homeResponse.status} sources=${sourcesResponse.status} snapshot=${snapshotResponse.status}`);
+            if (!homeResponse.ok || !sourcesResponse.ok || !snapshotResponse.ok || !liveFeedResponse.ok) {
+              throw new Error(`production_http_status home=${homeResponse.status} sources=${sourcesResponse.status} snapshot=${snapshotResponse.status} live_feed=${liveFeedResponse.status}`);
             }
 
             const home = await homeResponse.text();
             const sources = await sourcesResponse.text();
             const remote = await snapshotResponse.json();
+            const liveFeed = await liveFeedResponse.json();
             if (!home.includes("<title>AI 行业信息雷达</title>")) {
               throw new Error("production_home_title_mismatch");
             }
@@ -545,6 +567,22 @@ jobs:
             }
             if (reportsResponse.status !== 404) {
               throw new Error(`production_reports_route_not_retired status=${reportsResponse.status}`);
+            }
+            if (
+              liveFeedResponse.headers.get("x-radar-live-source") !== "supabase_public_radar" ||
+              liveFeed.ok !== true ||
+              !Array.isArray(liveFeed.items) ||
+              liveFeed.items.length < 10 ||
+              liveFeed.item_count !== liveFeed.items.length
+            ) {
+              throw new Error("production_live_feed_contract_mismatch");
+            }
+            const liveProcessedTime = Date.parse(liveFeed.latest_processed_at || "");
+            if (!Number.isFinite(liveProcessedTime) || Date.now() - liveProcessedTime > 36 * 60 * 60 * 1000) {
+              throw new Error("production_live_feed_is_stale");
+            }
+            if (liveFeed.items.some((item) => !item.id || !item.title || !/^https?:\/\//i.test(item.url || ""))) {
+              throw new Error("production_live_feed_item_invalid");
             }
             if (remote.generated_at !== local.generated_at) {
               throw new Error(`production_snapshot_generation_mismatch local=${local.generated_at} remote=${remote.generated_at}`);
@@ -607,7 +645,7 @@ jobs:
             echo
             echo "- Trigger: ${TRIGGER}"
             echo "- Target: production fresh before 09:00 Asia/Shanghai"
-            echo "- Scheduled windows: 06:17 / 07:17 / 08:17 Asia/Shanghai"
+            echo "- Scheduled run: 06:17 Asia/Shanghai with bounded in-run retries"
             echo "- Current schedule expression: ${SCHEDULE_EXPRESSION:-manual}"
             echo "- Freshness gate: ${FRESHNESS_REASON}"
             echo "- Completed activation reused: ${ACTIVATION_REUSED}"

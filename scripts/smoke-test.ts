@@ -362,14 +362,15 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       !cloudflareSite.includes("fs.mkdir(path.join(outputDir, \"entities\")") &&
       cloudflareSite.includes("renderSources") &&
       cloudflareSite.includes("renderAbout") &&
-      cloudflareSite.includes("function retiredRouteRedirects") &&
       cloudflareSite.includes("function retiredRouteWorker") &&
       cloudflareSite.includes("function retiredRouteWorkerRoutes") &&
-      cloudflareSite.includes("/write/ /404.html 404") &&
-      cloudflareSite.includes("/api/writing-assistant /404.html 404") &&
+      cloudflareSite.includes("function liveFeedClientScript") &&
+      cloudflareSite.includes('const liveFeedPath = "/api/live-feed"') &&
+      cloudflareSite.includes('data-live-feed data-live-mode="home"') &&
+      cloudflareSite.includes('data-live-feed data-live-mode="radar"') &&
+      cloudflareSite.includes('assets/live-feed.js') &&
+      !cloudflareSite.includes("SUPABASE_SERVICE_ROLE_KEY") &&
       cloudflareSite.includes('"/api/writing-assistant"') &&
-      cloudflareSite.includes("/entities/* /404.html 404") &&
-      cloudflareSite.includes("/reports/* /404.html 404") &&
       cloudflareSite.includes('"/write/*"') &&
       cloudflareSite.includes("env.ASSETS.fetch") &&
       cloudflareSite.includes("resolveBuildProvenance") &&
@@ -413,6 +414,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   )?.[0] ?? "";
   const supabasePublicContract = readSource("scripts/check-supabase-public-contract.ts");
   const supabaseLoader = readSource("lib/retrieval/load-supabase-radar-items.ts");
+  const publicRadarReader = readSource("lib/retrieval/read-public-radar-rows.ts");
   const publicEntityMigration = readSource("supabase/migrations/202607010001_public_radar_items_entities.sql");
   const publicViewSecurityMigration = readSource(
     "supabase/migrations/20260715064603_harden_public_views_security_invoker.sql"
@@ -423,7 +425,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   const wrongDomainGrantMigration = readSource(
     "supabase/migrations/20260716041758_revoke_wrong_domain_public_api_grants.sql"
   );
-  assertPublicSnapshotSourceContract(snapshotExporter, supabaseLoader);
+  assertPublicSnapshotSourceContract(snapshotExporter, supabaseLoader, publicRadarReader);
   assert.equal(
     eventClustering.includes("eventReferenceTime") &&
       eventClustering.includes("options.asOf") &&
@@ -433,9 +435,9 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   );
   assert.equal(
     refreshWorkflow.includes('cron: "17 6 * * *"') &&
-      refreshWorkflow.includes('cron: "17 7 * * *"') &&
-      refreshWorkflow.includes('cron: "17 8 * * *"') &&
-      (refreshWorkflow.match(/timezone: "Asia\/Shanghai"/g) || []).length === 3 &&
+      !refreshWorkflow.includes('cron: "17 7 * * *"') &&
+      !refreshWorkflow.includes('cron: "17 8 * * *"') &&
+      (refreshWorkflow.match(/timezone: "Asia\/Shanghai"/g) || []).length === 1 &&
       refreshWorkflow.includes("workflow_dispatch:") &&
       refreshWorkflow.includes("production_already_fresh") &&
       refreshWorkflow.includes("Manual dispatch ignores a completed checkpoint") &&
@@ -443,11 +445,14 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       refreshWorkflow.includes('EVENT_NAME: ${{ github.event_name }}') &&
       refreshWorkflow.includes("needs: freshness_gate") &&
       refreshWorkflow.includes("HAS_CLOUDFLARE_API_TOKEN") &&
+      refreshWorkflow.includes("failed after 3 attempts in one workflow run") &&
+      refreshWorkflow.includes("retrying from the local checkpoint") &&
+      refreshWorkflow.includes("retrying the failed production stage") &&
       refreshWorkflow.includes("Production configuration missing") &&
       refreshWorkflow.includes('"$DISPATCH_REF" != "refs/heads/main"') &&
       refreshWorkflow.includes('"$RADAR_REFRESH_WRITE_GATE" != "true"'),
     true,
-    "The production workflow must use three Asia/Shanghai recovery windows, skip an already-fresh release, and gate writes to main."
+    "The production workflow must use one coordinated Asia/Shanghai run with bounded internal retries, skip an already-fresh release, and gate writes to main."
   );
   assert.equal(
     refreshWorkflow.includes("npm run data:activate:resumable:live:persist") &&
@@ -479,6 +484,10 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       refreshWorkflow.includes("production_reader_boilerplate_leak") &&
       refreshWorkflow.includes("production_home_source_diversity_missing") &&
       refreshWorkflow.includes("production_sources_contract_mismatch") &&
+      refreshWorkflow.includes("/api/live-feed?limit=50&verify=") &&
+      refreshWorkflow.includes("production_live_feed_contract_mismatch") &&
+      refreshWorkflow.includes("production_live_feed_is_stale") &&
+      refreshWorkflow.includes('x-radar-live-source') &&
       refreshWorkflow.includes("Created by Song Luo") &&
       refreshWorkflow.includes('href="https://github.com/rrrrrredy"') &&
       refreshWorkflow.includes("production_home_hotspot_count_mismatch") &&
@@ -524,7 +533,23 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   assert.equal(
     fs.existsSync(path.join(process.cwd(), "dist/cloudflare-pages/_routes.json")),
     true,
-    "Cloudflare static output must scope its Pages worker to retired legacy routes only."
+    "Cloudflare static output must scope its Pages worker to retired routes and the live public feed."
+  );
+  assert.equal(
+    fs.existsSync(path.join(process.cwd(), "dist/cloudflare-pages/assets/live-feed.js")),
+    true,
+    "Cloudflare static output must include the runtime live-feed client."
+  );
+  assert.equal(
+    fs.existsSync(path.join(process.cwd(), "dist/cloudflare-pages/_redirects")),
+    false,
+    "Cloudflare output must not ship unsupported 404 redirect rules; the worker owns retired-route status codes."
+  );
+  const workerRoutes = readSource("dist/cloudflare-pages/_routes.json");
+  assert.equal(
+    workerRoutes.includes('"/api/live-feed"') && workerRoutes.includes('"/api/live-feed/*"'),
+    true,
+    "Cloudflare Pages must route the runtime public feed through its worker."
   );
 
   for (const pagePath of [
@@ -597,6 +622,7 @@ function assertBilingualStaticContract() {
     assert.equal(page.includes('class="story-stream"'), true, `${label} homepage must continue into the latest-update stream.`);
     assert.match(page, /<time datetime="[^"]+" title="[^"]+">[^<]+ · \d{2}:\d{2}<\/time>/, `${label} hot topics must show a visible date and time.`);
     assert.match(page, /<time datetime="[^"]+" title="[^"]+"><span class="story-date">[^<]+<\/span><span class="story-clock">\d{2}:\d{2}<\/span><\/time>/, `${label} latest updates must show separate visible date and time labels.`);
+    assert.equal(page.includes('data-live-feed data-live-mode="home"') && page.includes("data-live-status") && page.includes("assets/live-feed.js"), true, `${label} homepage must activate the runtime public feed with a visible connection state.`);
   }
   assert.equal(chineseHome.includes("为什么值得看"), true, "Chinese homepage must explain why every hot topic matters.");
   assert.equal(englishHome.includes("Why it matters"), true, "English homepage must explain why every hot topic matters.");
@@ -644,6 +670,7 @@ function assertBilingualStaticContract() {
   for (const [page, label] of [[chineseRadar, "Chinese"], [englishRadar, "English"]] as const) {
     assert.equal(page.includes('data-feed-family="公司/实验室"') && page.includes('data-feed-category="model_release,benchmark"'), true, `${label} all-updates page must expose source and topic filters.`);
     assert.equal(page.includes('class="radar-tabs"') || page.includes("Source health summary") || page.includes("信息源健康摘要"), false, `${label} all-updates page must not expose internal radar tabs or source-health dashboards.`);
+    assert.equal(page.includes('data-live-feed data-live-mode="radar"') && page.includes("data-live-count") && page.includes("data-live-stream"), true, `${label} all-updates page must replace its static stream from the runtime public feed.`);
   }
 
   const chineseSources = readSource("dist/cloudflare-pages/sources/index.html");
@@ -729,9 +756,14 @@ function assertSupabasePublicContractCheckScript(source: string) {
     "Remote Supabase public contract check must keep an explicit select=* whitelist."
   );
   assert.equal(
-    source.includes("supabase_project_host_dns_not_found") && source.includes("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    source.includes("supabase_project_host_dns_not_found") &&
+      source.includes("NEXT_PUBLIC_SUPABASE_ANON_KEY") &&
+      source.includes("readCompletePublicRadarRows") &&
+      source.includes("completeReadOk") &&
+      source.includes("completeReadRows") &&
+      source.includes("completeRead.rows.length > 0"),
     true,
-    "Remote Supabase public contract check must report DNS failures safely and read only anon public config."
+    "Remote Supabase public contract check must report DNS failures safely, read only anon public config, and complete the shared production read."
   );
   for (const table of wrongDomainTables) {
     assert.equal(
@@ -757,7 +789,7 @@ function selectListFromRestPath(source: string, restPath: string) {
     .sort();
 }
 
-function assertPublicSnapshotSourceContract(snapshotExporter: string, supabaseLoader: string) {
+function assertPublicSnapshotSourceContract(snapshotExporter: string, supabaseLoader: string, publicRadarReader: string) {
   assert.equal(
       snapshotExporter.includes('CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE') &&
       snapshotExporter.includes('assertStrictProductionSnapshot(snapshot)') &&
@@ -794,12 +826,16 @@ function assertPublicSnapshotSourceContract(snapshotExporter: string, supabaseLo
     "Production Cloudflare export must reject partial completeness and source-health summaries."
   );
   assert.equal(
-    supabaseLoader.includes('{ count: "exact" }') &&
-      supabaseLoader.includes('.order("id", { ascending: false })') &&
-      supabaseLoader.includes(".range(offset, offset + retrievalPageSize - 1)") &&
-      supabaseLoader.includes("validateCompleteSupabaseRadarRows(rows, expectedCount)"),
+    supabaseLoader.includes("readCompletePublicRadarRows") &&
+      publicRadarReader.includes('{ count: "exact" }') &&
+      publicRadarReader.includes('.select("id,processed_at", { count: "exact" })') &&
+      publicRadarReader.includes('.order("processed_at", { ascending: false, nullsFirst: false })') &&
+      publicRadarReader.includes('.order("id", { ascending: false })') &&
+      publicRadarReader.includes(".range(offset, offset + manifestPageSize - 1)") &&
+      publicRadarReader.includes(".select(publicRadarSelectColumns)") &&
+      publicRadarReader.includes("reorderPublicRadarRows(manifest.ids, detailRows)"),
     true,
-    "Authoritative Supabase reads must use exact-count stable pagination and completeness validation."
+    "Authoritative Supabase reads must use a light exact-count manifest, bounded detail chunks, and completeness validation without sorting the wide projection."
   );
 
   assert.deepEqual(
@@ -809,22 +845,27 @@ function assertPublicSnapshotSourceContract(snapshotExporter: string, supabaseLo
   );
 
   assert.deepEqual(
-    selectListStringLiterals(supabaseLoader, "public_radar_items").filter((column) => column === "raw_item_id"),
+    publicRadarReader.includes('"raw_item_id"'),
+    false,
+    "Supabase public retrieval must not select raw_item_id from public_radar_items."
+  );
+  assert.deepEqual(
+    publicRadarSelectColumnsFromReader(publicRadarReader).filter((column) => column === "raw_item_id"),
     [],
     "Supabase public retrieval loader must not select raw_item_id from public_radar_items."
   );
   assert.equal(
-    selectListStringLiterals(supabaseLoader, "public_radar_items").includes("entities"),
+    publicRadarSelectColumnsFromReader(publicRadarReader).includes("entities"),
     true,
     "Supabase public retrieval loader must select public-safe entities."
   );
   assert.equal(
-    selectListStringLiterals(supabaseLoader, "public_radar_items").includes("evidence_notes"),
+    publicRadarSelectColumnsFromReader(publicRadarReader).includes("evidence_notes"),
     false,
     "Supabase public retrieval loader must not select free-form evidence_notes from public_radar_items."
   );
   assert.equal(
-    selectListStringLiterals(snapshotExporter, "public_radar_items").includes("evidence_notes"),
+    publicRadarSelectColumnsFromReader(publicRadarReader).includes("evidence_notes"),
     false,
     "Public snapshot exporter must not select free-form evidence_notes from public_radar_items."
   );
@@ -835,6 +876,12 @@ function assertPublicSnapshotSourceContract(snapshotExporter: string, supabaseLo
     [],
     "Public snapshot export must not import the service-role Supabase helper."
   );
+}
+
+function publicRadarSelectColumnsFromReader(source: string) {
+  const match = source.match(/export const publicRadarSelectColumns = \[([\s\S]*?)\]\.join\(","\);/);
+  assert.equal(Boolean(match), true, "Shared public radar reader must declare a literal public column list.");
+  return Array.from(match![1].matchAll(/"([a-z_]+)"/g), (entry) => entry[1]);
 }
 
 function assertPublicRadarViewSqlContract(sql: string) {
@@ -882,22 +929,6 @@ function exportedPublicEntityKeys(source: string) {
   return [...match![1].matchAll(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?::|,|$)/gm)]
     .map((entry) => entry[1])
     .sort();
-}
-
-function selectListStringLiterals(source: string, tableName: string) {
-  const tableIndex = source.indexOf(`.from("${tableName}")`);
-  assert.notEqual(tableIndex, -1, `Expected Supabase query for ${tableName}.`);
-  const selectIndex = source.indexOf(".select(", tableIndex);
-  assert.notEqual(selectIndex, -1, `Expected select list for ${tableName}.`);
-  const selectCall = source.slice(selectIndex, selectIndex + 160);
-  const variable = selectCall.match(/^\.select\(\s*([A-Za-z_$][\w$]*)/u)?.[1];
-  const listStart = variable ? source.indexOf(`const ${variable} = [`) : selectIndex;
-  const joinIndex = source.indexOf("].join", listStart);
-  assert.notEqual(listStart, -1, `Expected select-list declaration for ${tableName}.`);
-  assert.notEqual(joinIndex, -1, `Expected array join select list for ${tableName}.`);
-
-  const selectSource = source.slice(listStart, joinIndex);
-  return [...selectSource.matchAll(/"([^"]+)"/g)].map((entry) => entry[1]);
 }
 
 function importSpecifiers(source: string) {

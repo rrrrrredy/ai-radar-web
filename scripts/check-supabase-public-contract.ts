@@ -1,7 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { createClient, type WebSocketLikeConstructor } from "@supabase/supabase-js";
+import WebSocket from "ws";
+
+import {
+  publicRadarReadFailureMessage,
+  readCompletePublicRadarRows
+} from "@/lib/retrieval/read-public-radar-rows";
+
 type JsonRecord = Record<string, unknown>;
+
+const nodeRealtimeTransport = WebSocket as unknown as WebSocketLikeConstructor;
 
 type CheckResult = {
   ok: boolean;
@@ -24,7 +34,11 @@ type CheckResult = {
   retiredReportSurfacesRejected?: boolean;
   wrongDomainTableStatuses?: Record<string, number>;
   wrongDomainTablesRejected?: boolean;
+  completeReadOk?: boolean;
+  completeReadRows?: number;
+  completeReadError?: string;
   reason?: string;
+  diagnostic?: string;
 };
 
 async function main() {
@@ -83,6 +97,18 @@ async function main() {
       wrongDomainChecks.map(([table, result]) => [table, result.status])
     );
     const wrongDomainTablesRejected = wrongDomainChecks.every(([, result]) => !result.ok);
+    const completeRead = await readCompletePublicRadarRows(
+      createClient(url, anonKey, {
+        auth: {
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+          persistSession: false
+        },
+        realtime: {
+          transport: nodeRealtimeTransport
+        }
+      })
+    );
     const first = Array.isArray(allowed.body) ? allowed.body[0] : null;
     const selectAllFirst = Array.isArray(selectAll.body) ? selectAll.body[0] : null;
     const allowedKeys = isRecord(first) ? Object.keys(first).sort() : [];
@@ -98,6 +124,8 @@ async function main() {
       !forbiddenModelMetadata.ok &&
       retiredReportSurfacesRejected &&
       wrongDomainTablesRejected &&
+      completeRead.ok &&
+      completeRead.rows.length > 0 &&
       sameStringSet(allowedKeys, ["entities", "id", "local_id"]) &&
       sameStringSet(selectAllKeys, publicRadarItemAllowedKeys) &&
       (entityKeys.length === 0 || sameStringSet(entityKeys, ["confidence", "name", "type"]));
@@ -120,6 +148,9 @@ async function main() {
       retiredReportSurfacesRejected,
       wrongDomainTableStatuses,
       wrongDomainTablesRejected,
+      completeReadOk: completeRead.ok,
+      completeReadRows: completeRead.ok ? completeRead.rows.length : 0,
+      completeReadError: completeRead.ok ? undefined : publicRadarReadFailureMessage(completeRead.error),
       forbiddenCode: isRecord(forbidden.body) ? text(forbidden.body.code) : undefined,
       forbiddenEvidenceCode: isRecord(forbiddenEvidence.body) ? text(forbiddenEvidence.body.code) : undefined,
       forbiddenModelMetadataCode: isRecord(forbiddenModelMetadata.body)
@@ -130,7 +161,8 @@ async function main() {
   } catch (error) {
     printResult({
       ok: false,
-      reason: error instanceof Error ? safeErrorReason(error) : "unknown_public_contract_check_error"
+      reason: error instanceof Error ? safeErrorReason(error) : "unknown_public_contract_check_error",
+      diagnostic: error instanceof Error ? safeErrorDiagnostic(error) : "unknown error"
     });
     process.exit(1);
   }
@@ -200,8 +232,21 @@ function safeErrorReason(error: Error) {
   if (combined.includes("timed") || combined.includes("timeout")) {
     return "supabase_project_connection_timeout";
   }
+  if (combined.includes("fetch failed")) {
+    return "supabase_project_fetch_failed";
+  }
 
   return "supabase_public_contract_request_failed";
+}
+
+function safeErrorDiagnostic(error: Error) {
+  const cause = error.cause instanceof Error ? `${error.cause.name}: ${error.cause.message}` : "";
+  return `${error.name}: ${error.message}${cause ? `; ${cause}` : ""}`
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+    .replace(/\b(?:apikey|api_key|authorization|token)\b\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 240);
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -278,7 +323,8 @@ function sameStringSet(left: string[], right: string[]) {
 main().catch((error) => {
   printResult({
     ok: false,
-    reason: error instanceof Error ? safeErrorReason(error) : "unknown_public_contract_check_error"
+    reason: error instanceof Error ? safeErrorReason(error) : "unknown_public_contract_check_error",
+    diagnostic: error instanceof Error ? safeErrorDiagnostic(error) : "unknown error"
   });
   process.exit(1);
 });
