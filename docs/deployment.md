@@ -10,9 +10,9 @@ Cloudflare Pages is the public production surface for AI 行业信息雷达.
 
 ## Daily production refresh
 
-GitHub Actions has daily launch windows at `06:17`, `07:17`, and `08:17 Asia/Shanghai`, with the operational goal that the fixed production URL is fresh before 09:00. `workflow_dispatch` is also available for an operator retry, but it is subject to the same production gates and may run only from `main`.
+Supabase Cron dispatches `.github/workflows/radar-refresh-cloudflare.yml` at `01:00 UTC`, equal to `09:00 Asia/Shanghai`. The GitHub workflow is `workflow_dispatch`-only, so Supabase is the sole scheduler and no duplicate GitHub scheduled run is created.
 
-Every scheduled window first reads the production snapshot with cache bypass. It skips when the release is from the current Beijing day, refreshed after 06:00, no more than three hours old, strict-Supabase-backed, and report-free. Otherwise the first two windows use 30 sources and the last-chance 08:17 window uses 10 core sources.
+Each daily dispatch uses fixed inputs `limit=30`, `chunk_size=5`, and `max_items_per_source=3`. The workflow retries recoverable stages internally, uses same-day checkpoints when valid, and follows the same production gates whether invoked by Supabase or an operator.
 
 Each successful run must complete this chain:
 
@@ -46,9 +46,9 @@ Configure these Actions secrets:
 
 The service-role and provider keys are server-only. Never expose them to browser code, committed files, logs, task text, or public deployment variables. The Cloudflare token should be scoped only to the `ai-industry-radar` Pages deployment needs.
 
-GitHub Actions and repository billing must be active. A configured workflow cannot refresh production while Actions jobs are suspended.
+Supabase Cron, GitHub Actions, and repository billing must be active. A configured schedule cannot refresh production while either service or the Actions jobs are suspended.
 
-GitHub scheduled events can be delayed or dropped, so these recovery windows implement a best-effort 09:00 SLO, not a hard hosted-runner SLA. Operational acceptance is seven consecutive days with the fixed URL passing the production checks by 08:55; alerts or an independent watchdog are required for a contractual guarantee.
+The Cron trigger is recorded in Supabase `cron.job`, with execution history in `cron.job_run_details`. The task starts at 09:00 Beijing time; live fetching, processing, deployment, and verification normally finish a few minutes later. Alerts or an independent watchdog are still required for a contractual completion-time guarantee.
 
 ## Supabase
 

@@ -1,4 +1,4 @@
-name: Radar Near-real-time Feed Refresh
+name: Radar Manual Incremental Feed Refresh
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: radar-near-real-time-refresh
+  group: radar-manual-incremental-refresh
   cancel-in-progress: false
 
 jobs:
@@ -47,7 +47,7 @@ jobs:
 
           if (( ${#missing[@]} > 0 )); then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Near-real-time refresh disabled::Missing or unsafe configuration: ${missing[*]}. The daily production health run remains authoritative."
+            echo "::warning title=Manual incremental refresh disabled::Missing or unsafe configuration: ${missing[*]}. The daily production run remains authoritative."
             exit 0
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
@@ -73,7 +73,7 @@ jobs:
               exit 0
             fi
             if [[ "$attempt" == "3" ]]; then
-              echo "::warning title=Near-real-time dependency install degraded::npm ci failed after three attempts; the next scheduled run will retry."
+              echo "::warning title=Manual incremental dependency install degraded::npm ci failed after three attempts; the next manual run can retry."
               exit 1
             fi
             sleep $((attempt * 10))
@@ -114,10 +114,10 @@ jobs:
               exit 0
             fi
             if [[ "$attempt" == "3" ]]; then
-              echo "::warning title=Near-real-time refresh degraded::Source polling failed after three internal attempts; the next scheduled run will retry."
+              echo "::warning title=Manual incremental refresh degraded::Source polling failed after three internal attempts; the next manual run can retry."
               exit 1
             fi
-            echo "Near-real-time activation attempt ${attempt} failed; resuming the same task after a bounded delay."
+            echo "Manual incremental activation attempt ${attempt} failed; resuming the same task after a bounded delay."
             sleep $((attempt * 20))
           done
 
@@ -136,31 +136,30 @@ jobs:
           detail="All active sources were checked and unseen items were persisted."
           if [[ "$CHECKOUT_OUTCOME" != "success" ]]; then
             outcome="degraded"
-            detail="Checkout failed; the next scheduled run will retry."
+            detail="Checkout failed; the next manual run can retry."
           elif [[ "$ENABLED" != "true" ]]; then
             outcome="disabled"
             detail="Required configuration is unavailable or the ref is not main."
           elif [[ "$NODE_OUTCOME" != "success" || "$INSTALL_OUTCOME" != "success" || "$ACTIVATION_OUTCOME" != "success" ]]; then
             outcome="degraded"
-            detail="A transient setup or polling stage failed; the next scheduled run will retry."
+            detail="A transient setup or polling stage failed; the next manual run can retry."
           fi
 
           if [[ "$outcome" != "success" ]]; then
-            echo "::warning title=Near-real-time refresh ${outcome}::${detail}"
+            echo "::warning title=Manual incremental refresh ${outcome}::${detail}"
           fi
           {
-            echo "## AI 行业信息雷达近实时刷新"
+            echo "## AI 行业信息雷达手动增量刷新"
             echo ""
-            echo "- Planned cadence: every 10 minutes via Supabase Cron"
+            echo "- Cadence: manual only; scheduled production runs daily at 09:00 Asia/Shanghai"
             echo "- Scope: every active public source"
             echo "- Result: ${outcome}"
             echo "- Detail: ${detail}"
-            echo "- Delivery: Supabase public feed; the browser checks for new rows every 30 seconds"
+            echo "- Delivery: Supabase public feed; the browser loads the latest rows on entry or return"
             echo "- Production URL: https://ai-industry-radar.pages.dev/"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # This is a best-effort, high-frequency task. Keep it green after
-          # recording warnings so transient source failures do not email the
-          # maintainer after each scheduled check. The daily production workflow is
-          # the fail-loud health check and deployment gate.
+          # This is a best-effort manual maintenance task. Keep it green after
+          # recording warnings; the daily production workflow is the fail-loud
+          # health check and deployment gate.
           exit 0

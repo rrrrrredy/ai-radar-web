@@ -1,11 +1,6 @@
 name: Radar Daily Production Refresh
 
 on:
-  schedule:
-    # One coordinated run starts early enough to complete bounded internal
-    # retries before the 09:00 Asia/Shanghai freshness target.
-    - cron: "17 6 * * *"
-      timezone: "Asia/Shanghai"
   workflow_dispatch:
     inputs:
       limit:
@@ -650,9 +645,9 @@ jobs:
             echo "## AI 行业信息雷达生产更新"
             echo
             echo "- Trigger: ${TRIGGER}"
-            echo "- Target: production fresh before 09:00 Asia/Shanghai"
-            echo "- Scheduled run: 06:17 Asia/Shanghai with bounded in-run retries"
-            echo "- Current schedule expression: ${SCHEDULE_EXPRESSION:-manual}"
+            echo "- Cadence: daily at 09:00 Asia/Shanghai"
+            echo "- Scheduler: Supabase Cron at 01:00 UTC"
+            echo "- Dispatch: GitHub workflow_dispatch with bounded in-run retries"
             echo "- Freshness gate: ${FRESHNESS_REASON}"
             echo "- Completed activation reused: ${ACTIVATION_REUSED}"
             echo "- Mode: live"

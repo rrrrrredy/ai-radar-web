@@ -67,11 +67,11 @@ Local persistence still requires `ENABLE_SUPABASE_WRITES=true` plus valid Supaba
 
 ## Daily Production Refresh
 
-`.github/workflows/radar-refresh-cloudflare.yml` targets a fresh production release before **09:00 Asia/Shanghai**. It has recovery windows at **06:17, 07:17, and 08:17 Asia/Shanghai** and also supports `workflow_dispatch`.
+Supabase Cron dispatches `.github/workflows/radar-refresh-cloudflare.yml` once per day at **01:00 UTC / 09:00 Asia/Shanghai**. The GitHub workflow itself is `workflow_dispatch`-only, so GitHub does not create a duplicate scheduled run.
 
-Scheduled runs first inspect the fixed production snapshot. A strict Supabase snapshot refreshed after 06:00 on the current Beijing date and no more than three hours ago skips the expensive path. Otherwise 06:17 and 07:17 use the normal 30-source plan; 08:17 is a last-chance 10-core-source run.
+The daily dispatch uses the 30-source plan with bounded internal retries. It persists unseen items, clusters public events, builds the strict Supabase-backed site, deploys Cloudflare Pages, and verifies the fixed production URL. The manual incremental workflow remains available only for operator maintenance and has no schedule.
 
-Every scheduled run follows one production path:
+Every daily run follows one production path:
 
 1. validate the `main` ref, bounded parameters, and repository write gate;
 2. run live resumable activation and persist successful chunks to Supabase;
@@ -128,8 +128,8 @@ Raw text, raw/model metadata, evidence notes, private notes, admin/audit logs, s
 - no automatic WeChat crawl;
 - no browser or public service-role access;
 - no claim of complete real-time industry coverage;
-- the 09:00 goal is an operational SLO rather than a hard scheduling guarantee because GitHub-hosted scheduled workflows may be delayed or dropped under load;
-- GitHub Actions billing and all required variables/secrets must be active, or no scheduled production run can start.
+- the daily task starts at 09:00 Beijing time and normally finishes a few minutes later; source, network, processing, and deployment time prevent a zero-delay completion guarantee;
+- Supabase Cron, GitHub Actions billing, and all required variables/secrets must remain active, or no daily production run can complete.
 
 ## Release Documentation
 

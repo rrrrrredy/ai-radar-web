@@ -375,7 +375,10 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       cloudflareSite.includes("localizedTitleFallback(item, source)") &&
       cloudflareSite.includes(".filter(readerReadyForTop)") &&
       cloudflareSite.includes('data-live-feed data-live-mode="radar"') &&
-      cloudflareSite.includes("window.setInterval(refresh, 30 * 1000)") &&
+      !cloudflareSite.includes("window.setInterval(refresh, 30 * 1000)") &&
+      cloudflareSite.includes("每日更新 · 最近入库") &&
+      cloudflareSite.includes("每天 09:00（北京时间）") &&
+      cloudflareSite.includes("Daily update") &&
       cloudflareSite.includes('order: "processed_at.desc.nullslast,published_at.desc.nullslast,id.desc"') &&
       cloudflareSite.includes('"cache-control": "public, max-age=5, s-maxage=15, stale-while-revalidate=60"') &&
       cloudflareSite.includes('assets/live-feed.js') &&
@@ -420,8 +423,8 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   const eventClustering = readSource("lib/events/clustering.ts");
   const refreshWorkflow = readSource(".github/workflows/radar-refresh-cloudflare.yml");
   const realtimeWorkflow = readSource(".github/workflows/radar-realtime-refresh.yml");
-  const realtimeCronMigration = readSource(
-    "supabase/migrations/20260810090200_schedule_radar_realtime_dispatch.sql"
+  const dailyCronMigration = readSource(
+    "supabase/migrations/20260810075217_schedule_daily_0900_production_refresh.sql"
   );
   const clusterWorkflowStep = refreshWorkflow.match(
     /- name: Cluster, persist, and export the public snapshot[\s\S]*?(?=\n\s+- name: Render Cloudflare site)/
@@ -448,11 +451,8 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
     "Event clustering and scoring must be deterministic for identical public evidence."
   );
   assert.equal(
-    refreshWorkflow.includes('cron: "17 6 * * *"') &&
-      !refreshWorkflow.includes('cron: "17 7 * * *"') &&
-      !refreshWorkflow.includes('cron: "17 8 * * *"') &&
-      (refreshWorkflow.match(/timezone: "Asia\/Shanghai"/g) || []).length === 1 &&
-      refreshWorkflow.includes("workflow_dispatch:") &&
+    refreshWorkflow.includes("workflow_dispatch:") &&
+      !refreshWorkflow.includes("\n  schedule:") &&
       refreshWorkflow.includes("production_already_fresh") &&
       refreshWorkflow.includes("Manual dispatch ignores a completed checkpoint") &&
       refreshWorkflow.includes("shanghai_date=$(TZ=Asia/Shanghai date +%F)") &&
@@ -466,12 +466,12 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       refreshWorkflow.includes('"$DISPATCH_REF" != "refs/heads/main"') &&
       refreshWorkflow.includes('"$RADAR_REFRESH_WRITE_GATE" != "true"'),
     true,
-    "The production workflow must use one coordinated Asia/Shanghai run with bounded internal retries, skip an already-fresh release, and gate writes to main."
+    "The production workflow must accept only coordinated main-branch dispatches with bounded internal retries, skip an already-fresh release, and gate writes to main."
   );
   assert.equal(
     realtimeWorkflow.includes("workflow_dispatch:") &&
       !realtimeWorkflow.includes("\n  schedule:") &&
-      realtimeWorkflow.includes('group: radar-near-real-time-refresh') &&
+      realtimeWorkflow.includes('group: radar-manual-incremental-refresh') &&
       realtimeWorkflow.includes('--limit "100"') &&
       realtimeWorkflow.includes('--core-count "0"') &&
       realtimeWorkflow.includes("--skip-empty-run-persistence") &&
@@ -480,21 +480,26 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       realtimeWorkflow.includes("for attempt in 1 2 3") &&
       realtimeWorkflow.includes("continue-on-error: true") &&
       realtimeWorkflow.includes("without notification spam") &&
-      realtimeWorkflow.includes("the next scheduled run will retry") &&
+      realtimeWorkflow.includes("the next manual run can retry") &&
       !realtimeWorkflow.includes("wrangler") &&
       !realtimeWorkflow.includes("pages deploy"),
     true,
-    "The near-real-time workflow must poll every active source when dispatched, deduplicate before understanding, retry internally, and avoid deploy or email spam."
+    "The manual incremental workflow must poll every active source when dispatched, deduplicate before understanding, retry internally, and avoid deploy or email spam."
   );
   assert.equal(
-    realtimeCronMigration.includes("cron.schedule(") &&
-      realtimeCronMigration.includes("'*/10 * * * *'") &&
-      realtimeCronMigration.includes("net.http_post(") &&
-      realtimeCronMigration.includes("vault.decrypted_secrets") &&
-      realtimeCronMigration.includes("radar-realtime-refresh.yml/dispatches") &&
-      realtimeCronMigration.includes("drop function if exists public.set_radar_github_dispatch_token(text)"),
+    dailyCronMigration.includes("cron.unschedule(") &&
+      dailyCronMigration.includes("radar-near-real-time-github-dispatch") &&
+      dailyCronMigration.includes("dispatch_radar_daily_production_refresh") &&
+      dailyCronMigration.includes("'0 1 * * *'") &&
+      dailyCronMigration.includes("radar-daily-0900-production-github-dispatch") &&
+      dailyCronMigration.includes("radar-refresh-cloudflare.yml/dispatches") &&
+      dailyCronMigration.includes("'limit', '30'") &&
+      dailyCronMigration.includes("'chunk_size', '5'") &&
+      dailyCronMigration.includes("'max_items_per_source', '3'") &&
+      dailyCronMigration.includes("vault.decrypted_secrets") &&
+      dailyCronMigration.includes("drop function if exists private.dispatch_radar_realtime_refresh()"),
     true,
-    "Supabase Cron must be the authoritative ten-minute trigger, use the encrypted GitHub token, and remove the one-time secret bootstrap RPC."
+    "Supabase Cron must be the sole daily 09:00 Beijing trigger, use the encrypted GitHub token and bounded inputs, and remove the old ten-minute job and function."
   );
   assert.equal(
     refreshWorkflow.includes("npm run data:activate:resumable:live:persist") &&

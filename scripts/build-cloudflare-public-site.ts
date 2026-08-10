@@ -983,8 +983,8 @@ function liveFeedClientScript() {
     const timestamp = dateTime(latest);
     if (status) {
       status.textContent = locale === "zh"
-        ? "实时更新 · 入库于 " + timestamp.date + " " + timestamp.time + " · 每 30 秒检查"
-        : "Live · ingested " + timestamp.date + " " + timestamp.time + " UTC · checks every 30s";
+        ? "每日更新 · 最近入库 " + timestamp.date + " " + timestamp.time + " · 每天 09:00 刷新"
+        : "Daily update · ingested " + timestamp.date + " " + timestamp.time + " UTC · refreshes 09:00 Beijing";
       status.dataset.state = "ready";
     }
     if (liveDate && latest) liveDate.textContent = timestamp.date + " · " + timestamp.time;
@@ -1016,7 +1016,7 @@ function liveFeedClientScript() {
       }
     } catch {
       if (status) {
-        status.textContent = locale === "zh" ? "实时连接暂时中断 · 显示最近已验证数据" : "Live connection interrupted · showing last verified data";
+        status.textContent = locale === "zh" ? "今日数据加载暂时中断 · 显示最近已验证数据" : "Daily data load interrupted · showing last verified data";
         status.dataset.state = "fallback";
       }
       root.dataset.liveState = "fallback";
@@ -1026,7 +1026,6 @@ function liveFeedClientScript() {
   }
 
   refresh();
-  window.setInterval(refresh, 30 * 1000);
   window.addEventListener("online", refresh);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") refresh();
@@ -1079,7 +1078,7 @@ function renderAbout(snapshot: Snapshot) {
   return shell(snapshot, "about", 1, "关于", `
     <article class="about-reader">
       <header><h1>把真正值得看的 AI 动态留下来</h1><p>AI 行业雷达持续聚合公开来源，合并重复报道，补充中文摘要和判断，帮助你更快知道发生了什么、为什么值得看。</p></header>
-      <section><h2>多久更新一次</h2><p>自动任务计划每 10 分钟发起一轮全部来源检查；新内容入库后，页面每 30 秒检测一次。源站响应和任务排队可能带来延迟，因此这里展示的是近实时公开信息流，不承诺零延迟。</p></section>
+      <section><h2>多久更新一次</h2><p>自动任务每天 09:00（北京时间）发起一次完整刷新，依次完成来源检查、增量去重、内容入库和生产部署。任务通常需要数分钟；页面打开或重新回到前台时会读取最新数据。本站提供每日更新，不承诺分钟级实时性。</p></section>
       <section><h2>我们怎么选</h2><p>先排除低相关和重复内容，再结合新鲜度、来源可信度、重要性与多源报道情况排序。单一来源不会被包装成已经确认的事实。</p></section>
       <section><h2>你会看到什么</h2><p>模型与产品更新、开发工具、开源项目、研究论文、商业变化和政策动态。每条内容都保留原文入口，摘要只用于帮助判断是否值得继续阅读。</p></section>
       <section><h2>内容边界</h2><p>本站是公开信息的聚合摘要与阅读索引。原文版权归各来源所有；引用数字、政策或原话前，请回到原文复核。</p></section>
@@ -1091,7 +1090,7 @@ function renderEnglishAbout(snapshot: Snapshot) {
   return englishShell(snapshot, "about", 1, "About", `
     <article class="about-reader">
       <header><h1>Keep the AI developments that are actually worth reading</h1><p>AI Industry Radar aggregates public sources, merges repeated coverage and adds concise summaries and editorial judgment.</p></header>
-      <section><h2>Update cadence</h2><p>An automated task is scheduled to poll every active source every ten minutes. After new items reach the database, the page checks again every 30 seconds. Source response times and task queueing can add delay, so this is a near-real-time public feed rather than a zero-latency promise.</p></section>
+      <section><h2>Update cadence</h2><p>One complete refresh starts every day at 09:00 Beijing time, covering source checks, incremental deduplication, persistence and production deployment. It normally takes a few minutes. The page loads the latest data when opened or brought back to the foreground. This is a daily feed, not a minute-level real-time service.</p></section>
       <section><h2>How items are selected</h2><p>Low-relevance and duplicate material is filtered first. Freshness, source credibility, importance and source breadth then shape the order. A single source is never presented as independent confirmation.</p></section>
       <section><h2>What appears here</h2><p>Models, products, developer tools, open-source projects, research, business shifts and policy developments. Every item keeps a path back to the original source.</p></section>
       <section><h2>Editorial boundary</h2><p>This site is a public-information summary and reading index. Original rights remain with each publisher; verify figures, policies and quotations in the linked source.</p></section>
@@ -1105,7 +1104,7 @@ function renderEnglishHome(snapshot: Snapshot) {
   const topIds = new Set(topEvents.map((event) => event.event_cluster_id));
   const latestEvents = events.filter((event) => !topIds.has(event.event_cluster_id)).slice(0, 26);
   return englishShell(snapshot, "home", 0, "Today's hot topics", `
-    <section class="reader-heading"><div><div class="reader-title-line"><h1>Today's hot topics</h1><time data-live-date>${escapeHtml(feedDayLabel(snapshot.generated_at, "en"))}</time><span class="live-indicator" data-live-status data-state="connecting">Connecting live feed</span></div><p>Noise filtered out. Only the AI developments worth reading remain.</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search updates, companies or products" aria-label="Search headlines, summaries and sources"></div></section>
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>Today's hot topics</h1><time data-live-date>${escapeHtml(feedDayLabel(snapshot.generated_at, "en"))}</time><span class="live-indicator" data-live-status data-state="connecting">Loading daily update</span></div><p>Noise filtered out. Only the AI developments worth reading remain.</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search updates, companies or products" aria-label="Search headlines, summaries and sources"></div></section>
     <section class="feed-toolbar"><div class="feed-chips"><button class="active" data-feed-category="all" type="button">All</button><button data-feed-category="model_release,benchmark" type="button">Models</button><button data-feed-category="product_update,agent,tooling" type="button">Products</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">Industry</button><button data-feed-category="research" type="button">Research</button><button data-feed-category="open_source" type="button">Open source</button></div></section>
     <section class="top-stories"><div class="section-heading"><h2>Today's hot topics</h2><span>TOP 10</span></div><div class="live-top-list" data-live-top>${renderTopStories(topEvents, snapshot, "en")}</div></section>
     <section class="latest-feed" data-live-feed data-live-mode="home" data-live-state="connecting"><div class="section-heading"><h2>Latest updates</h2><a href="radar/?tab=events">View all</a></div><div class="story-stream" data-live-stream>${renderStoryStream(latestEvents, snapshot, "en")}</div></section>
@@ -1117,7 +1116,7 @@ function renderEnglishHome(snapshot: Snapshot) {
 function renderEnglishRadar(snapshot: Snapshot) {
   const events = eventFeed(snapshot).filter((event) => readerReadyEventForLocale(event, snapshot, "en"));
   return englishShell(snapshot, "radar", 1, "All updates", `
-    <section class="reader-heading"><div><div class="reader-title-line"><h1>All AI updates</h1><span data-live-count>${events.length} items</span><span class="live-indicator" data-live-status data-state="connecting">Connecting live feed</span></div><p>Browse the complete event stream by source type, topic or keyword.</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search title, summary or source" aria-label="Search updates"></div></section>
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>All AI updates</h1><span data-live-count>${events.length} items</span><span class="live-indicator" data-live-status data-state="connecting">Loading daily update</span></div><p>Browse the complete event stream by source type, topic or keyword.</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search title, summary or source" aria-label="Search updates"></div></section>
     <section class="feed-toolbar full-toolbar">
       <div class="filter-line"><span>Sources</span><div class="feed-chips"><button class="active" data-feed-family="all" type="button">All</button><button data-feed-family="公司/实验室" type="button">First-party</button><button data-feed-family="分析/媒体,其他公开来源" type="button">News</button><button data-feed-family="研究订阅" type="button">Research</button><button data-feed-family="开源项目" type="button">Open source</button></div></div>
       <div class="filter-line"><span>Topics</span><div class="feed-chips"><button class="active" data-feed-category="all" type="button">All</button><button data-feed-category="model_release,benchmark" type="button">Models</button><button data-feed-category="product_update,agent,tooling" type="button">Products</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">Industry</button><button data-feed-category="research" type="button">Research</button><button data-feed-category="open_source" type="button">Open source</button></div></div>
@@ -1160,7 +1159,7 @@ function renderHome(snapshot: Snapshot) {
   const topIds = new Set(topEvents.map((event) => event.event_cluster_id));
   const latestEvents = events.filter((event) => !topIds.has(event.event_cluster_id)).slice(0, 26);
   return shell(snapshot, "home", 0, "今日热点", `
-    <section class="reader-heading"><div><div class="reader-title-line"><h1>今日热点</h1><time data-live-date>${escapeHtml(feedDayLabel(snapshot.generated_at, "zh"))}</time><span class="live-indicator" data-live-status data-state="connecting">正在连接实时数据</span></div><p>每天筛掉噪声，只留下真正值得看的 AI 动态。</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索动态、公司、产品或关键词" aria-label="搜索标题、摘要和来源"></div></section>
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>今日热点</h1><time data-live-date>${escapeHtml(feedDayLabel(snapshot.generated_at, "zh"))}</time><span class="live-indicator" data-live-status data-state="connecting">正在加载每日更新</span></div><p>每天筛掉噪声，只留下真正值得看的 AI 动态。</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索动态、公司、产品或关键词" aria-label="搜索标题、摘要和来源"></div></section>
     <section class="feed-toolbar"><div class="feed-chips"><button class="active" data-feed-category="all" type="button">全部</button><button data-feed-category="model_release,benchmark" type="button">模型</button><button data-feed-category="product_update,agent,tooling" type="button">产品</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">行业</button><button data-feed-category="research" type="button">论文</button><button data-feed-category="open_source" type="button">开源</button></div></section>
     <section class="top-stories"><div class="section-heading"><h2>今日热点</h2><span>TOP 10</span></div><div class="live-top-list" data-live-top>${renderTopStories(topEvents, snapshot, "zh")}</div></section>
     <section class="latest-feed" data-live-feed data-live-mode="home" data-live-state="connecting"><div class="section-heading"><h2>最新动态</h2><a href="radar/?tab=events">查看全部</a></div><div class="story-stream" data-live-stream>${renderStoryStream(latestEvents, snapshot, "zh")}</div></section>
@@ -1172,7 +1171,7 @@ function renderHome(snapshot: Snapshot) {
 function renderRadar(snapshot: Snapshot) {
   const events = eventFeed(snapshot).filter(readerReadyEvent);
   return shell(snapshot, "radar", 1, "全部动态", `
-    <section class="reader-heading"><div><div class="reader-title-line"><h1>全部 AI 动态</h1><span data-live-count>${events.length} 条</span><span class="live-indicator" data-live-status data-state="connecting">正在连接实时数据</span></div><p>按来源、主题或关键词浏览完整信息流。</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索标题、摘要或来源" aria-label="搜索全部动态"></div></section>
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>全部 AI 动态</h1><span data-live-count>${events.length} 条</span><span class="live-indicator" data-live-status data-state="connecting">正在加载每日更新</span></div><p>按来源、主题或关键词浏览完整信息流。</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索标题、摘要或来源" aria-label="搜索全部动态"></div></section>
     <section class="feed-toolbar full-toolbar">
       <div class="filter-line"><span>来源</span><div class="feed-chips"><button class="active" data-feed-family="all" type="button">全部</button><button data-feed-family="公司/实验室" type="button">一手信源</button><button data-feed-family="分析/媒体,其他公开来源" type="button">资讯</button><button data-feed-family="研究订阅" type="button">论文</button><button data-feed-family="开源项目" type="button">开源</button></div></div>
       <div class="filter-line"><span>分类</span><div class="feed-chips"><button class="active" data-feed-category="all" type="button">全部</button><button data-feed-category="model_release,benchmark" type="button">模型</button><button data-feed-category="product_update,agent,tooling" type="button">产品</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">行业</button><button data-feed-category="research" type="button">论文</button><button data-feed-category="open_source" type="button">开源</button></div></div>
