@@ -2,9 +2,8 @@ name: Radar Near-real-time Feed Refresh
 
 on:
   schedule:
-    # GitHub's shortest scheduled interval is five minutes. Run away from
-    # minute zero to reduce peak scheduler contention.
-    - cron: "2-59/5 * * * *"
+    # GitHub's shortest scheduled interval is five minutes.
+    - cron: "*/5 * * * *"
       timezone: "Asia/Shanghai"
   workflow_dispatch:
 

@@ -466,7 +466,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
     "The production workflow must use one coordinated Asia/Shanghai run with bounded internal retries, skip an already-fresh release, and gate writes to main."
   );
   assert.equal(
-    realtimeWorkflow.includes('cron: "2-59/5 * * * *"') &&
+    realtimeWorkflow.includes('cron: "*/5 * * * *"') &&
       realtimeWorkflow.includes('timezone: "Asia/Shanghai"') &&
       realtimeWorkflow.includes('group: radar-near-real-time-refresh') &&
       realtimeWorkflow.includes('--limit "100"') &&
