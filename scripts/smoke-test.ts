@@ -420,6 +420,9 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   const eventClustering = readSource("lib/events/clustering.ts");
   const refreshWorkflow = readSource(".github/workflows/radar-refresh-cloudflare.yml");
   const realtimeWorkflow = readSource(".github/workflows/radar-realtime-refresh.yml");
+  const realtimeCronMigration = readSource(
+    "supabase/migrations/20260810090200_schedule_radar_realtime_dispatch.sql"
+  );
   const clusterWorkflowStep = refreshWorkflow.match(
     /- name: Cluster, persist, and export the public snapshot[\s\S]*?(?=\n\s+- name: Render Cloudflare site)/
   )?.[0] ?? "";
@@ -466,8 +469,8 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
     "The production workflow must use one coordinated Asia/Shanghai run with bounded internal retries, skip an already-fresh release, and gate writes to main."
   );
   assert.equal(
-    realtimeWorkflow.includes('cron: "*/5 * * * *"') &&
-      realtimeWorkflow.includes('timezone: "Asia/Shanghai"') &&
+    realtimeWorkflow.includes("workflow_dispatch:") &&
+      !realtimeWorkflow.includes("\n  schedule:") &&
       realtimeWorkflow.includes('group: radar-near-real-time-refresh') &&
       realtimeWorkflow.includes('--limit "100"') &&
       realtimeWorkflow.includes('--core-count "0"') &&
@@ -477,11 +480,21 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       realtimeWorkflow.includes("for attempt in 1 2 3") &&
       realtimeWorkflow.includes("continue-on-error: true") &&
       realtimeWorkflow.includes("without notification spam") &&
-      realtimeWorkflow.includes("the next five-minute run will retry") &&
+      realtimeWorkflow.includes("the next scheduled run will retry") &&
       !realtimeWorkflow.includes("wrangler") &&
       !realtimeWorkflow.includes("pages deploy"),
     true,
-    "The near-real-time workflow must poll every active source every five minutes, deduplicate before understanding, retry internally, and avoid deploy or email spam."
+    "The near-real-time workflow must poll every active source when dispatched, deduplicate before understanding, retry internally, and avoid deploy or email spam."
+  );
+  assert.equal(
+    realtimeCronMigration.includes("cron.schedule(") &&
+      realtimeCronMigration.includes("'*/10 * * * *'") &&
+      realtimeCronMigration.includes("net.http_post(") &&
+      realtimeCronMigration.includes("vault.decrypted_secrets") &&
+      realtimeCronMigration.includes("radar-realtime-refresh.yml/dispatches") &&
+      realtimeCronMigration.includes("drop function if exists public.set_radar_github_dispatch_token(text)"),
+    true,
+    "Supabase Cron must be the authoritative ten-minute trigger, use the encrypted GitHub token, and remove the one-time secret bootstrap RPC."
   );
   assert.equal(
     refreshWorkflow.includes("npm run data:activate:resumable:live:persist") &&

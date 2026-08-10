@@ -1,10 +1,6 @@
 name: Radar Near-real-time Feed Refresh
 
 on:
-  schedule:
-    # GitHub's shortest scheduled interval is five minutes.
-    - cron: "*/5 * * * *"
-      timezone: "Asia/Shanghai"
   workflow_dispatch:
 
 permissions:
@@ -77,7 +73,7 @@ jobs:
               exit 0
             fi
             if [[ "$attempt" == "3" ]]; then
-              echo "::warning title=Near-real-time dependency install degraded::npm ci failed after three attempts; the next five-minute run will retry."
+              echo "::warning title=Near-real-time dependency install degraded::npm ci failed after three attempts; the next scheduled run will retry."
               exit 1
             fi
             sleep $((attempt * 10))
@@ -118,7 +114,7 @@ jobs:
               exit 0
             fi
             if [[ "$attempt" == "3" ]]; then
-              echo "::warning title=Near-real-time refresh degraded::Source polling failed after three internal attempts; the next five-minute run will retry."
+              echo "::warning title=Near-real-time refresh degraded::Source polling failed after three internal attempts; the next scheduled run will retry."
               exit 1
             fi
             echo "Near-real-time activation attempt ${attempt} failed; resuming the same task after a bounded delay."
@@ -155,7 +151,7 @@ jobs:
           {
             echo "## AI 行业信息雷达近实时刷新"
             echo ""
-            echo "- Planned cadence: every 5 minutes (Asia/Shanghai)"
+            echo "- Planned cadence: every 10 minutes via Supabase Cron"
             echo "- Scope: every active public source"
             echo "- Result: ${outcome}"
             echo "- Detail: ${detail}"
@@ -165,6 +161,6 @@ jobs:
 
           # This is a best-effort, high-frequency task. Keep it green after
           # recording warnings so transient source failures do not email the
-          # maintainer every five minutes. The daily production workflow is
+          # maintainer after each scheduled check. The daily production workflow is
           # the fail-loud health check and deployment gate.
           exit 0

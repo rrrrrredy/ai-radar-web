@@ -1079,7 +1079,7 @@ function renderAbout(snapshot: Snapshot) {
   return shell(snapshot, "about", 1, "关于", `
     <article class="about-reader">
       <header><h1>把真正值得看的 AI 动态留下来</h1><p>AI 行业雷达持续聚合公开来源，合并重复报道，补充中文摘要和判断，帮助你更快知道发生了什么、为什么值得看。</p></header>
-      <section><h2>多久更新一次</h2><p>自动任务计划每 5 分钟发起一轮全部来源检查；新内容入库后，页面每 30 秒检测一次。源站响应和 GitHub 调度可能带来延迟，因此这里展示的是近实时公开信息流，不承诺零延迟。</p></section>
+      <section><h2>多久更新一次</h2><p>自动任务计划每 10 分钟发起一轮全部来源检查；新内容入库后，页面每 30 秒检测一次。源站响应和任务排队可能带来延迟，因此这里展示的是近实时公开信息流，不承诺零延迟。</p></section>
       <section><h2>我们怎么选</h2><p>先排除低相关和重复内容，再结合新鲜度、来源可信度、重要性与多源报道情况排序。单一来源不会被包装成已经确认的事实。</p></section>
       <section><h2>你会看到什么</h2><p>模型与产品更新、开发工具、开源项目、研究论文、商业变化和政策动态。每条内容都保留原文入口，摘要只用于帮助判断是否值得继续阅读。</p></section>
       <section><h2>内容边界</h2><p>本站是公开信息的聚合摘要与阅读索引。原文版权归各来源所有；引用数字、政策或原话前，请回到原文复核。</p></section>
@@ -1091,7 +1091,7 @@ function renderEnglishAbout(snapshot: Snapshot) {
   return englishShell(snapshot, "about", 1, "About", `
     <article class="about-reader">
       <header><h1>Keep the AI developments that are actually worth reading</h1><p>AI Industry Radar aggregates public sources, merges repeated coverage and adds concise summaries and editorial judgment.</p></header>
-      <section><h2>Update cadence</h2><p>An automated task is scheduled to poll every active source every five minutes. After new items reach the database, the page checks again every 30 seconds. Source response times and GitHub scheduling can add delay, so this is a near-real-time public feed rather than a zero-latency promise.</p></section>
+      <section><h2>Update cadence</h2><p>An automated task is scheduled to poll every active source every ten minutes. After new items reach the database, the page checks again every 30 seconds. Source response times and task queueing can add delay, so this is a near-real-time public feed rather than a zero-latency promise.</p></section>
       <section><h2>How items are selected</h2><p>Low-relevance and duplicate material is filtered first. Freshness, source credibility, importance and source breadth then shape the order. A single source is never presented as independent confirmation.</p></section>
       <section><h2>What appears here</h2><p>Models, products, developer tools, open-source projects, research, business shifts and policy developments. Every item keeps a path back to the original source.</p></section>
       <section><h2>Editorial boundary</h2><p>This site is a public-information summary and reading index. Original rights remain with each publisher; verify figures, policies and quotations in the linked source.</p></section>
