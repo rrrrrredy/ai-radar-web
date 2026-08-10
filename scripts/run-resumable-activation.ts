@@ -53,6 +53,7 @@ import type {
   UnderstandingRunSummary,
   UnderstandingStatus
 } from "@/lib/understanding/types";
+import { sha256 } from "@/lib/understanding/validate";
 
 export type CliOptions = {
   mode: UnderstandingMode;
@@ -61,6 +62,7 @@ export type CliOptions = {
   chunkSize: number;
   maxItemsPerSource: number;
   rotationOffset: number;
+  coreCount: number;
   sourceIds: string[] | null;
   persist: boolean;
   resume: boolean;
@@ -315,6 +317,7 @@ export function parseArgs(args: string[]): CliOptions {
     chunkSize: 5,
     maxItemsPerSource: 3,
     rotationOffset: 0,
+    coreCount: 10,
     sourceIds: null,
     persist: false,
     resume: false,
@@ -349,6 +352,10 @@ export function parseArgs(args: string[]): CliOptions {
         break;
       case "--rotation-offset":
         options.rotationOffset = readNonNegativeNumberArg(args, index);
+        index += 1;
+        break;
+      case "--core-count":
+        options.coreCount = readNonNegativeNumberArg(args, index);
         index += 1;
         break;
       case "--source-id":
@@ -452,7 +459,7 @@ function selectedSourcesForOptions(options: CliOptions) {
     throw new Error("No eligible sources were selected for activation.");
   }
 
-  return rotateSourceSelection(selection.sources, requestedLimit, options.rotationOffset);
+  return rotateSourceSelection(selection.sources, requestedLimit, options.rotationOffset, options.coreCount);
 }
 
 export function rotateSourceSelection<T>(
@@ -474,6 +481,37 @@ export function rotateSourceSelection<T>(
   const offset = ((Math.floor(rotationOffset) % tail.length) + tail.length) % tail.length;
   const rotatedTail = [...tail.slice(offset), ...tail.slice(0, offset)];
   return [...core, ...rotatedTail.slice(0, tailNeeded)];
+}
+
+async function excludePreviouslyProcessedItems(items: IngestionRawItem[], enabled: boolean) {
+  if (!enabled || items.length === 0) {
+    return { items, duplicateCount: 0 };
+  }
+
+  const localIdByRawId = new Map(
+    items.map((item) => [item.id, `radar_${sha256(item.id).slice(0, 16)}`])
+  );
+  const localIds = Array.from(localIdByRawId.values());
+  const supabase = getSupabaseServiceClient();
+  const { data, error } = await supabase
+    .from("radar_items")
+    .select("local_id")
+    .in("local_id", localIds);
+
+  if (error) {
+    throw new Error(`Unable to check previously processed radar items: ${error.message}`);
+  }
+
+  const existing = new Set(
+    ((data ?? []) as Array<{ local_id: string | null }>)
+      .map((row) => row.local_id)
+      .filter((value): value is string => Boolean(value))
+  );
+  const freshItems = items.filter((item) => !existing.has(localIdByRawId.get(item.id) ?? ""));
+  return {
+    items: freshItems,
+    duplicateCount: items.length - freshItems.length
+  };
 }
 
 function selectedSourcesForCheckpoint(checkpoint: ActivationCheckpoint) {
@@ -524,7 +562,8 @@ function expandedResumeSourceIds(checkpoint: ActivationCheckpoint, options: CliO
   const rotatedSelection = rotateSourceSelection(
     selection.sources,
     options.limit,
-    options.rotationOffset
+    options.rotationOffset,
+    options.coreCount
   );
 
   return uniqueMessages([
@@ -577,21 +616,25 @@ async function runChunk(input: {
     );
     const fetchedRawItems = sourceRuns.flatMap((run) => run.rawItems);
     const deduped = dedupeRawItems(fetchedRawItems);
-    await writeJson(rawInputPath, deduped.items);
+    const crossRunDedupe = await excludePreviouslyProcessedItems(deduped.items, input.options.persist);
+    await writeJson(rawInputPath, crossRunDedupe.items);
 
     const ingestionRun = buildChunkIngestionRun({
       checkpoint: input.checkpoint,
       chunkIndex: input.chunkIndex,
-      duplicateCount: sourceRuns.reduce((sum, run) => sum + run.run.duplicate_count, deduped.duplicateCount),
+      duplicateCount: sourceRuns.reduce(
+        (sum, run) => sum + run.run.duplicate_count,
+        deduped.duplicateCount + crossRunDedupe.duplicateCount
+      ),
       rawInputPath,
-      rawItems: deduped.items,
+      rawItems: crossRunDedupe.items,
       sourceIds,
       sourceRuns,
       startedAt
     });
     const understanding = await runUnderstanding({
       inputPath: rawInputPath,
-      limit: Math.max(1, deduped.items.length),
+      limit: Math.max(1, crossRunDedupe.items.length),
       maxTextChars: 6000,
       mode: input.checkpoint.mode
     });
@@ -601,7 +644,7 @@ async function runChunk(input: {
       ...understanding.run.errors
     ]);
     const sourceFamilyCounts = buildChunkSourceFamilyCounts({
-      dedupedItems: deduped.items,
+      dedupedItems: crossRunDedupe.items,
       radarItems: understanding.radarItems,
       sourceRuns,
       sources: input.sources,
@@ -615,7 +658,7 @@ async function runChunk(input: {
       source_ids: sourceIds,
       ingestion_run: ingestionRun,
       understanding_run: understanding.run,
-      raw_items: deduped.items,
+      raw_items: crossRunDedupe.items,
       radar_items: understanding.radarItems,
       source_family_counts: sourceFamilyCounts,
       warnings
@@ -642,6 +685,12 @@ async function runChunk(input: {
     };
 
     if (!input.options.persist) {
+      return chunkCheckpoint;
+    }
+
+    if (output.raw_items.length === 0) {
+      chunkCheckpoint.persist_counts = emptyPersistCounts();
+      chunkCheckpoint.persisted = true;
       return chunkCheckpoint;
     }
 
@@ -715,6 +764,20 @@ async function persistExistingChunk(
 
   await writeCheckpointAndSummary(checkpoint, selectedSources);
   return chunk.persisted;
+}
+
+function emptyPersistCounts(): PersistCounts {
+  return {
+    sourceRowsUpserted: 0,
+    ingestionRunsUpserted: 0,
+    rawItemRowsUpserted: 0,
+    understandingRunsUpserted: 0,
+    radarItemRowsUpserted: 0,
+    entityRowsUpserted: 0,
+    itemEntityRowsUpserted: 0,
+    scoreRowsUpserted: 0,
+    apiUsageRowsInserted: 0
+  };
 }
 
 function buildChunkIngestionRun(input: {

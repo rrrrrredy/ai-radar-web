@@ -352,7 +352,7 @@ async function buildLiveFeed(request, context) {
 
   const manifestParams = new URLSearchParams({
     select: "id,processed_at,published_at",
-    order: "published_at.desc.nullslast,processed_at.desc.nullslast,id.desc",
+    order: "processed_at.desc.nullslast,published_at.desc.nullslast,id.desc",
     limit: String(limit)
   });
   const manifest = await supabaseJson("public_radar_items?" + manifestParams.toString());
@@ -365,7 +365,7 @@ async function buildLiveFeed(request, context) {
       item_count: 0,
       items: []
     }, 200, {
-      "cache-control": "public, max-age=15, s-maxage=45, stale-while-revalidate=300",
+      "cache-control": "public, max-age=5, s-maxage=15, stale-while-revalidate=60",
       "x-radar-live-source": "supabase_public_radar"
     });
   }
@@ -390,7 +390,7 @@ async function buildLiveFeed(request, context) {
     item_count: items.length,
     items
   }, 200, {
-    "cache-control": "public, max-age=15, s-maxage=45, stale-while-revalidate=300",
+    "cache-control": "public, max-age=5, s-maxage=15, stale-while-revalidate=60",
     "x-radar-live-source": "supabase_public_radar"
   });
   if (edgeCache) {
@@ -660,6 +660,7 @@ function liveFeedClientScript() {
   const root = document.querySelector("[data-live-feed]");
   if (!root) return;
   const stream = root.querySelector("[data-live-stream]");
+  const top = document.querySelector("[data-live-top]");
   const status = document.querySelector("[data-live-status]");
   const liveDate = document.querySelector("[data-live-date]");
   const locale = document.documentElement.lang.toLowerCase().startsWith("zh") ? "zh" : "en";
@@ -833,6 +834,68 @@ function liveFeedClientScript() {
     return selected;
   }
 
+  function rankingScore(item) {
+    const ageHours = Math.max(0, (Date.now() - effectiveTime(item)) / (60 * 60 * 1000));
+    const recency = Math.max(0, 1 - ageHours / (7 * 24));
+    return score(item.overall_score) * 38 + score(item.importance_score) * 20 +
+      score(item.credibility_score) * 12 + score(item.ai_relevance_score) * 10 +
+      score(item.novelty_score) * 8 + score(item.freshness_score) * 7 + recency * 15;
+  }
+
+  function selectTopItems(items) {
+    const candidates = items
+      .filter(eligible)
+      .filter((item) => Date.now() - effectiveTime(item) <= 30 * 24 * 60 * 60 * 1000)
+      .sort((left, right) => rankingScore(right) - rankingScore(left) || effectiveTime(right) - effectiveTime(left));
+    const selected = [];
+    const selectedUrls = new Set();
+    const sourceCounts = new Map();
+    const add = (item, enforceDiversity) => {
+      const url = safeUrl(item.url).replace(/\/$/, "").toLowerCase();
+      const source = String(item.source_name || "unknown");
+      if (selectedUrls.has(url) || (enforceDiversity && (sourceCounts.get(source) || 0) >= 2)) return false;
+      selected.push(item);
+      selectedUrls.add(url);
+      sourceCounts.set(source, (sourceCounts.get(source) || 0) + 1);
+      return true;
+    };
+    for (const item of candidates) {
+      if (selected.length >= 10) break;
+      add(item, true);
+    }
+    for (const item of candidates) {
+      if (selected.length >= 10) break;
+      add(item, false);
+    }
+    return selected;
+  }
+
+  function topItemHtml(item, index) {
+    const title = readerTitle(item);
+    const summary = readerSummary(item, title);
+    const judgment = readerJudgment(item);
+    const timestampValue = item.published_at || item.collected_at || item.processed_at;
+    const timestamp = dateTime(timestampValue);
+    const categories = values(item.categories);
+    const category = categoryKey(item);
+    const family = sourceFamily(item);
+    const source = String(item.source_name || (locale === "zh" ? "公开来源" : "Public source"));
+    const search = [title, summary, source, categories.join(" ")].join(" ").toLowerCase();
+    const overall = score(item.overall_score);
+    const priority = locale === "zh"
+      ? (overall >= 0.75 ? "高优先级" : overall >= 0.55 ? "关注" : "观察")
+      : (overall >= 0.75 ? "High priority" : overall >= 0.55 ? "Watch" : "Monitor");
+    return '<article class="top-story story-row" data-category="' + escapeHtml(categories.join(" ") + " " + category) + '" data-family="' + escapeHtml(family) + '" data-search="' + escapeHtml(search) + '" data-source-count="single">' +
+      '<span class="hot-rank">' + String(index + 1).padStart(2, "0") + '</span>' +
+      '<div class="hot-meta"><time datetime="' + escapeHtml(String(timestampValue || "")) + '" title="' + escapeHtml(locale === "zh" ? "北京时间" : "UTC") + '">' + escapeHtml(timestamp.date + " · " + timestamp.time) + '</time><span>' + escapeHtml(source) + '</span><small>' + escapeHtml(categoryLabel(category)) + '</small></div>' +
+      '<div class="hot-copy"><h2><a href="' + escapeHtml(safeUrl(item.url)) + '">' + escapeHtml(title) + '</a></h2><p>' + escapeHtml(summary) + '</p></div>' +
+      '<div class="hot-judgment"><strong>' + (locale === "zh" ? "为什么值得看" : "Why it matters") + '</strong><p>' + escapeHtml(judgment) + '</p><small>' + (locale === "zh" ? "1 个来源" : "1 source") + ' · ' + priority + '</small></div></article>';
+  }
+
+  function topHtml(items) {
+    return items.map(topItemHtml).join("");
+  }
+
   function rowHtml(item) {
     const title = readerTitle(item);
     const summary = readerSummary(item, title);
@@ -869,8 +932,8 @@ function liveFeedClientScript() {
     const timestamp = dateTime(latest);
     if (status) {
       status.textContent = locale === "zh"
-        ? "实时 · 更新于 " + timestamp.date + " " + timestamp.time
-        : "Live · updated " + timestamp.date + " " + timestamp.time + " UTC";
+        ? "实时更新 · 入库于 " + timestamp.date + " " + timestamp.time + " · 每 30 秒检查"
+        : "Live · ingested " + timestamp.date + " " + timestamp.time + " UTC · checks every 30s";
       status.dataset.state = "ready";
     }
     if (liveDate && latest) liveDate.textContent = timestamp.date + " · " + timestamp.time;
@@ -889,6 +952,10 @@ function liveFeedClientScript() {
       if (!response.ok) throw new Error("live feed HTTP " + response.status);
       const payload = await response.json();
       if (!payload || payload.ok !== true || !Array.isArray(payload.items)) throw new Error("invalid live feed payload");
+      const topItems = mode === "home" ? selectTopItems(payload.items) : [];
+      if (top && topItems.length === 10) {
+        top.innerHTML = topHtml(topItems);
+      }
       const items = selectItems(payload.items);
       if (items.length > 0 && stream) {
         stream.innerHTML = streamHtml(items);
@@ -908,7 +975,7 @@ function liveFeedClientScript() {
   }
 
   refresh();
-  window.setInterval(refresh, 60 * 1000);
+  window.setInterval(refresh, 30 * 1000);
   window.addEventListener("online", refresh);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") refresh();
@@ -960,7 +1027,8 @@ function renderEnglishSources(snapshot: Snapshot) {
 function renderAbout(snapshot: Snapshot) {
   return shell(snapshot, "about", 1, "关于", `
     <article class="about-reader">
-      <header><h1>把真正值得看的 AI 动态留下来</h1><p>AI 行业雷达每天聚合公开来源，合并重复报道，补充中文摘要和判断，帮助你更快知道发生了什么、为什么值得看。</p></header>
+      <header><h1>把真正值得看的 AI 动态留下来</h1><p>AI 行业雷达持续聚合公开来源，合并重复报道，补充中文摘要和判断，帮助你更快知道发生了什么、为什么值得看。</p></header>
+      <section><h2>多久更新一次</h2><p>自动任务计划每 5 分钟发起一轮全部来源检查；新内容入库后，页面每 30 秒检测一次。源站响应和 GitHub 调度可能带来延迟，因此这里展示的是近实时公开信息流，不承诺零延迟。</p></section>
       <section><h2>我们怎么选</h2><p>先排除低相关和重复内容，再结合新鲜度、来源可信度、重要性与多源报道情况排序。单一来源不会被包装成已经确认的事实。</p></section>
       <section><h2>你会看到什么</h2><p>模型与产品更新、开发工具、开源项目、研究论文、商业变化和政策动态。每条内容都保留原文入口，摘要只用于帮助判断是否值得继续阅读。</p></section>
       <section><h2>内容边界</h2><p>本站是公开信息的聚合摘要与阅读索引。原文版权归各来源所有；引用数字、政策或原话前，请回到原文复核。</p></section>
@@ -972,6 +1040,7 @@ function renderEnglishAbout(snapshot: Snapshot) {
   return englishShell(snapshot, "about", 1, "About", `
     <article class="about-reader">
       <header><h1>Keep the AI developments that are actually worth reading</h1><p>AI Industry Radar aggregates public sources, merges repeated coverage and adds concise summaries and editorial judgment.</p></header>
+      <section><h2>Update cadence</h2><p>An automated task is scheduled to poll every active source every five minutes. After new items reach the database, the page checks again every 30 seconds. Source response times and GitHub scheduling can add delay, so this is a near-real-time public feed rather than a zero-latency promise.</p></section>
       <section><h2>How items are selected</h2><p>Low-relevance and duplicate material is filtered first. Freshness, source credibility, importance and source breadth then shape the order. A single source is never presented as independent confirmation.</p></section>
       <section><h2>What appears here</h2><p>Models, products, developer tools, open-source projects, research, business shifts and policy developments. Every item keeps a path back to the original source.</p></section>
       <section><h2>Editorial boundary</h2><p>This site is a public-information summary and reading index. Original rights remain with each publisher; verify figures, policies and quotations in the linked source.</p></section>
@@ -987,7 +1056,7 @@ function renderEnglishHome(snapshot: Snapshot) {
   return englishShell(snapshot, "home", 0, "Today's hot topics", `
     <section class="reader-heading"><div><div class="reader-title-line"><h1>Today's hot topics</h1><time data-live-date>${escapeHtml(feedDayLabel(snapshot.generated_at, "en"))}</time><span class="live-indicator" data-live-status data-state="connecting">Connecting live feed</span></div><p>Noise filtered out. Only the AI developments worth reading remain.</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search updates, companies or products" aria-label="Search headlines, summaries and sources"></div></section>
     <section class="feed-toolbar"><div class="feed-chips"><button class="active" data-feed-category="all" type="button">All</button><button data-feed-category="model_release,benchmark" type="button">Models</button><button data-feed-category="product_update,agent,tooling" type="button">Products</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">Industry</button><button data-feed-category="research" type="button">Research</button><button data-feed-category="open_source" type="button">Open source</button></div></section>
-    <section class="top-stories"><div class="section-heading"><h2>Today's hot topics</h2><span>TOP 10</span></div>${renderTopStories(topEvents, snapshot, "en")}</section>
+    <section class="top-stories"><div class="section-heading"><h2>Today's hot topics</h2><span>TOP 10</span></div><div class="live-top-list" data-live-top>${renderTopStories(topEvents, snapshot, "en")}</div></section>
     <section class="latest-feed" data-live-feed data-live-mode="home" data-live-state="connecting"><div class="section-heading"><h2>Latest updates</h2><a href="radar/?tab=events">View all</a></div><div class="story-stream" data-live-stream>${renderStoryStream(latestEvents, snapshot, "en")}</div></section>
     <div class="feed-more"><a class="button primary" href="radar/?tab=events">Browse all events</a></div>
     <script>${storyFilterScript()}</script>
@@ -1042,7 +1111,7 @@ function renderHome(snapshot: Snapshot) {
   return shell(snapshot, "home", 0, "今日热点", `
     <section class="reader-heading"><div><div class="reader-title-line"><h1>今日热点</h1><time data-live-date>${escapeHtml(feedDayLabel(snapshot.generated_at, "zh"))}</time><span class="live-indicator" data-live-status data-state="connecting">正在连接实时数据</span></div><p>每天筛掉噪声，只留下真正值得看的 AI 动态。</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索动态、公司、产品或关键词" aria-label="搜索标题、摘要和来源"></div></section>
     <section class="feed-toolbar"><div class="feed-chips"><button class="active" data-feed-category="all" type="button">全部</button><button data-feed-category="model_release,benchmark" type="button">模型</button><button data-feed-category="product_update,agent,tooling" type="button">产品</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">行业</button><button data-feed-category="research" type="button">论文</button><button data-feed-category="open_source" type="button">开源</button></div></section>
-    <section class="top-stories"><div class="section-heading"><h2>今日热点</h2><span>TOP 10</span></div>${renderTopStories(topEvents, snapshot, "zh")}</section>
+    <section class="top-stories"><div class="section-heading"><h2>今日热点</h2><span>TOP 10</span></div><div class="live-top-list" data-live-top>${renderTopStories(topEvents, snapshot, "zh")}</div></section>
     <section class="latest-feed" data-live-feed data-live-mode="home" data-live-state="connecting"><div class="section-heading"><h2>最新动态</h2><a href="radar/?tab=events">查看全部</a></div><div class="story-stream" data-live-stream>${renderStoryStream(latestEvents, snapshot, "zh")}</div></section>
     <div class="feed-more"><a class="button primary" href="radar/?tab=events">查看全部事件</a></div>
     <script>${storyFilterScript()}</script>

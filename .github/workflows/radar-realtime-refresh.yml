@@ -1,0 +1,170 @@
+name: Radar Near-real-time Feed Refresh
+
+on:
+  schedule:
+    # GitHub's shortest scheduled interval is five minutes. Run away from
+    # minute zero to reduce peak scheduler contention.
+    - cron: "2-59/5 * * * *"
+      timezone: "Asia/Shanghai"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: radar-near-real-time-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Poll all sources and persist new items
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout default branch
+        id: checkout
+        continue-on-error: true
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Validate best-effort refresh configuration
+        id: config
+        if: ${{ steps.checkout.outcome == 'success' }}
+        shell: bash
+        env:
+          DISPATCH_REF: ${{ github.ref }}
+          RADAR_REFRESH_WRITE_GATE: ${{ vars.RADAR_REFRESH_WRITE_GATE }}
+          HAS_NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL != '' || secrets.NEXT_PUBLIC_SUPABASE_URL != '' }}
+          HAS_NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY != '' || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY != '' }}
+          HAS_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+          HAS_DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY != '' }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ "$DISPATCH_REF" == "refs/heads/main" ]] || missing+=("main branch")
+          [[ "$RADAR_REFRESH_WRITE_GATE" == "true" ]] || missing+=("RADAR_REFRESH_WRITE_GATE")
+          for required_flag in \
+            HAS_NEXT_PUBLIC_SUPABASE_URL \
+            HAS_NEXT_PUBLIC_SUPABASE_ANON_KEY \
+            HAS_SUPABASE_SERVICE_ROLE_KEY \
+            HAS_DEEPSEEK_API_KEY; do
+            [[ "${!required_flag:-false}" == "true" ]] || missing+=("${required_flag#HAS_}")
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Near-real-time refresh disabled::Missing or unsafe configuration: ${missing[*]}. The daily production health run remains authoritative."
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        id: node
+        if: ${{ steps.config.outputs.enabled == 'true' }}
+        continue-on-error: true
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies with bounded retries
+        id: install
+        if: ${{ steps.node.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if npm ci; then
+              exit 0
+            fi
+            if [[ "$attempt" == "3" ]]; then
+              echo "::warning title=Near-real-time dependency install degraded::npm ci failed after three attempts; the next five-minute run will retry."
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+
+      - name: Poll every active source and persist only unseen items
+        id: activation
+        if: ${{ steps.install.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 20
+        shell: bash
+        env:
+          ACTIVATION_RESET_INVALID_CHECKPOINT: "true"
+          ENABLE_SUPABASE_WRITES: "true"
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          args=(
+            --limit "100"
+            --chunk-size "10"
+            --max-items-per-source "2"
+            --rotation-offset "0"
+            --core-count "0"
+          )
+          for attempt in 1 2 3; do
+            run_args=("${args[@]}")
+            if [[ "$attempt" == "1" ]]; then
+              run_args+=(--reset)
+            else
+              run_args+=(--resume)
+            fi
+            if npm run data:activate:resumable:live:persist -- "${run_args[@]}"; then
+              exit 0
+            fi
+            if [[ "$attempt" == "3" ]]; then
+              echo "::warning title=Near-real-time refresh degraded::Source polling failed after three internal attempts; the next five-minute run will retry."
+              exit 1
+            fi
+            echo "Near-real-time activation attempt ${attempt} failed; resuming the same task after a bounded delay."
+            sleep $((attempt * 20))
+          done
+
+      - name: Publish refresh status without notification spam
+        if: ${{ always() }}
+        shell: bash
+        env:
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          ENABLED: ${{ steps.config.outputs.enabled || 'false' }}
+          NODE_OUTCOME: ${{ steps.node.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          ACTIVATION_OUTCOME: ${{ steps.activation.outcome }}
+        run: |
+          set -euo pipefail
+          outcome="success"
+          detail="All active sources were checked and unseen items were persisted."
+          if [[ "$CHECKOUT_OUTCOME" != "success" ]]; then
+            outcome="degraded"
+            detail="Checkout failed; the next scheduled run will retry."
+          elif [[ "$ENABLED" != "true" ]]; then
+            outcome="disabled"
+            detail="Required configuration is unavailable or the ref is not main."
+          elif [[ "$NODE_OUTCOME" != "success" || "$INSTALL_OUTCOME" != "success" || "$ACTIVATION_OUTCOME" != "success" ]]; then
+            outcome="degraded"
+            detail="A transient setup or polling stage failed; the next scheduled run will retry."
+          fi
+
+          if [[ "$outcome" != "success" ]]; then
+            echo "::warning title=Near-real-time refresh ${outcome}::${detail}"
+          fi
+          {
+            echo "## AI 行业信息雷达近实时刷新"
+            echo ""
+            echo "- Planned cadence: every 5 minutes (Asia/Shanghai)"
+            echo "- Scope: every active public source"
+            echo "- Result: ${outcome}"
+            echo "- Detail: ${detail}"
+            echo "- Delivery: Supabase public feed; the browser checks for new rows every 30 seconds"
+            echo "- Production URL: https://ai-industry-radar.pages.dev/"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # This is a best-effort, high-frequency task. Keep it green after
+          # recording warnings so transient source failures do not email the
+          # maintainer every five minutes. The daily production workflow is
+          # the fail-loud health check and deployment gate.
+          exit 0

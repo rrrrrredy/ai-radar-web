@@ -367,7 +367,11 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       cloudflareSite.includes("function liveFeedClientScript") &&
       cloudflareSite.includes('const liveFeedPath = "/api/live-feed"') &&
       cloudflareSite.includes('data-live-feed data-live-mode="home"') &&
+      cloudflareSite.includes("data-live-top") &&
       cloudflareSite.includes('data-live-feed data-live-mode="radar"') &&
+      cloudflareSite.includes("window.setInterval(refresh, 30 * 1000)") &&
+      cloudflareSite.includes('order: "processed_at.desc.nullslast,published_at.desc.nullslast,id.desc"') &&
+      cloudflareSite.includes('"cache-control": "public, max-age=5, s-maxage=15, stale-while-revalidate=60"') &&
       cloudflareSite.includes('assets/live-feed.js') &&
       !cloudflareSite.includes("SUPABASE_SERVICE_ROLE_KEY") &&
       cloudflareSite.includes('"/api/writing-assistant"') &&
@@ -409,6 +413,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   const snapshotExporter = readSource("scripts/export-public-snapshot.ts");
   const eventClustering = readSource("lib/events/clustering.ts");
   const refreshWorkflow = readSource(".github/workflows/radar-refresh-cloudflare.yml");
+  const realtimeWorkflow = readSource(".github/workflows/radar-realtime-refresh.yml");
   const clusterWorkflowStep = refreshWorkflow.match(
     /- name: Cluster, persist, and export the public snapshot[\s\S]*?(?=\n\s+- name: Render Cloudflare site)/
   )?.[0] ?? "";
@@ -455,6 +460,23 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
     "The production workflow must use one coordinated Asia/Shanghai run with bounded internal retries, skip an already-fresh release, and gate writes to main."
   );
   assert.equal(
+    realtimeWorkflow.includes('cron: "2-59/5 * * * *"') &&
+      realtimeWorkflow.includes('timezone: "Asia/Shanghai"') &&
+      realtimeWorkflow.includes('group: radar-near-real-time-refresh') &&
+      realtimeWorkflow.includes('--limit "100"') &&
+      realtimeWorkflow.includes('--core-count "0"') &&
+      realtimeWorkflow.includes('ENABLE_SUPABASE_WRITES: "true"') &&
+      realtimeWorkflow.includes("npm run data:activate:resumable:live:persist") &&
+      realtimeWorkflow.includes("for attempt in 1 2 3") &&
+      realtimeWorkflow.includes("continue-on-error: true") &&
+      realtimeWorkflow.includes("without notification spam") &&
+      realtimeWorkflow.includes("the next five-minute run will retry") &&
+      !realtimeWorkflow.includes("wrangler") &&
+      !realtimeWorkflow.includes("pages deploy"),
+    true,
+    "The near-real-time workflow must poll every active source every five minutes, deduplicate before understanding, retry internally, and avoid deploy or email spam."
+  );
+  assert.equal(
     refreshWorkflow.includes("npm run data:activate:resumable:live:persist") &&
       clusterWorkflowStep.includes("npm run events:cluster -- --persist") &&
       clusterWorkflowStep.includes('ENABLE_SUPABASE_RETRIEVAL: "true"') &&
@@ -482,7 +504,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       refreshWorkflow.includes("production_home_datetime_mismatch") &&
       refreshWorkflow.includes("/sources/?verify=") &&
       refreshWorkflow.includes("production_reader_boilerplate_leak") &&
-      refreshWorkflow.includes("production_home_source_diversity_missing") &&
+      refreshWorkflow.includes("production_home_source_metadata_mismatch") &&
       refreshWorkflow.includes("production_sources_contract_mismatch") &&
       refreshWorkflow.includes("/api/live-feed?limit=50&verify=") &&
       refreshWorkflow.includes("production_live_feed_contract_mismatch") &&
@@ -622,7 +644,7 @@ function assertBilingualStaticContract() {
     assert.equal(page.includes('class="story-stream"'), true, `${label} homepage must continue into the latest-update stream.`);
     assert.match(page, /<time datetime="[^"]+" title="[^"]+">[^<]+ · \d{2}:\d{2}<\/time>/, `${label} hot topics must show a visible date and time.`);
     assert.match(page, /<time datetime="[^"]+" title="[^"]+"><span class="story-date">[^<]+<\/span><span class="story-clock">\d{2}:\d{2}<\/span><\/time>/, `${label} latest updates must show separate visible date and time labels.`);
-    assert.equal(page.includes('data-live-feed data-live-mode="home"') && page.includes("data-live-status") && page.includes("assets/live-feed.js"), true, `${label} homepage must activate the runtime public feed with a visible connection state.`);
+    assert.equal(page.includes('data-live-feed data-live-mode="home"') && page.includes("data-live-top") && page.includes("data-live-status") && page.includes("assets/live-feed.js"), true, `${label} homepage must activate the runtime Top 10 and latest feed with a visible connection state.`);
   }
   assert.equal(chineseHome.includes("为什么值得看"), true, "Chinese homepage must explain why every hot topic matters.");
   assert.equal(englishHome.includes("Why it matters"), true, "English homepage must explain why every hot topic matters.");
@@ -633,7 +655,11 @@ function assertBilingualStaticContract() {
   ).slice(0, 10);
   const chineseTopTags = Array.from(chineseHome.matchAll(/<article class="top-story story-row"[^>]*>/g), (match) => match[0]);
   assert.equal(chineseTopTitles.length, 10, "Chinese homepage must expose ten inspectable hot-topic titles.");
-  assert.equal(chineseTopTags.some((tag) => /data-source-count="(?:same|cross)"/.test(tag)), true, "Chinese Top 10 must include at least one corroborated multi-source event when the snapshot provides one.");
+  assert.equal(
+    chineseTopTags.every((tag) => /data-source-count="(?:single|same|cross)"/.test(tag)),
+    true,
+    "Chinese Top 10 must expose truthful source-count metadata without blocking publication when no reader-ready corroborated event is available."
+  );
   for (const title of chineseTopTitles) {
     assert.match(title, /[\u3400-\u9fff]/u, `Chinese hot-topic title must be written for Chinese readers: ${title}`);
     assert.doesNotMatch(title, /(?:…|\.{3})$/, `Hot-topic title must not be pre-truncated: ${title}`);

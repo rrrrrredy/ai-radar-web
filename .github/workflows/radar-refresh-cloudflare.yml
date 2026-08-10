@@ -544,8 +544,9 @@ jobs:
             if ((home.match(/<article class="top-story(?:\s[^"]*)?"/g) || []).length !== 10) {
               throw new Error("production_home_hotspot_count_mismatch");
             }
-            if (!/<article class="top-story[^>]*data-source-count="(?:same|cross)"/.test(home)) {
-              throw new Error("production_home_source_diversity_missing");
+            const topStoryTags = home.match(/<article class="top-story[^>]*>/g) || [];
+            if (topStoryTags.some((tag) => !/data-source-count="(?:single|same|cross)"/.test(tag))) {
+              throw new Error("production_home_source_metadata_mismatch");
             }
             if (!/<time datetime="[^"]+" title="[^"]+">[^<]+ · \d{2}:\d{2}<\/time>/.test(home)) {
               throw new Error("production_home_datetime_mismatch");
