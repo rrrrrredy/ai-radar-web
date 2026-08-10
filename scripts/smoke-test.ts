@@ -465,6 +465,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       realtimeWorkflow.includes('group: radar-near-real-time-refresh') &&
       realtimeWorkflow.includes('--limit "100"') &&
       realtimeWorkflow.includes('--core-count "0"') &&
+      realtimeWorkflow.includes("--skip-empty-run-persistence") &&
       realtimeWorkflow.includes('ENABLE_SUPABASE_WRITES: "true"') &&
       realtimeWorkflow.includes("npm run data:activate:resumable:live:persist") &&
       realtimeWorkflow.includes("for attempt in 1 2 3") &&

@@ -34,6 +34,8 @@ assert.equal(defaultOptions.rotationOffset, 0);
 assert.equal(parseArgs(["--rotation-offset", "40"]).rotationOffset, 40);
 assert.equal(defaultOptions.coreCount, 10);
 assert.equal(parseArgs(["--core-count", "0"]).coreCount, 0);
+assert.equal(defaultOptions.persistEmptyRuns, true, "daily health runs must retain empty source-check evidence");
+assert.equal(parseArgs(["--skip-empty-run-persistence"]).persistEmptyRuns, false);
 assert.deepEqual(
   rotateSourceSelection(["core-a", "core-b", "tail-a", "tail-b", "tail-c", "tail-d"], 4, 2, 2),
   ["core-a", "core-b", "tail-c", "tail-d"],

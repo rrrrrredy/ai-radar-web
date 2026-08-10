@@ -106,6 +106,7 @@ jobs:
             --max-items-per-source "2"
             --rotation-offset "0"
             --core-count "0"
+            --skip-empty-run-persistence
           )
           for attempt in 1 2 3; do
             run_args=("${args[@]}")

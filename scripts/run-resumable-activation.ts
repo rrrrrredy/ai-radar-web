@@ -65,6 +65,7 @@ export type CliOptions = {
   coreCount: number;
   sourceIds: string[] | null;
   persist: boolean;
+  persistEmptyRuns: boolean;
   resume: boolean;
   reset: boolean;
   maxChunks: number | null;
@@ -320,6 +321,7 @@ export function parseArgs(args: string[]): CliOptions {
     coreCount: 10,
     sourceIds: null,
     persist: false,
+    persistEmptyRuns: true,
     resume: false,
     reset: false,
     maxChunks: null,
@@ -371,6 +373,9 @@ export function parseArgs(args: string[]): CliOptions {
         break;
       case "--persist":
         options.persist = true;
+        break;
+      case "--skip-empty-run-persistence":
+        options.persistEmptyRuns = false;
         break;
       case "--resume":
         options.resume = true;
@@ -688,7 +693,7 @@ async function runChunk(input: {
       return chunkCheckpoint;
     }
 
-    if (output.raw_items.length === 0) {
+    if (output.raw_items.length === 0 && !input.options.persistEmptyRuns) {
       chunkCheckpoint.persist_counts = emptyPersistCounts();
       chunkCheckpoint.persisted = true;
       return chunkCheckpoint;
