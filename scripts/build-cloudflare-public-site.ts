@@ -877,6 +877,13 @@ function liveFeedClientScript() {
     return selected;
   }
 
+  function readerReadyForTop(item) {
+    const originalTitle = String(item.title || "").trim();
+    if (/[\u3400-\u9fff]/u.test(originalTitle)) return true;
+    const localizedSummary = String(item.summary_zh || "").trim();
+    return /[\u3400-\u9fff]/u.test(localizedSummary) && !genericSummary(localizedSummary);
+  }
+
   function rankingScore(item) {
     const ageHours = Math.max(0, (Date.now() - effectiveTime(item)) / (60 * 60 * 1000));
     const recency = Math.max(0, 1 - ageHours / (7 * 24));
@@ -888,6 +895,7 @@ function liveFeedClientScript() {
   function selectTopItems(items) {
     const candidates = items
       .filter(eligible)
+      .filter(readerReadyForTop)
       .filter((item) => Date.now() - effectiveTime(item) <= 30 * 24 * 60 * 60 * 1000)
       .sort((left, right) => rankingScore(right) - rankingScore(left) || effectiveTime(right) - effectiveTime(left));
     const selected = [];

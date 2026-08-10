@@ -69,7 +69,8 @@ export function buildSummaryMessages(input: PromptInput): ChatMessage[] {
       content: [
         ...radarSystemPromptBoundary,
         "Return strict JSON with summary_zh, summary_en, and evidence_notes.",
-        "Do not translate beyond the evidence. If only metadata is available, say so."
+        "Do not translate beyond the evidence. If only metadata is available, say so.",
+        "For summary_zh, preserve official product and organization names but translate the descriptive meaning of a non-Chinese title into concise Chinese; do not infer any fact beyond that title."
       ].join("\n")
     },
     {

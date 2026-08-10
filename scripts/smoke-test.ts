@@ -316,13 +316,16 @@ function assertPublicReaderSurfaces() {
   );
 
   const understandingSummary = readSource("lib/understanding/summarize.ts");
+  const deepseekPrompts = readSource("lib/deepseek/prompts.ts");
   assert.equal(
     !understandingSummary.includes("`元数据级条目：") &&
       !understandingSummary.includes("`条目摘要：") &&
       understandingSummary.includes("Public information currently provides only the title") &&
-      understandingSummary.includes("公开信息目前只提供"),
+      understandingSummary.includes("公开信息目前只提供") &&
+      deepseekPrompts.includes("translate the descriptive meaning of a non-Chinese title into concise Chinese") &&
+      deepseekPrompts.includes("do not infer any fact beyond that title"),
     true,
-    "Understanding fallbacks must use public-facing language instead of ingestion-stage boilerplate."
+    "Understanding fallbacks must use public-facing language, and live metadata summaries must translate title meaning without inventing facts."
   );
 
   const homepage = readSource("app/page.tsx");
@@ -370,6 +373,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       cloudflareSite.includes("data-live-top") &&
       cloudflareSite.includes("function localizedReaderTitle") &&
       cloudflareSite.includes("localizedTitleFallback(item, source)") &&
+      cloudflareSite.includes(".filter(readerReadyForTop)") &&
       cloudflareSite.includes('data-live-feed data-live-mode="radar"') &&
       cloudflareSite.includes("window.setInterval(refresh, 30 * 1000)") &&
       cloudflareSite.includes('order: "processed_at.desc.nullslast,published_at.desc.nullslast,id.desc"') &&
