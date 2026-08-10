@@ -741,6 +741,49 @@ function liveFeedClientScript() {
     return "分析/媒体";
   }
 
+  function localizedTitleSource(value) {
+    const cleaned = String(value || "").trim()
+      .replace(/\s+(?:documentation|docs|changelog|release notes|news)$/i, "")
+      .trim();
+    return cleaned || (locale === "zh" ? "该来源" : "The source");
+  }
+
+  function localizedTitleFallback(item, source) {
+    const label = localizedTitleSource(source);
+    const category = categoryKey(item);
+    if (category === "model_release") return label + " 更新模型或 API";
+    if (category === "product_update") return label + " 更新产品能力";
+    if (category === "open_source") return label + " 更新开源项目";
+    if (category === "research") return label + " 公布新研究";
+    if (category === "agent") return label + " 更新智能体能力";
+    if (category === "tooling") return label + " 更新开发工具";
+    if (category === "policy" || category === "regulation") return label + " 更新政策与监管信息";
+    if (category === "business" || category === "funding") return label + " 披露商业进展";
+    return label + " 发布新动态";
+  }
+
+  function localizedReaderTitle(item, source, originalTitle) {
+    if (locale !== "zh" || /[\u3400-\u9fff]/u.test(originalTitle)) return originalTitle;
+    const summary = String(item.summary_zh || "").trim();
+    if (!summary || genericSummary(summary)) return localizedTitleFallback(item, source);
+
+    let headline = summary
+      .replace(/^据报道[，,]\s*/u, "")
+      .replace(/^公开信息(?:显示|称)[，,]?\s*/u, "")
+      .split(/[。！？；]/u)[0]
+      .trim()
+      .replace(/发布了/u, "发布")
+      .replace(/推出了/u, "推出");
+    if (!/[\u3400-\u9fff]/u.test(headline) || headline.length < 8) {
+      return localizedTitleFallback(item, source);
+    }
+    if (headline.length > 56) {
+      const firstClause = headline.split(/[，,]/u)[0].trim();
+      headline = firstClause.length >= 8 && firstClause.length <= 56 ? firstClause : headline.slice(0, 56);
+    }
+    return headline.replace(/[，,：:;；\s]+$/u, "") || localizedTitleFallback(item, source);
+  }
+
   function readerTitle(item) {
     const source = String(item.source_name || "").trim();
     let title = String(item.title || "").trim()
@@ -757,7 +800,7 @@ function liveFeedClientScript() {
       return locale === "zh" ? source + " 开源仓库更新" : source + " repository update";
     }
     if (title.length > 110) title = title.slice(0, 108).replace(/[，,：:;；\s]+$/u, "") + "…";
-    return title;
+    return localizedReaderTitle(item, source, title);
   }
 
   function genericSummary(value) {

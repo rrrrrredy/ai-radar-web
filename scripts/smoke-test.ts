@@ -368,6 +368,8 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       cloudflareSite.includes('const liveFeedPath = "/api/live-feed"') &&
       cloudflareSite.includes('data-live-feed data-live-mode="home"') &&
       cloudflareSite.includes("data-live-top") &&
+      cloudflareSite.includes("function localizedReaderTitle") &&
+      cloudflareSite.includes("localizedTitleFallback(item, source)") &&
       cloudflareSite.includes('data-live-feed data-live-mode="radar"') &&
       cloudflareSite.includes("window.setInterval(refresh, 30 * 1000)") &&
       cloudflareSite.includes('order: "processed_at.desc.nullslast,published_at.desc.nullslast,id.desc"') &&
