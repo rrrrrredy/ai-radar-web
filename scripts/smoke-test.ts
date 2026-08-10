@@ -515,6 +515,8 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       refreshWorkflow.includes("production_sources_contract_mismatch") &&
       refreshWorkflow.includes("/api/live-feed?limit=50&verify=") &&
       refreshWorkflow.includes("production_live_feed_contract_mismatch") &&
+      refreshWorkflow.includes("/version.json?verify=") &&
+      refreshWorkflow.includes("production_version_commit_mismatch") &&
       refreshWorkflow.includes("production_live_feed_is_stale") &&
       refreshWorkflow.includes('x-radar-live-source') &&
       refreshWorkflow.includes("Created by Song Luo") &&

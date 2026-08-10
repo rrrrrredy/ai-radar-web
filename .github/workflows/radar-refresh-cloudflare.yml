@@ -523,23 +523,28 @@ jobs:
 
           async function verify(attempt) {
             const requestId = `${cacheBust}-${attempt}`;
-            const [homeResponse, sourcesResponse, snapshotResponse, liveFeedResponse, reportsResponse] = await Promise.all([
+            const [homeResponse, sourcesResponse, snapshotResponse, liveFeedResponse, versionResponse, reportsResponse] = await Promise.all([
               fetch(`https://ai-industry-radar.pages.dev/?verify=${requestId}`, { cache: "no-store" }),
               fetch(`https://ai-industry-radar.pages.dev/sources/?verify=${requestId}`, { cache: "no-store" }),
               fetch(`https://ai-industry-radar.pages.dev/data/radar-snapshot.json?verify=${requestId}`, { cache: "no-store" }),
               fetch(`https://ai-industry-radar.pages.dev/api/live-feed?limit=50&verify=${requestId}`, { cache: "no-store" }),
+              fetch(`https://ai-industry-radar.pages.dev/version.json?verify=${requestId}`, { cache: "no-store" }),
               fetch(`https://ai-industry-radar.pages.dev/reports/?verify=${requestId}`, { cache: "no-store", redirect: "manual" })
             ]);
-            if (!homeResponse.ok || !sourcesResponse.ok || !snapshotResponse.ok || !liveFeedResponse.ok) {
-              throw new Error(`production_http_status home=${homeResponse.status} sources=${sourcesResponse.status} snapshot=${snapshotResponse.status} live_feed=${liveFeedResponse.status}`);
+            if (!homeResponse.ok || !sourcesResponse.ok || !snapshotResponse.ok || !liveFeedResponse.ok || !versionResponse.ok) {
+              throw new Error(`production_http_status home=${homeResponse.status} sources=${sourcesResponse.status} snapshot=${snapshotResponse.status} live_feed=${liveFeedResponse.status} version=${versionResponse.status}`);
             }
 
             const home = await homeResponse.text();
             const sources = await sourcesResponse.text();
             const remote = await snapshotResponse.json();
             const liveFeed = await liveFeedResponse.json();
+            const version = await versionResponse.json();
             if (!home.includes("<title>AI 行业信息雷达</title>")) {
               throw new Error("production_home_title_mismatch");
+            }
+            if (version.commit_sha !== process.env.GITHUB_SHA || version.working_tree_clean !== true) {
+              throw new Error(`production_version_commit_mismatch expected=${process.env.GITHUB_SHA} actual=${version.commit_sha || "missing"}`);
             }
             if ((home.match(/<article class="top-story(?:\s[^"]*)?"/g) || []).length !== 10) {
               throw new Error("production_home_hotspot_count_mismatch");
