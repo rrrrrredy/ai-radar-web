@@ -764,8 +764,9 @@ function liveFeedClientScript() {
 
   function localizedReaderTitle(item, source, originalTitle) {
     if (locale !== "zh" || /[\u3400-\u9fff]/u.test(originalTitle)) return originalTitle;
+    const concreteFallback = originalTitle.length >= 8 ? originalTitle : localizedTitleFallback(item, source);
     const summary = String(item.summary_zh || "").trim();
-    if (!summary || genericSummary(summary)) return localizedTitleFallback(item, source);
+    if (!summary || genericSummary(summary)) return concreteFallback;
 
     let headline = summary
       .replace(/^据报道[，,]\s*/u, "")
@@ -775,13 +776,26 @@ function liveFeedClientScript() {
       .replace(/发布了/u, "发布")
       .replace(/推出了/u, "推出");
     if (!/[\u3400-\u9fff]/u.test(headline) || headline.length < 8) {
-      return localizedTitleFallback(item, source);
+      return concreteFallback;
     }
     if (headline.length > 56) {
       const firstClause = headline.split(/[，,]/u)[0].trim();
       headline = firstClause.length >= 8 && firstClause.length <= 56 ? firstClause : headline.slice(0, 56);
     }
-    return headline.replace(/[，,：:;；\s]+$/u, "") || localizedTitleFallback(item, source);
+    return headline.replace(/[，,：:;；\s]+$/u, "") || concreteFallback;
+  }
+
+  function dayKey(value) {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return "";
+    const timeZone = locale === "zh" ? "Asia/Shanghai" : "UTC";
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(date).map((part) => [part.type, part.value]));
+    return parts.year + "-" + parts.month + "-" + parts.day;
   }
 
   function readerTitle(item) {
@@ -879,9 +893,8 @@ function liveFeedClientScript() {
 
   function readerReadyForTop(item) {
     const originalTitle = String(item.title || "").trim();
-    if (/[\u3400-\u9fff]/u.test(originalTitle)) return true;
-    const localizedSummary = String(item.summary_zh || "").trim();
-    return /[\u3400-\u9fff]/u.test(localizedSummary) && !genericSummary(localizedSummary);
+    if (originalTitle.length < 8) return false;
+    return !/^(?:untitled|home|news|latest|update|changelog|release notes?)$/iu.test(originalTitle);
   }
 
   function rankingScore(item) {
@@ -898,6 +911,9 @@ function liveFeedClientScript() {
       .filter(readerReadyForTop)
       .filter((item) => Date.now() - effectiveTime(item) <= 30 * 24 * 60 * 60 * 1000)
       .sort((left, right) => rankingScore(right) - rankingScore(left) || effectiveTime(right) - effectiveTime(left));
+    const today = dayKey(Date.now());
+    const currentDayItems = candidates.filter((item) => dayKey(effectiveTime(item)) === today);
+    const earlierItems = candidates.filter((item) => dayKey(effectiveTime(item)) !== today);
     const selected = [];
     const selectedUrls = new Set();
     const sourceCounts = new Map();
@@ -910,13 +926,16 @@ function liveFeedClientScript() {
       sourceCounts.set(source, (sourceCounts.get(source) || 0) + 1);
       return true;
     };
-    for (const item of candidates) {
+    for (const group of [currentDayItems, earlierItems]) {
+      for (const item of group) {
+        if (selected.length >= 10) break;
+        add(item, true);
+      }
+      for (const item of group) {
+        if (selected.length >= 10) break;
+        add(item, false);
+      }
       if (selected.length >= 10) break;
-      add(item, true);
-    }
-    for (const item of candidates) {
-      if (selected.length >= 10) break;
-      add(item, false);
     }
     return selected;
   }
@@ -978,13 +997,21 @@ function liveFeedClientScript() {
     }).join("");
   }
 
-  function updateStatus(payload, itemCount) {
+  function todayProcessedCount(items) {
+    const today = dayKey(Date.now());
+    return items.filter((item) => {
+      const timestamp = item.processed_at || item.collected_at || item.published_at || item.updated_at;
+      return dayKey(timestamp) === today;
+    }).length;
+  }
+
+  function updateStatus(payload, itemCount, syncedToday) {
     const latest = payload.latest_processed_at || payload.generated_at;
     const timestamp = dateTime(latest);
     if (status) {
       status.textContent = locale === "zh"
-        ? "每日更新 · 最近入库 " + timestamp.date + " " + timestamp.time + " · 每天 09:00 刷新"
-        : "Daily update · ingested " + timestamp.date + " " + timestamp.time + " UTC · refreshes 09:00 Beijing";
+        ? "每日更新 · 今日同步 " + syncedToday + " 条 · 最近入库 " + timestamp.date + " " + timestamp.time + " · 每天 09:00 刷新"
+        : "Daily update · " + syncedToday + " synced today · ingested " + timestamp.date + " " + timestamp.time + " UTC · refreshes 09:00 Beijing";
       status.dataset.state = "ready";
     }
     if (liveDate && latest) liveDate.textContent = timestamp.date + " · " + timestamp.time;
@@ -1011,7 +1038,7 @@ function liveFeedClientScript() {
       if (items.length > 0 && stream) {
         stream.innerHTML = streamHtml(items);
         root.dataset.liveState = "ready";
-        updateStatus(payload, items.length);
+        updateStatus(payload, items.length, todayProcessedCount(payload.items));
         window.dispatchEvent(new CustomEvent("radar:feed-updated"));
       }
     } catch {
@@ -1100,7 +1127,7 @@ function renderEnglishAbout(snapshot: Snapshot) {
 
 function renderEnglishHome(snapshot: Snapshot) {
   const events = eventFeed(snapshot).filter((event) => readerReadyEventForLocale(event, snapshot, "en"));
-  const topEvents = selectHomepageEvents(events, 10);
+  const topEvents = selectHomepageEvents(events, 10, "en", snapshot.generated_at);
   const topIds = new Set(topEvents.map((event) => event.event_cluster_id));
   const latestEvents = events.filter((event) => !topIds.has(event.event_cluster_id)).slice(0, 26);
   return englishShell(snapshot, "home", 0, "Today's hot topics", `
@@ -1155,7 +1182,7 @@ function renderEnglishAsk(snapshot: Snapshot) {
 
 function renderHome(snapshot: Snapshot) {
   const events = eventFeed(snapshot).filter(readerReadyEvent);
-  const topEvents = selectHomepageEvents(events, 10);
+  const topEvents = selectHomepageEvents(events, 10, "zh", snapshot.generated_at);
   const topIds = new Set(topEvents.map((event) => event.event_cluster_id));
   const latestEvents = events.filter((event) => !topIds.has(event.event_cluster_id)).slice(0, 26);
   return shell(snapshot, "home", 0, "今日热点", `
@@ -1773,6 +1800,23 @@ function normalizeReaderSummary(value: string) {
     .trim();
 }
 
+function concreteEventHeadline(event: SnapshotEvent) {
+  const candidates = [
+    event.canonical_title,
+    ...event.timeline.map((entry) => entry.title),
+    ...event.citations.map((entry) => entry.title)
+  ];
+  for (const value of candidates) {
+    const headline = normalizeReaderSummary(value ?? "");
+    if (headline.length < 8 || containsReaderPipelineBoilerplate(headline)) continue;
+    if (/(?:发布 AI 行业动态|发布新动态|披露商业进展|更新政策与监管信息|关注 AI .+进展|报道 AI .+动向|公布 AI .+发现|更新产品能力)$/u.test(headline)) continue;
+    if (/^(?:untitled|home|news|latest|update|changelog|release notes?)$/iu.test(headline)) continue;
+    if (headline.length <= 96) return headline;
+    return headline.slice(0, 94).replace(/[，,：:;；\s]+$/u, "") + "…";
+  }
+  return "";
+}
+
 function genericChineseEventTitle(event: SnapshotEvent) {
   const source = publicText(event.citations[0]?.source_name ?? event.timeline[0]?.source_name ?? "")
     .replace(/\s+(?:AI|News)$/iu, "")
@@ -1798,7 +1842,7 @@ function genericChineseEventTitle(event: SnapshotEvent) {
 }
 
 function genericChineseEventSummary(event: SnapshotEvent, canonical: string) {
-  const title = /\p{Script=Han}/u.test(canonical) ? canonical : genericChineseEventTitle(event);
+  const title = concreteEventHeadline(event) || (/\p{Script=Han}/u.test(canonical) ? canonical : genericChineseEventTitle(event));
   const category = categoryFilterValue(event.category);
   if (category === "research" || category === "benchmark") {
     return `这项公开研究围绕“${title}”展开；当前证据主要来自 ${event.source_count} 个来源，方法、实验与结论仍需回到原文核对。`;
@@ -1900,6 +1944,7 @@ function normalizeChineseTitleStyle(value: string) {
 
 function chineseEventTitle(event: SnapshotEvent) {
   const canonical = publicText(event.canonical_title).trim();
+  const concrete = concreteEventHeadline(event);
   const fallback = genericChineseEventTitle(event);
   const override = chineseReaderContentOverride(event);
   if (override) return normalizeChineseTitleStyle(override.title);
@@ -1912,7 +1957,10 @@ function chineseEventTitle(event: SnapshotEvent) {
     !containsReaderPipelineBoilerplate(rawSummary) &&
     !/^(?:公开信息|这条|该事件|这项公开研究)/u.test(rawSummary);
   if (compact) return normalizeChineseTitleStyle(compact);
-  return shortenChineseTitle(/\p{Script=Han}/u.test(canonical) ? canonical : summaryCanLead ? sentence : fallback, fallback);
+  if (/\p{Script=Han}/u.test(canonical) && concrete === canonical) return shortenChineseTitle(canonical, fallback);
+  if (summaryCanLead) return shortenChineseTitle(sentence, fallback);
+  if (concrete) return /\p{Script=Han}/u.test(concrete) ? shortenChineseTitle(concrete, fallback) : concrete;
+  return shortenChineseTitle(fallback, fallback);
 }
 
 function compactChineseEventTitle(canonical: string, summary: string) {
@@ -2229,9 +2277,17 @@ function snapshotPeriodLabel(snapshot: Snapshot) {
   return curatedWindowIsCurrent(snapshot) ? "过去 24 小时" : "最近一轮更新中";
 }
 
-function compareHomepageEvents(left: SnapshotEvent, right: SnapshotEvent) {
-  const leftDay = Math.floor(Date.parse(left.latest_seen_at) / 86_400_000);
-  const rightDay = Math.floor(Date.parse(right.latest_seen_at) / 86_400_000);
+function homepageDayOrdinal(value: string, locale: "en" | "zh") {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return Number.NEGATIVE_INFINITY;
+  const timeZone = locale === "en" ? "UTC" : "Asia/Shanghai";
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", { day: "2-digit", month: "2-digit", timeZone, year: "numeric" }).formatToParts(date).map((part) => [part.type, part.value]));
+  return Number(`${parts.year}${parts.month}${parts.day}`);
+}
+
+function compareHomepageEvents(left: SnapshotEvent, right: SnapshotEvent, locale: "en" | "zh" = "zh") {
+  const leftDay = homepageDayOrdinal(left.latest_seen_at, locale);
+  const rightDay = homepageDayOrdinal(right.latest_seen_at, locale);
   return rightDay - leftDay ||
     right.event_score - left.event_score ||
     Number(right.source_families.length > 1) - Number(left.source_families.length > 1) ||
@@ -2245,14 +2301,8 @@ function homepageSourceGroup(event: SnapshotEvent) {
   return source.startsWith("arxiv") ? "arxiv" : source;
 }
 
-function compareHomepageImpact(left: SnapshotEvent, right: SnapshotEvent) {
-  const leftImpact = left.event_score + Math.min(left.source_count - 1, 2) * 8 + Number(left.source_families.length > 1) * 6;
-  const rightImpact = right.event_score + Math.min(right.source_count - 1, 2) * 8 + Number(right.source_families.length > 1) * 6;
-  return rightImpact - leftImpact || compareHomepageEvents(left, right);
-}
-
-function selectHomepageEvents(events: SnapshotEvent[], limit: number) {
-  const chronological = events.toSorted(compareHomepageEvents);
+function selectHomepageEvents(events: SnapshotEvent[], limit: number, locale: "en" | "zh", referenceTime: string) {
+  const chronological = events.toSorted((left, right) => compareHomepageEvents(left, right, locale));
   const selected: SnapshotEvent[] = [];
   const selectedIds = new Set<string>();
   const sourceCounts = new Map<string, number>();
@@ -2271,23 +2321,23 @@ function selectHomepageEvents(events: SnapshotEvent[], limit: number) {
     return true;
   };
 
-  for (const event of chronological) {
-    if (selected.length >= Math.min(6, limit)) break;
-    add(event, true);
-  }
-
   const eventTimes = events.map((event) => Date.parse(event.latest_seen_at)).filter(Number.isFinite);
   const newest = eventTimes.length > 0 ? Math.max(...eventTimes) : Date.now();
-  const impactWindow = chronological
-    .filter((event) => newest - Date.parse(event.latest_seen_at) <= 14 * 86_400_000)
-    .toSorted(compareHomepageImpact);
-  for (const event of impactWindow) {
+  const reference = Number.isFinite(Date.parse(referenceTime)) ? referenceTime : new Date(newest).toISOString();
+  const currentDay = feedDayKey(reference, locale);
+  const currentDayEvents = chronological.filter((event) => feedDayKey(event.latest_seen_at, locale) === currentDay);
+  const earlierEvents = chronological.filter((event) => feedDayKey(event.latest_seen_at, locale) !== currentDay);
+
+  for (const group of [currentDayEvents, earlierEvents]) {
+    for (const event of group) {
+      if (selected.length >= limit) break;
+      add(event, true);
+    }
+    for (const event of group) {
+      if (selected.length >= limit) break;
+      add(event, false);
+    }
     if (selected.length >= limit) break;
-    add(event, true);
-  }
-  for (const event of chronological) {
-    if (selected.length >= limit) break;
-    add(event, false);
   }
   return selected;
 }

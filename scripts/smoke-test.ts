@@ -371,12 +371,18 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       cloudflareSite.includes('const liveFeedPath = "/api/live-feed"') &&
       cloudflareSite.includes('data-live-feed data-live-mode="home"') &&
       cloudflareSite.includes("data-live-top") &&
+      cloudflareSite.includes("function dayKey(value)") &&
       cloudflareSite.includes("function localizedReaderTitle") &&
-      cloudflareSite.includes("localizedTitleFallback(item, source)") &&
+      cloudflareSite.includes("const concreteFallback = originalTitle.length >= 8 ? originalTitle") &&
       cloudflareSite.includes(".filter(readerReadyForTop)") &&
+      cloudflareSite.includes("const currentDayItems = candidates.filter") &&
+      cloudflareSite.includes("function todayProcessedCount") &&
+      cloudflareSite.includes("function concreteEventHeadline") &&
+      cloudflareSite.includes("function homepageDayOrdinal") &&
+      cloudflareSite.includes('selectHomepageEvents(events, 10, "zh", snapshot.generated_at)') &&
       cloudflareSite.includes('data-live-feed data-live-mode="radar"') &&
       !cloudflareSite.includes("window.setInterval(refresh, 30 * 1000)") &&
-      cloudflareSite.includes("每日更新 · 最近入库") &&
+      cloudflareSite.includes("每日更新 · 今日同步 ") &&
       cloudflareSite.includes("每天 09:00（北京时间）") &&
       cloudflareSite.includes("Daily update") &&
       cloudflareSite.includes('order: "processed_at.desc.nullslast,published_at.desc.nullslast,id.desc"') &&
