@@ -428,17 +428,19 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
 
   const snapshotExporter = readSource("scripts/export-public-snapshot.ts");
   const eventClustering = readSource("lib/events/clustering.ts");
-  const refreshWorkflow = readSource(".github/workflows/radar-refresh-cloudflare.yml");
-  const realtimeWorkflow = readSource(".github/workflows/radar-realtime-refresh.yml");
-  const dailyCronMigration = readSource(
-    "supabase/migrations/20260810075217_schedule_daily_0900_production_refresh.sql"
+  const removedDispatchMigration = readSource(
+    "supabase/migrations/20260811083227_remove_github_actions_refresh_dispatch.sql"
   );
-  const allSourcesDailyMigration = readSource(
-    "supabase/migrations/20260811033000_expand_daily_refresh_to_all_active_sources.sql"
+  const cloudRefreshMigration = readSource(
+    "supabase/migrations/20260811084300_add_supabase_cloud_daily_refresh.sql"
   );
-  const clusterWorkflowStep = refreshWorkflow.match(
-    /- name: Cluster, persist, and export the public snapshot[\s\S]*?(?=\n\s+- name: Render Cloudflare site)/
-  )?.[0] ?? "";
+  const cloudRefreshFunction = readSource("supabase/functions/radar-cloud-refresh/index.ts");
+  const cloudRefreshParser = readSource("supabase/functions/radar-cloud-refresh/parser.ts");
+  const retiredProductionWorkflows = [
+    ".github/workflows/radar-refresh-cloudflare.yml",
+    ".github/workflows/radar-realtime-refresh.yml",
+    ".github/workflows/radar-scheduled-dry-run.yml"
+  ];
   const supabasePublicContract = readSource("scripts/check-supabase-public-contract.ts");
   const supabaseLoader = readSource("lib/retrieval/load-supabase-radar-items.ts");
   const publicRadarReader = readSource("lib/retrieval/read-public-radar-rows.ts");
@@ -460,117 +462,57 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
     true,
     "Event clustering and scoring must be deterministic for identical public evidence."
   );
-  assert.equal(
-    refreshWorkflow.includes("workflow_dispatch:") &&
-      !refreshWorkflow.includes("\n  schedule:") &&
-      refreshWorkflow.includes("dispatch_requested") &&
-      refreshWorkflow.includes("Manual dispatch ignores a completed checkpoint") &&
-      refreshWorkflow.includes("shanghai_date=$(TZ=Asia/Shanghai date +%F)") &&
-      refreshWorkflow.includes('EVENT_NAME: ${{ github.event_name }}') &&
-      refreshWorkflow.includes("needs: freshness_gate") &&
-      refreshWorkflow.includes("HAS_CLOUDFLARE_API_TOKEN") &&
-      refreshWorkflow.includes("failed after 3 attempts in one workflow run") &&
-      refreshWorkflow.includes("retrying from the local checkpoint") &&
-      refreshWorkflow.includes("retrying the failed production stage") &&
-      refreshWorkflow.includes("Production configuration missing") &&
-      refreshWorkflow.includes('"$DISPATCH_REF" != "refs/heads/main"') &&
-      refreshWorkflow.includes('"$RADAR_REFRESH_WRITE_GATE" != "true"'),
-    true,
-    "The production workflow must accept only coordinated main-branch dispatches with bounded internal retries, skip an already-fresh release, and gate writes to main."
+  assert.deepEqual(
+    retiredProductionWorkflows.filter((workflowPath) => fs.existsSync(path.join(process.cwd(), workflowPath))),
+    [],
+    "GitHub Actions must not retain manual or scheduled production refresh entrypoints."
   );
   assert.equal(
-    realtimeWorkflow.includes("workflow_dispatch:") &&
-      !realtimeWorkflow.includes("\n  schedule:") &&
-      realtimeWorkflow.includes('group: radar-manual-incremental-refresh') &&
-      realtimeWorkflow.includes('--limit "100"') &&
-      realtimeWorkflow.includes('--core-count "0"') &&
-      realtimeWorkflow.includes("--skip-empty-run-persistence") &&
-      realtimeWorkflow.includes('ENABLE_SUPABASE_WRITES: "true"') &&
-      realtimeWorkflow.includes("npm run data:activate:resumable:live:persist") &&
-      realtimeWorkflow.includes("for attempt in 1 2 3") &&
-      realtimeWorkflow.includes("continue-on-error: true") &&
-      realtimeWorkflow.includes("without notification spam") &&
-      realtimeWorkflow.includes("the next manual run can retry") &&
-      !realtimeWorkflow.includes("wrangler") &&
-      !realtimeWorkflow.includes("pages deploy"),
+    removedDispatchMigration.includes("radar-daily-0900-production-github-dispatch") &&
+      removedDispatchMigration.includes("radar-near-real-time-github-dispatch") &&
+      removedDispatchMigration.includes("cron.unschedule(") &&
+      removedDispatchMigration.includes("drop function if exists private.dispatch_radar_daily_production_refresh()") &&
+      removedDispatchMigration.includes("drop function if exists private.dispatch_radar_realtime_refresh()"),
     true,
-    "The manual incremental workflow must poll every active source when dispatched, deduplicate before understanding, retry internally, and avoid deploy or email spam."
+    "The migration must remove both legacy Supabase-to-GitHub dispatch jobs and functions."
   );
   assert.equal(
-    dailyCronMigration.includes("cron.unschedule(") &&
-      dailyCronMigration.includes("radar-near-real-time-github-dispatch") &&
-      dailyCronMigration.includes("dispatch_radar_daily_production_refresh") &&
-      dailyCronMigration.includes("'0 1 * * *'") &&
-      dailyCronMigration.includes("radar-daily-0900-production-github-dispatch") &&
-      dailyCronMigration.includes("radar-refresh-cloudflare.yml/dispatches") &&
-      dailyCronMigration.includes("'limit', '30'") &&
-      dailyCronMigration.includes("'chunk_size', '5'") &&
-      dailyCronMigration.includes("'max_items_per_source', '3'") &&
-      dailyCronMigration.includes("vault.decrypted_secrets") &&
-      dailyCronMigration.includes("drop function if exists private.dispatch_radar_realtime_refresh()"),
+    (cloudRefreshMigration.match(/cron\.schedule\(/g) ?? []).length === 1 &&
+      cloudRefreshMigration.includes("'radar-daily-0900-supabase-cloud'") &&
+      cloudRefreshMigration.includes("'0 1 * * *'") &&
+      cloudRefreshMigration.includes("'select private.start_radar_cloud_refresh();'") &&
+      cloudRefreshMigration.includes("from public.sources") &&
+      cloudRefreshMigration.includes("source.status = 'active'") &&
+      cloudRefreshMigration.includes("private.radar_cloud_finalize") &&
+      cloudRefreshMigration.includes("on conflict do nothing") &&
+      cloudRefreshMigration.includes("vault.create_secret") &&
+      cloudRefreshMigration.includes("net.http_post") &&
+      !cloudRefreshMigration.includes("workflow_dispatch") &&
+      !cloudRefreshMigration.includes("api.github.com/repos/rrrrrredy/ai-radar-web/actions"),
     true,
-    "Supabase Cron must be the sole daily 09:00 Beijing trigger, use the encrypted GitHub token and bounded inputs, and remove the old ten-minute job and function."
+    "Supabase must own the sole 09:00 Beijing schedule, scan all active sources, deduplicate, and publish in one transaction without GitHub."
   );
   assert.equal(
-    allSourcesDailyMigration.includes("dispatch_radar_daily_production_refresh") &&
-      allSourcesDailyMigration.includes("radar-refresh-cloudflare.yml/dispatches") &&
-      allSourcesDailyMigration.includes("'limit', '100'") &&
-      allSourcesDailyMigration.includes("'chunk_size', '5'") &&
-      allSourcesDailyMigration.includes("'max_items_per_source', '3'") &&
-      allSourcesDailyMigration.includes("vault.decrypted_secrets"),
+    cloudRefreshFunction.includes('rpc("radar_cloud_claim_task"') &&
+      cloudRefreshFunction.includes('rpc("radar_cloud_complete_task"') &&
+      cloudRefreshFunction.includes('rpc("radar_cloud_fail_task"') &&
+      cloudRefreshFunction.includes("collectSource(source, 3)") &&
+      cloudRefreshParser.includes('method === "rss"') &&
+      cloudRefreshParser.includes('method === "api"') &&
+      cloudRefreshParser.includes('method === "sitemap"') &&
+      cloudRefreshParser.includes("for (let attempt = 0; attempt < 3; attempt += 1)") &&
+      !cloudRefreshFunction.includes("GITHUB_TOKEN") &&
+      !cloudRefreshFunction.includes("workflow_dispatch"),
     true,
-    "The daily production dispatch must scan every active source while keeping bounded per-source collection and in-run chunks."
+    "The Edge Function must authenticate one-time tasks, retry source fetches internally, cover registered crawl methods, and persist through Supabase RPC only."
   );
   assert.equal(
-    refreshWorkflow.includes("npm run data:activate:resumable:live:persist") &&
-      refreshWorkflow.includes('default: "100"') &&
-      refreshWorkflow.includes("timeout-minutes: 360") &&
-      refreshWorkflow.includes("timeout-minutes: 330") &&
-      !/^\s+schedule:\s*$/m.test(refreshWorkflow) &&
-      refreshWorkflow.includes("Validate DeepSeek credential and models") &&
-      refreshWorkflow.includes("npm run deepseek:preflight") &&
-      refreshWorkflow.indexOf("npm run deepseek:preflight") < refreshWorkflow.indexOf("npm run data:activate:resumable:live:persist") &&
-      clusterWorkflowStep.includes("npm run events:cluster -- --persist") &&
-      clusterWorkflowStep.includes('ENABLE_SUPABASE_RETRIEVAL: "true"') &&
-      clusterWorkflowStep.includes('ENABLE_SUPABASE_WRITES: "true"') &&
-      refreshWorkflow.includes('CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE: "true"') &&
-      refreshWorkflow.includes('CLOUDFLARE_SNAPSHOT_READ_SUPABASE: "true"') &&
-      refreshWorkflow.includes("ENABLE_SUPABASE_WRITES=false npm run cloudflare:snapshot") &&
-      refreshWorkflow.includes("npx tsx scripts/build-cloudflare-public-site.ts"),
+    !cloudRefreshMigration.includes("wrangler") &&
+      !cloudRefreshMigration.includes("pages deploy") &&
+      !cloudRefreshFunction.includes("wrangler") &&
+      !cloudRefreshFunction.includes("pages deploy"),
     true,
-    "The daily production workflow must accept one Supabase dispatch, cover every source within a bounded long-run budget, validate its model credential, persist, and build from strict Supabase data."
-  );
-  assert.equal(
-    refreshWorkflow.includes("npm exec -- wrangler pages deploy dist/cloudflare-pages") &&
-      refreshWorkflow.includes("--project-name=ai-industry-radar") &&
-      refreshWorkflow.includes("https://ai-industry-radar.pages.dev/") &&
-      refreshWorkflow.indexOf("npm run test") > refreshWorkflow.indexOf("npx tsx scripts/build-cloudflare-public-site.ts") &&
-      refreshWorkflow.indexOf("pages deploy dist/cloudflare-pages") > refreshWorkflow.indexOf("npm run test") &&
-      refreshWorkflow.includes("remote.updated_at !== local.updated_at") &&
-      refreshWorkflow.includes("production_reader_snapshot_mismatch") &&
-      refreshWorkflow.includes("production_internal_process_copy_leak") &&
-      refreshWorkflow.includes("production_reader_snapshot_contains_internal_fields") &&
-      refreshWorkflow.includes('class="top-story(?:\\s[^"]*)?"') &&
-      refreshWorkflow.includes("production_home_datetime_mismatch") &&
-      refreshWorkflow.includes('"/sources/"') &&
-      refreshWorkflow.includes("production_reader_boilerplate_leak") &&
-      refreshWorkflow.includes("production_about_route_not_retired") &&
-      refreshWorkflow.includes("production_sources_contract_mismatch") &&
-      refreshWorkflow.includes("/api/live-feed?limit=50&verify=") &&
-      refreshWorkflow.includes("production_live_feed_contract_mismatch") &&
-      refreshWorkflow.includes("/version.json?verify=") &&
-      refreshWorkflow.includes("production_version_commit_mismatch") &&
-      refreshWorkflow.includes("production_live_feed_is_stale") &&
-      refreshWorkflow.includes('x-radar-live-source') &&
-      refreshWorkflow.includes("Created by Song Luo") &&
-      refreshWorkflow.includes('href="https://github.com/rrrrrredy"') &&
-      refreshWorkflow.includes("production_home_hotspot_count_mismatch") &&
-      refreshWorkflow.includes("production_reports_route_not_retired") &&
-      refreshWorkflow.includes('Object.prototype.hasOwnProperty.call(remote, "coverage")') &&
-      refreshWorkflow.includes("<title>AI 行业信息雷达</title>") &&
-      !/report:(candidate|generate)|generate[_-]reports|persist-report|npm run [^\n]*report/iu.test(refreshWorkflow),
-    true,
-    "The production workflow must validate the built artifact, deploy Cloudflare Pages, verify the public endpoint, and contain no report stage."
+    "Daily data refresh must not rebuild or deploy the static Pages shell."
   );
   assertSupabasePublicContractCheckScript(supabasePublicContract);
   assertPublicRadarViewSqlContract(publicEntityMigration);

@@ -20,7 +20,8 @@ const eslintConfig = [
       "dist/**",
       "build/**",
       "coverage/**",
-      "next-env.d.ts"
+      "next-env.d.ts",
+      "supabase/functions/**"
     ]
   }
 ];
