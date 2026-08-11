@@ -432,6 +432,9 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   const dailyCronMigration = readSource(
     "supabase/migrations/20260810075217_schedule_daily_0900_production_refresh.sql"
   );
+  const allSourcesDailyMigration = readSource(
+    "supabase/migrations/20260811033000_expand_daily_refresh_to_all_active_sources.sql"
+  );
   const clusterWorkflowStep = refreshWorkflow.match(
     /- name: Cluster, persist, and export the public snapshot[\s\S]*?(?=\n\s+- name: Render Cloudflare site)/
   )?.[0] ?? "";
@@ -506,6 +509,16 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       dailyCronMigration.includes("drop function if exists private.dispatch_radar_realtime_refresh()"),
     true,
     "Supabase Cron must be the sole daily 09:00 Beijing trigger, use the encrypted GitHub token and bounded inputs, and remove the old ten-minute job and function."
+  );
+  assert.equal(
+    allSourcesDailyMigration.includes("dispatch_radar_daily_production_refresh") &&
+      allSourcesDailyMigration.includes("radar-refresh-cloudflare.yml/dispatches") &&
+      allSourcesDailyMigration.includes("'limit', '100'") &&
+      allSourcesDailyMigration.includes("'chunk_size', '5'") &&
+      allSourcesDailyMigration.includes("'max_items_per_source', '3'") &&
+      allSourcesDailyMigration.includes("vault.decrypted_secrets"),
+    true,
+    "The daily production dispatch must scan every active source while keeping bounded per-source collection and in-run chunks."
   );
   assert.equal(
     refreshWorkflow.includes("npm run data:activate:resumable:live:persist") &&
