@@ -8,6 +8,7 @@ import {
   itemCountsBySourceFamily,
   parseArgs,
   resolveResumeCheckpoint,
+  shouldRetryExistingUnderstanding,
   rotateSourceSelection,
   type ActivationCheckpoint,
   type ChunkCheckpoint
@@ -36,6 +37,24 @@ assert.equal(defaultOptions.coreCount, 10);
 assert.equal(parseArgs(["--core-count", "0"]).coreCount, 0);
 assert.equal(defaultOptions.persistEmptyRuns, true, "daily health runs must retain empty source-check evidence");
 assert.equal(parseArgs(["--skip-empty-run-persistence"]).persistEmptyRuns, false);
+assert.equal(
+  shouldRetryExistingUnderstanding({
+    error: "classification fallback used: Authentication Fails, Your api key is invalid | summary fallback used: Authentication Fails"
+  }),
+  true,
+  "invalid provider credentials must make an existing fallback row eligible for automatic repair"
+);
+assert.equal(
+  shouldRetryExistingUnderstanding({ error: "summary fallback used: request timed out" }),
+  true,
+  "transient model failures must be retried on a later production refresh"
+);
+assert.equal(
+  shouldRetryExistingUnderstanding({ error: "evidence remains incomplete" }),
+  false,
+  "editorial caveats must not trigger repeated model spending"
+);
+assert.equal(shouldRetryExistingUnderstanding(null), false);
 assert.deepEqual(
   rotateSourceSelection(["core-a", "core-b", "tail-a", "tail-b", "tail-c", "tail-d"], 4, 2, 2),
   ["core-a", "core-b", "tail-c", "tail-d"],

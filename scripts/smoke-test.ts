@@ -373,7 +373,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       cloudflareSite.includes("data-live-top") &&
       cloudflareSite.includes("function dayKey(value)") &&
       cloudflareSite.includes("function localizedReaderTitle") &&
-      cloudflareSite.includes("const concreteFallback = originalTitle.length >= 8 ? originalTitle") &&
+      cloudflareSite.includes("const concreteFallback = knownChineseHeadline(originalTitle)") &&
       cloudflareSite.includes(".filter(readerReadyForTop)") &&
       cloudflareSite.includes("const currentDayItems = candidates.filter") &&
       cloudflareSite.includes("function todayProcessedCount") &&
@@ -509,6 +509,9 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   );
   assert.equal(
     refreshWorkflow.includes("npm run data:activate:resumable:live:persist") &&
+      refreshWorkflow.includes("Validate DeepSeek credential and models") &&
+      refreshWorkflow.includes("npm run deepseek:preflight") &&
+      refreshWorkflow.indexOf("npm run deepseek:preflight") < refreshWorkflow.indexOf("npm run data:activate:resumable:live:persist") &&
       clusterWorkflowStep.includes("npm run events:cluster -- --persist") &&
       clusterWorkflowStep.includes('ENABLE_SUPABASE_RETRIEVAL: "true"') &&
       clusterWorkflowStep.includes('ENABLE_SUPABASE_WRITES: "true"') &&
@@ -517,7 +520,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       refreshWorkflow.includes("ENABLE_SUPABASE_WRITES=false npm run cloudflare:snapshot") &&
       refreshWorkflow.includes("npx tsx scripts/build-cloudflare-public-site.ts"),
     true,
-    "The daily production workflow must live-refresh and persist before building from strict Supabase data with local fallback disabled."
+    "The daily production workflow must validate its model credential, live-refresh and persist, then build from strict Supabase data with local fallback disabled."
   );
   assert.equal(
     refreshWorkflow.includes("npm exec -- wrangler pages deploy dist/cloudflare-pages") &&

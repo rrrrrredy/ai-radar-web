@@ -271,6 +271,26 @@ jobs:
           npm run validate:data
           npm run sensitive:scan
 
+      - name: Validate DeepSeek credential and models
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_BASE_URL: https://api.deepseek.com
+          DEEPSEEK_FAST_MODEL: deepseek-v4-flash
+          DEEPSEEK_SMART_MODEL: deepseek-v4-pro
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if npm run deepseek:preflight; then
+              exit 0
+            fi
+            if [[ "$attempt" == "3" ]]; then
+              echo "::error title=DeepSeek credential preflight failed::Credential or configured models are unavailable after 3 attempts."
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+
       - name: Validate Supabase public read contract
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}

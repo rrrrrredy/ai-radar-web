@@ -33,6 +33,7 @@
     "supabase:persist:ingestion": "tsx scripts/supabase-persist-ingestion.ts",
     "supabase:persist:understanding": "tsx scripts/supabase-persist-understanding.ts",
     "supabase:public-contract": "tsx scripts/check-supabase-public-contract.ts",
+    "deepseek:preflight": "tsx scripts/check-deepseek-credential.ts",
     "source-health:check": "tsx scripts/check-source-health.ts",
     "source-health:dry-run": "tsx scripts/check-source-health.ts --dry-run",
     "data:completeness:audit": "tsx scripts/audit-data-completeness.ts",

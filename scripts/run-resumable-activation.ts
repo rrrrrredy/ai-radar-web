@@ -488,6 +488,13 @@ export function rotateSourceSelection<T>(
   return [...core, ...rotatedTail.slice(0, tailNeeded)];
 }
 
+export function shouldRetryExistingUnderstanding(modelMetadata: unknown) {
+  if (!modelMetadata || typeof modelMetadata !== "object" || Array.isArray(modelMetadata)) return false;
+  const error = (modelMetadata as { error?: unknown }).error;
+  if (typeof error !== "string") return false;
+  return /(?:authentication fails|api key[^|]*(?:invalid|expired)|(?:summary|classification|entity|score) fallback used:[^|]*(?:timed out|timeout|rate limit|http 429|http 5\d\d))/iu.test(error);
+}
+
 async function excludePreviouslyProcessedItems(items: IngestionRawItem[], enabled: boolean) {
   if (!enabled || items.length === 0) {
     return { items, duplicateCount: 0 };
@@ -500,15 +507,17 @@ async function excludePreviouslyProcessedItems(items: IngestionRawItem[], enable
   const supabase = getSupabaseServiceClient();
   const { data, error } = await supabase
     .from("radar_items")
-    .select("local_id")
+    .select("local_id,model_metadata")
     .in("local_id", localIds);
 
   if (error) {
     throw new Error(`Unable to check previously processed radar items: ${error.message}`);
   }
 
+  const rows = (data ?? []) as Array<{ local_id: string | null; model_metadata: unknown }>;
   const existing = new Set(
-    ((data ?? []) as Array<{ local_id: string | null }>)
+    rows
+      .filter((row) => !shouldRetryExistingUnderstanding(row.model_metadata))
       .map((row) => row.local_id)
       .filter((value): value is string => Boolean(value))
   );

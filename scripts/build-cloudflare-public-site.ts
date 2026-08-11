@@ -762,9 +762,70 @@ function liveFeedClientScript() {
     return label + " 发布新动态";
   }
 
+  function localizedPreciseFallback(item, source, originalTitle) {
+    const descriptor = {
+      agent: "智能体",
+      benchmark: "评测",
+      business: "商业",
+      funding: "融资",
+      infrastructure: "基础设施",
+      model_release: "模型",
+      open_source: "开源",
+      opinion: "观点",
+      policy: "政策",
+      product_update: "产品",
+      regulation: "监管",
+      research: "研究",
+      safety: "安全",
+      tooling: "工具"
+    }[categoryKey(item)] || "动态";
+    const prefix = localizedTitleSource(source) + " " + descriptor + "：";
+    const cleaned = String(originalTitle || "")
+      .replace(/[：:]+/g, " - ")
+      .replace(/&/g, " 和 ")
+      .replace(/[\"'<>]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const room = Math.max(12, 56 - prefix.length);
+    let exact = cleaned;
+    if (exact.length > room) {
+      exact = exact.slice(0, room).replace(/\s+\S*$/u, "").replace(/[，,：:;；\s-]+$/u, "").trim();
+    }
+    return exact.length >= 8 ? prefix + exact : localizedTitleFallback(item, source);
+  }
+
+  function knownChineseHeadline(title) {
+    if (/Learning more about Claude's mathematical capabilities/i.test(title)) return "Anthropic 研究 Claude 的数学能力";
+    if (/Introducing Claude Sonnet 5/i.test(title)) return "Anthropic 发布 Claude Sonnet 5";
+    if (/Mark Zuckerberg doesn.t understand how to live/i.test(title)) return "The Verge 批评扎克伯格的 AI 生活观";
+    if (/Build Low-Latency Multilingual Voice Agents/i.test(title) && /Magpie TTS/i.test(title)) return "Hugging Face 发布 NVIDIA Magpie TTS 多语言语音智能体指南";
+    if (/Four takeaways from Mark Zuckerberg.s massive AI manifesto/i.test(title)) return "扎克伯格大篇幅 AI 宣言的四个要点";
+    if (/Mark Zuckerberg.s AI manifesto/i.test(title)) return "TechCrunch 批评扎克伯格的 AI 宣言脱离用户感受";
+    if (/What happens to Bose when headphones become AI/i.test(title)) return "Bose 耳机加入 AI 后，产品定位面临变化";
+    if (/AI-led attacks multiply/i.test(title) && /cyber model/i.test(title)) return "OpenAI 推出网络安全模型，应对 AI 驱动攻击";
+    if (/next frontier of critical cyber capabilities/i.test(title)) return "OpenAI 说明前沿网络安全能力的应对方案";
+    if (/\$7 billion employee tender offer/i.test(title)) return "OpenAI 被曝完成 70 亿美元员工股份要约收购";
+    if (/letter to Governor Abbott/i.test(title) && /AI infrastructure/i.test(title)) return "OpenAI 致信得州州长，讨论负责任的 AI 基础设施";
+    if (/Amazon backs power plant/i.test(title) && /climate pollution/i.test(title)) return "Amazon 支持大型电厂项目，或推高美国气候污染";
+    if (/Amazon data center/i.test(title) && /polluting power plant/i.test(title)) return "Amazon 数据中心配套电厂或成为美国污染最严重电厂";
+    if (/new open models/i.test(title) && /Meta pitches another reboot/i.test(title)) return "Meta 推出新开源模型，再次调整 AI 战略";
+    if (/AI professors are negotiating/i.test(title)) return "AI 教授重新协商学术研究规则与边界";
+    if (/building an AI-native finance function/i.test(title)) return "OpenAI 总结构建 AI 原生财务团队的经验";
+    if (/Model ML completes finance work/i.test(title) && /GPT-5\.6 Sol/i.test(title)) return "Model ML 使用 GPT-5.6 Sol 提升财务工作效率";
+    if (/Peer review is overwhelmed/i.test(title)) return "同行评审不堪重负，AI 时代能否延续";
+    if (/startups are chasing the next big thing in LLMs/i.test(title)) return "多家初创公司竞逐 LLM 下一阶段机会";
+    if (/TransSLR/i.test(title)) return "TransSLR：用于手语识别的轻量级 Transformer";
+    if (/Sharding Prevents LLM Oversight Failures/i.test(title)) return "分片机制可降低 LLM 监督失效与对抗利用风险";
+    if (/AI for science needs reasoning/i.test(title)) return "AI 科学研究需要推理能力，而不只是更多数据";
+    if (/Run Local Agentic AI Workflows/i.test(title) && /Muse Glimmer/i.test(title)) return "NVIDIA 演示本地运行 Meta Muse Glimmer 智能体工作流";
+    if (/EntropyMoE/i.test(title)) return "EntropyMoE 用熵感知稀疏专家路由支持无分词器 LLM";
+    if (/Latent Fact-Checking/i.test(title)) return "Latent Fact-Checking：通过表征工程检测错误信息";
+    return "";
+  }
+
   function localizedReaderTitle(item, source, originalTitle) {
     if (locale !== "zh" || /[\u3400-\u9fff]/u.test(originalTitle)) return originalTitle;
-    const concreteFallback = originalTitle.length >= 8 ? originalTitle : localizedTitleFallback(item, source);
+    const concreteFallback = knownChineseHeadline(originalTitle) || localizedPreciseFallback(item, source, originalTitle);
     const summary = String(item.summary_zh || "").trim();
     if (!summary || genericSummary(summary)) return concreteFallback;
 
@@ -1942,6 +2003,41 @@ function normalizeChineseTitleStyle(value: string) {
     .trim();
 }
 
+function localizedEnglishEventTitle(event: SnapshotEvent, concrete: string) {
+  const source = publicText(event.citations[0]?.source_name ?? event.timeline[0]?.source_name ?? "")
+    .replace(/\s+(?:AI|News)$/iu, "")
+    .trim() || "公开来源";
+  const descriptorByCategory: Record<string, string> = {
+    agent: "智能体",
+    benchmark: "评测",
+    business: "商业",
+    funding: "融资",
+    infrastructure: "基础设施",
+    model_release: "模型",
+    open_source: "开源",
+    opinion: "观点",
+    policy: "政策",
+    product_update: "产品",
+    regulation: "监管",
+    research: "研究",
+    safety: "安全",
+    tooling: "工具"
+  };
+  const prefix = `${source} ${descriptorByCategory[categoryFilterValue(event.category)] ?? "动态"}：`;
+  const cleaned = concrete
+    .replace(/[：:]+/gu, " - ")
+    .replace(/&/g, " 和 ")
+    .replace(/[\"'<>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const room = Math.max(12, 56 - Array.from(prefix).length);
+  let exact = Array.from(cleaned).slice(0, room).join("");
+  if (Array.from(cleaned).length > room) {
+    exact = exact.replace(/\s+\S*$/u, "").replace(/[，,：:;；\s-]+$/u, "").trim();
+  }
+  return exact.length >= 8 ? prefix + exact : genericChineseEventTitle(event);
+}
+
 function chineseEventTitle(event: SnapshotEvent) {
   const canonical = publicText(event.canonical_title).trim();
   const concrete = concreteEventHeadline(event);
@@ -1959,13 +2055,38 @@ function chineseEventTitle(event: SnapshotEvent) {
   if (compact) return normalizeChineseTitleStyle(compact);
   if (/\p{Script=Han}/u.test(canonical) && concrete === canonical) return shortenChineseTitle(canonical, fallback);
   if (summaryCanLead) return shortenChineseTitle(sentence, fallback);
-  if (concrete) return /\p{Script=Han}/u.test(concrete) ? shortenChineseTitle(concrete, fallback) : concrete;
+  if (concrete) return /\p{Script=Han}/u.test(concrete) ? shortenChineseTitle(concrete, fallback) : localizedEnglishEventTitle(event, concrete);
   return shortenChineseTitle(fallback, fallback);
 }
 
 function compactChineseEventTitle(canonical: string, summary: string) {
   const text = `${canonical} ${summary}`;
 
+  if (/Learning more about Claude's mathematical capabilities/i.test(text)) return "Anthropic 研究 Claude 的数学能力";
+  if (/Introducing Claude Sonnet 5/i.test(text)) return "Anthropic 发布 Claude Sonnet 5";
+  if (/Mark Zuckerberg doesn.t understand how to live/i.test(text)) return "The Verge 批评扎克伯格的 AI 生活观";
+  if (/Build Low-Latency Multilingual Voice Agents/i.test(text) && /Magpie TTS/i.test(text)) return "Hugging Face 发布 NVIDIA Magpie TTS 多语言语音智能体指南";
+  if (/Four takeaways from Mark Zuckerberg.s massive AI manifesto/i.test(text)) return "扎克伯格大篇幅 AI 宣言的四个要点";
+  if (/Mark Zuckerberg.s AI manifesto/i.test(text)) return "TechCrunch 批评扎克伯格的 AI 宣言脱离用户感受";
+  if (/What happens to Bose when headphones become AI/i.test(text)) return "Bose 耳机加入 AI 后，产品定位面临变化";
+  if (/AI-led attacks multiply/i.test(text) && /cyber model/i.test(text)) return "OpenAI 推出网络安全模型，应对 AI 驱动攻击";
+  if (/next frontier of critical cyber capabilities/i.test(text)) return "OpenAI 说明前沿网络安全能力的应对方案";
+  if (/\$7 billion employee tender offer/i.test(text)) return "OpenAI 被曝完成 70 亿美元员工股份要约收购";
+  if (/letter to Governor Abbott/i.test(text) && /AI infrastructure/i.test(text)) return "OpenAI 致信得州州长，讨论负责任的 AI 基础设施";
+  if (/Amazon backs power plant/i.test(text) && /climate pollution/i.test(text)) return "Amazon 支持大型电厂项目，或推高美国气候污染";
+  if (/Amazon data center/i.test(text) && /polluting power plant/i.test(text)) return "Amazon 数据中心配套电厂或成为美国污染最严重电厂";
+  if (/new open models/i.test(text) && /Meta pitches another reboot/i.test(text)) return "Meta 推出新开源模型，再次调整 AI 战略";
+  if (/AI professors are negotiating/i.test(text)) return "AI 教授重新协商学术研究规则与边界";
+  if (/building an AI-native finance function/i.test(text)) return "OpenAI 总结构建 AI 原生财务团队的经验";
+  if (/Model ML completes finance work/i.test(text) && /GPT-5\.6 Sol/i.test(text)) return "Model ML 使用 GPT-5.6 Sol 提升财务工作效率";
+  if (/Peer review is overwhelmed/i.test(text)) return "同行评审不堪重负，AI 时代能否延续";
+  if (/startups are chasing the next big thing in LLMs/i.test(text)) return "多家初创公司竞逐 LLM 下一阶段机会";
+  if (/TransSLR/i.test(text)) return "TransSLR：用于手语识别的轻量级 Transformer";
+  if (/Sharding Prevents LLM Oversight Failures/i.test(text)) return "分片机制可降低 LLM 监督失效与对抗利用风险";
+  if (/AI for science needs reasoning/i.test(text)) return "AI 科学研究需要推理能力，而不只是更多数据";
+  if (/Run Local Agentic AI Workflows/i.test(text) && /Muse Glimmer/i.test(text)) return "NVIDIA 演示本地运行 Meta Muse Glimmer 智能体工作流";
+  if (/EntropyMoE/i.test(text)) return "EntropyMoE 用熵感知稀疏专家路由支持无分词器 LLM";
+  if (/Latent Fact-Checking/i.test(text)) return "Latent Fact-Checking：通过表征工程检测错误信息";
   if (/GPT-Red/i.test(text)) return "OpenAI 发布 GPT-Red 红队系统";
   if (/Codex Micro|keyboard|键盘/i.test(text)) return "OpenAI 推出 Codex 硬件键盘";
   if (/Jacobian|hidden space|雅可比/i.test(text) && /Anthropic|Claude/i.test(text)) return "Anthropic 披露 Claude 内部表征研究";
