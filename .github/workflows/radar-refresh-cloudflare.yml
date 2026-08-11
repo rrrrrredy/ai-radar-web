@@ -6,7 +6,7 @@ on:
       limit:
         description: "Maximum sources to refresh in the production run"
         required: true
-        default: "30"
+        default: "100"
         type: string
       chunk_size:
         description: "Sources per resumable activation chunk"
@@ -28,120 +28,38 @@ concurrency:
 
 jobs:
   freshness_gate:
-    name: Check whether production is already fresh
+    name: Accept coordinated refresh request
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       should_run: ${{ steps.freshness.outputs.should_run }}
       reason: ${{ steps.freshness.outputs.reason }}
     steps:
-      - name: Decide whether a scheduled refresh is needed
+      - name: Confirm requested refresh
         id: freshness
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
-          SCHEDULE_EXPRESSION: ${{ github.event.schedule || '' }}
         run: |
           set -euo pipefail
-          node <<'NODE'
-          import * as fs from "node:fs";
-          const eventName = process.env.EVENT_NAME || "";
-          const scheduleExpression = process.env.SCHEDULE_EXPRESSION || "";
-          const outputPath = process.env.GITHUB_OUTPUT;
-          const summaryPath = process.env.GITHUB_STEP_SUMMARY;
-
-          function writeDecision(shouldRun, reason, detail) {
-            fs.appendFileSync(outputPath, `should_run=${shouldRun}\nreason=${reason}\n`);
-            fs.appendFileSync(
-              summaryPath,
-              [
-                "## AI 行业信息雷达新鲜度门控",
-                "",
-                `- Trigger: ${eventName}`,
-                `- Schedule: ${scheduleExpression || "manual"}`,
-                `- Decision: ${shouldRun === "true" ? "run production refresh" : "skip; production is already fresh"}`,
-                `- Reason: ${detail}`,
-                "- Production URL: https://ai-industry-radar.pages.dev/",
-                ""
-              ].join("\n")
-            );
-          }
-
-          function shanghaiParts(value) {
-            const parts = new Intl.DateTimeFormat("en-CA", {
-              timeZone: "Asia/Shanghai",
-              year: "numeric",
-              month: "2-digit",
-              day: "2-digit",
-              hour: "2-digit",
-              minute: "2-digit",
-              hourCycle: "h23"
-            }).formatToParts(value);
-            return Object.fromEntries(parts.map((part) => [part.type, part.value]));
-          }
-
-          if (eventName === "workflow_dispatch") {
-            writeDecision("true", "manual_dispatch", "Manual runs always execute after passing production gates.");
-            process.exit(0);
-          }
-
-          try {
-            const cacheBust = encodeURIComponent(`${Date.now()}-${Math.random()}`);
-            const response = await fetch(
-              `https://ai-industry-radar.pages.dev/data/radar-snapshot.json?freshness=${cacheBust}`,
-              { cache: "no-store", signal: AbortSignal.timeout(15000) }
-            );
-            if (!response.ok) throw new Error(`snapshot_http_${response.status}`);
-
-            const snapshot = await response.json();
-            const refresh = new Date(snapshot.coverage?.latest_refresh || "");
-            const now = new Date();
-            const refreshTime = refresh.getTime();
-            const ageMs = now.getTime() - refreshTime;
-            const current = shanghaiParts(now);
-            const refreshed = Number.isFinite(refreshTime) ? shanghaiParts(refresh) : {};
-            const sameShanghaiDay =
-              refreshed.year === current.year &&
-              refreshed.month === current.month &&
-              refreshed.day === current.day;
-            const afterDailyWindow = Number(refreshed.hour) >= 6;
-            const recentEnough = ageMs >= -5 * 60 * 1000 && ageMs <= 3 * 60 * 60 * 1000;
-            const strictSupabase =
-              snapshot.source?.kind === "supabase_public_views" &&
-              snapshot.source?.data_source === "public_evidence_store" &&
-              snapshot.source?.local_data_used === false;
-            const reportFree =
-              !Object.prototype.hasOwnProperty.call(snapshot, "reports") &&
-              !Object.prototype.hasOwnProperty.call(snapshot, "report_quality_summary");
-
-            if (sameShanghaiDay && afterDailyWindow && recentEnough && strictSupabase && reportFree) {
-              writeDecision(
-                "false",
-                "production_already_fresh",
-                `Strict Supabase snapshot refreshed at ${refresh.toISOString()}.`
-              );
-            } else {
-              writeDecision(
-                "true",
-                "production_stale_or_invalid",
-                `Production snapshot did not meet the daily freshness contract (latest_refresh=${snapshot.coverage?.latest_refresh || "missing"}).`
-              );
-            }
-          } catch (error) {
-            writeDecision(
-              "true",
-              "freshness_check_failed",
-              `Freshness check failed closed: ${error instanceof Error ? error.message : String(error)}.`
-            );
-          }
-          NODE
+          {
+            echo "should_run=true"
+            echo "reason=dispatch_requested"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "## AI 行业信息雷达每日更新"
+            echo
+            echo "- Trigger: ${EVENT_NAME:-workflow_dispatch}"
+            echo "- Decision: run the requested production refresh"
+            echo "- Production URL: https://ai-industry-radar.pages.dev/"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   refresh:
     name: Live refresh, persist, cluster, build, and deploy
     needs: freshness_gate
     if: ${{ needs.freshness_gate.outputs.should_run == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 360
     steps:
       - name: Checkout default branch
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -153,7 +71,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           SCHEDULE_EXPRESSION: ${{ github.event.schedule || '' }}
           DISPATCH_REF: ${{ github.ref }}
-          LIMIT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.limit || '30' }}
+          LIMIT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.limit || '100' }}
           CHUNK_SIZE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.chunk_size || '5' }}
           MAX_ITEMS_PER_SOURCE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.max_items_per_source || '3' }}
           RADAR_REFRESH_WRITE_GATE: ${{ vars.RADAR_REFRESH_WRITE_GATE }}
@@ -400,7 +318,7 @@ jobs:
       - name: Run live resumable activation with persistence
         id: activation
         if: ${{ steps.activation_state.outputs.reuse_completed != 'true' }}
-        timeout-minutes: 45
+        timeout-minutes: 330
         shell: bash
         env:
           LIMIT: ${{ steps.config.outputs.limit }}
@@ -536,99 +454,152 @@ jobs:
           const cacheBust = encodeURIComponent(process.env.VERIFY_CACHE_BUST || Date.now());
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+          const readerPageUrls = [
+            "/",
+            "/radar/",
+            "/sources/",
+            "/ask/",
+            "/en/",
+            "/en/radar/",
+            "/en/sources/",
+            "/en/ask/"
+          ];
+          const internalCopy = /(?:自动任务每天|来源检查、增量去重、内容入库和生产部署|今日同步\s*\d+\s*条|最近入库|本轮\s*\d+\/\d+\s*个来源抓取成功|来源健康|失败来源|原因汇总|审计截至|待复核|data-status=|data-score=|data-source-count=|needs_review|Source health|Failed sources|Reason summary|Audited through|sources fetched in the latest run|synced today|\bingested\b|Lower-priority events were not substituted|系统未用“关注”或“观察”事件替代)/iu;
+          const forbiddenSnapshotKeys = new Set([
+            "coverage",
+            "counts",
+            "source",
+            "radar_items",
+            "source_health_summary",
+            "source_health_scope",
+            "source_health_by_family",
+            "source_health_failures",
+            "failure_family_summary",
+            "data_completeness_summary",
+            "attempted_sources",
+            "fetched_sources",
+            "failed_sources",
+            "needs_review",
+            "understanding_status",
+            "overall_score",
+            "event_score",
+            "score_reason",
+            "source_tier",
+            "confidence",
+            "working_tree_clean",
+            "commit_source"
+          ]);
+          const forbiddenLiveKeys = new Set([
+            "local_id",
+            "collected_at",
+            "processed_at",
+            "understanding_status",
+            "ai_relevance_score",
+            "importance_score",
+            "credibility_score",
+            "novelty_score",
+            "freshness_score",
+            "overall_score",
+            "source_tier",
+            "confidence",
+            "updated_at"
+          ]);
+
+          function forbiddenPaths(value, forbidden, trail = "") {
+            if (Array.isArray(value)) {
+              return value.flatMap((item, index) => forbiddenPaths(item, forbidden, `${trail}[${index}]`));
+            }
+            if (!value || typeof value !== "object") return [];
+            return Object.entries(value).flatMap(([key, child]) => {
+              const path = trail ? `${trail}.${key}` : key;
+              return (forbidden.has(key) ? [path] : []).concat(forbiddenPaths(child, forbidden, path));
+            });
+          }
+
           async function verify(attempt) {
             const requestId = `${cacheBust}-${attempt}`;
-            const [homeResponse, sourcesResponse, snapshotResponse, liveFeedResponse, versionResponse, reportsResponse] = await Promise.all([
-              fetch(`https://ai-industry-radar.pages.dev/?verify=${requestId}`, { cache: "no-store" }),
-              fetch(`https://ai-industry-radar.pages.dev/sources/?verify=${requestId}`, { cache: "no-store" }),
-              fetch(`https://ai-industry-radar.pages.dev/data/radar-snapshot.json?verify=${requestId}`, { cache: "no-store" }),
-              fetch(`https://ai-industry-radar.pages.dev/api/live-feed?limit=50&verify=${requestId}`, { cache: "no-store" }),
-              fetch(`https://ai-industry-radar.pages.dev/version.json?verify=${requestId}`, { cache: "no-store" }),
-              fetch(`https://ai-industry-radar.pages.dev/reports/?verify=${requestId}`, { cache: "no-store", redirect: "manual" })
+            const base = "https://ai-industry-radar.pages.dev";
+            const [pageResponses, snapshotResponse, liveFeedResponse, versionResponse, reportsResponse, aboutResponse, englishAboutResponse] = await Promise.all([
+              Promise.all(readerPageUrls.map((pathname) => fetch(`${base}${pathname}?verify=${requestId}`, { cache: "no-store" }))),
+              fetch(`${base}/data/radar-snapshot.json?verify=${requestId}`, { cache: "no-store" }),
+              fetch(`${base}/api/live-feed?limit=50&verify=${requestId}`, { cache: "no-store" }),
+              fetch(`${base}/version.json?verify=${requestId}`, { cache: "no-store" }),
+              fetch(`${base}/reports/?verify=${requestId}`, { cache: "no-store", redirect: "manual" }),
+              fetch(`${base}/about/?verify=${requestId}`, { cache: "no-store", redirect: "manual" }),
+              fetch(`${base}/en/about/?verify=${requestId}`, { cache: "no-store", redirect: "manual" })
             ]);
-            if (!homeResponse.ok || !sourcesResponse.ok || !snapshotResponse.ok || !liveFeedResponse.ok || !versionResponse.ok) {
-              throw new Error(`production_http_status home=${homeResponse.status} sources=${sourcesResponse.status} snapshot=${snapshotResponse.status} live_feed=${liveFeedResponse.status} version=${versionResponse.status}`);
+            if (pageResponses.some((response) => !response.ok) || !snapshotResponse.ok || !liveFeedResponse.ok || !versionResponse.ok) {
+              throw new Error(`production_http_status pages=${pageResponses.map((response) => response.status).join(",")} snapshot=${snapshotResponse.status} live_feed=${liveFeedResponse.status} version=${versionResponse.status}`);
             }
 
-            const home = await homeResponse.text();
-            const sources = await sourcesResponse.text();
+            const pages = await Promise.all(pageResponses.map((response) => response.text()));
+            const [home, radar, sources, ask, englishHome, englishRadar, englishSources, englishAsk] = pages;
             const remote = await snapshotResponse.json();
             const liveFeed = await liveFeedResponse.json();
             const version = await versionResponse.json();
+
             if (!home.includes("<title>AI 行业信息雷达</title>")) {
               throw new Error("production_home_title_mismatch");
             }
-            if (version.commit_sha !== process.env.GITHUB_SHA || version.working_tree_clean !== true) {
-              throw new Error(`production_version_commit_mismatch expected=${process.env.GITHUB_SHA} actual=${version.commit_sha || "missing"}`);
+            if (version.release_id !== process.env.GITHUB_SHA || Object.keys(version).sort().join(",") !== "product,release_id,updated_at") {
+              throw new Error(`production_version_commit_mismatch expected=${process.env.GITHUB_SHA} actual=${version.release_id || "missing"}`);
             }
             if ((home.match(/<article class="top-story(?:\s[^"]*)?"/g) || []).length !== 10) {
               throw new Error("production_home_hotspot_count_mismatch");
             }
-            const topStoryTags = home.match(/<article class="top-story[^>]*>/g) || [];
-            if (topStoryTags.some((tag) => !/data-source-count="(?:single|same|cross)"/.test(tag))) {
-              throw new Error("production_home_source_metadata_mismatch");
-            }
             if (!/<time datetime="[^"]+" title="[^"]+">[^<]+ · \d{2}:\d{2}<\/time>/.test(home)) {
               throw new Error("production_home_datetime_mismatch");
             }
-            if (
-              !home.includes("Created by Song Luo") ||
-              !home.includes('href="https://github.com/rrrrrredy"') ||
-              home.includes("公众号") ||
-              home.includes("数据状态")
-            ) {
+            if (!home.includes("Created by Song Luo") || !home.includes('href="https://github.com/rrrrrredy"') || home.includes("公众号") || home.includes("数据状态")) {
               throw new Error("production_home_reader_contract_mismatch");
             }
+            if (pages.some((page) => internalCopy.test(page))) {
+              throw new Error("production_internal_process_copy_leak");
+            }
+            if (pages.some((page) => /href="[^"]*about\/?"|>关于<|>About<\//.test(page))) {
+              throw new Error("production_about_navigation_leak");
+            }
             const readerBoilerplate = /(?:条目摘要|元数据级条目)\s*[：:]|\b(?:Metadata-level item|Item summary|Evidence text|Announce Type|Phase 4)\b|\barXiv:\d{4}\.\d+(?:v\d+)?\b|\bAbstract\s*:/iu;
-            if (readerBoilerplate.test(home) || readerBoilerplate.test(sources)) {
+            if (pages.some((page) => readerBoilerplate.test(page))) {
               throw new Error("production_reader_boilerplate_leak");
             }
-            if (!sources.includes("个公开来源") || !/本轮 \d+\/\d+ 个来源抓取成功/.test(sources)) {
+            if (!sources.includes("浏览公司、研究机构、媒体与开源社区的原始来源") || !sources.includes("publisher-index") || !englishSources.includes("Browse original updates")) {
               throw new Error("production_sources_contract_mismatch");
             }
             if (reportsResponse.status !== 404) {
               throw new Error(`production_reports_route_not_retired status=${reportsResponse.status}`);
             }
-            if (
-              liveFeedResponse.headers.get("x-radar-live-source") !== "supabase_public_radar" ||
-              liveFeed.ok !== true ||
-              !Array.isArray(liveFeed.items) ||
-              liveFeed.items.length < 10 ||
-              liveFeed.item_count !== liveFeed.items.length
-            ) {
+            if (aboutResponse.status !== 404 || englishAboutResponse.status !== 404) {
+              throw new Error(`production_about_route_not_retired zh=${aboutResponse.status} en=${englishAboutResponse.status}`);
+            }
+
+            if (liveFeedResponse.headers.get("x-radar-live-source") !== "supabase_public_radar" || !Array.isArray(liveFeed.items) || liveFeed.items.length < 10) {
               throw new Error("production_live_feed_contract_mismatch");
             }
-            const liveProcessedTime = Date.parse(liveFeed.latest_processed_at || "");
-            if (!Number.isFinite(liveProcessedTime) || Date.now() - liveProcessedTime > 36 * 60 * 60 * 1000) {
+            const liveUpdatedTime = Date.parse(liveFeed.updated_at || "");
+            if (!Number.isFinite(liveUpdatedTime) || Date.now() - liveUpdatedTime > 36 * 60 * 60 * 1000) {
               throw new Error("production_live_feed_is_stale");
             }
-            if (liveFeed.items.some((item) => !item.id || !item.title || !/^https?:\/\//i.test(item.url || ""))) {
+            if (liveFeed.items.some((item) => !item.id || !item.title || !item.source_name || !/^https?:\/\//i.test(item.url || "") || !item.published_at)) {
               throw new Error("production_live_feed_item_invalid");
             }
-            if (remote.generated_at !== local.generated_at) {
-              throw new Error(`production_snapshot_generation_mismatch local=${local.generated_at} remote=${remote.generated_at}`);
+            const liveLeaks = forbiddenPaths(liveFeed.items, forbiddenLiveKeys);
+            if (liveLeaks.length > 0) {
+              throw new Error(`production_live_feed_contains_internal_fields ${liveLeaks.slice(0, 5).join(",")}`);
             }
-            if (remote.coverage?.latest_refresh !== local.coverage?.latest_refresh) {
-              throw new Error(
-                `production_snapshot_refresh_mismatch local=${local.coverage?.latest_refresh} remote=${remote.coverage?.latest_refresh}`
-              );
+
+            if (remote.updated_at !== local.updated_at || remote.event_count !== local.event_count) {
+              throw new Error(`production_reader_snapshot_mismatch local=${local.updated_at}/${local.event_count} remote=${remote.updated_at}/${remote.event_count}`);
             }
-            const remoteRefreshTime = Date.parse(remote.coverage?.latest_refresh || "");
-            if (!Number.isFinite(remoteRefreshTime) || Date.now() - remoteRefreshTime > 6 * 60 * 60 * 1000) {
-              throw new Error("production_snapshot_refresh_is_stale");
+            if (Object.keys(remote).sort().join(",") !== "event_count,events,featured_event_ids,schema_version,updated_at" || !Array.isArray(remote.events) || remote.events.length !== remote.event_count) {
+              throw new Error("production_reader_snapshot_contract_mismatch");
             }
-            if (
-              remote.source?.kind !== "supabase_public_views" ||
-              remote.source?.data_source !== "public_evidence_store" ||
-              remote.source?.local_data_used !== false
-            ) {
-              throw new Error("production_snapshot_not_strict_supabase");
+            const snapshotLeaks = forbiddenPaths(remote, forbiddenSnapshotKeys);
+            if (snapshotLeaks.length > 0) {
+              throw new Error(`production_reader_snapshot_contains_internal_fields ${snapshotLeaks.slice(0, 5).join(",")}`);
             }
-            if (
-              Object.prototype.hasOwnProperty.call(remote, "reports") ||
-              Object.prototype.hasOwnProperty.call(remote, "report_quality_summary")
-            ) {
-              throw new Error("production_snapshot_contains_retired_report_fields");
+            if (Object.prototype.hasOwnProperty.call(remote, "reports") || Object.prototype.hasOwnProperty.call(remote, "report_quality_summary") || Object.prototype.hasOwnProperty.call(remote, "coverage")) {
+              throw new Error("production_reader_snapshot_contains_internal_fields");
             }
           }
 
@@ -646,7 +617,6 @@ jobs:
           }
           throw lastError;
           NODE
-
       - name: Write production refresh summary
         if: ${{ always() }}
         shell: bash

@@ -300,7 +300,7 @@ function assertPublicReaderSurfaces() {
       cloudflareSite.includes("AI 行业信息雷达") &&
       cloudflareSite.includes("function renderSources") &&
       cloudflareSite.includes("function sourcePublishers") &&
-      cloudflareSite.includes("function renderAbout") &&
+      !cloudflareSite.includes("function renderAbout") &&
       cloudflareSite.includes("language-switch") &&
       cloudflareSite.includes("mobile-nav") &&
       cloudflareSite.includes("model_release,benchmark") &&
@@ -364,7 +364,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       !cloudflareSite.includes("fs.writeFile(path.join(outputDir, \"entities\", \"index.html\")") &&
       !cloudflareSite.includes("fs.mkdir(path.join(outputDir, \"entities\")") &&
       cloudflareSite.includes("renderSources") &&
-      cloudflareSite.includes("renderAbout") &&
+      !cloudflareSite.includes("renderAbout") &&
       cloudflareSite.includes("function retiredRouteWorker") &&
       cloudflareSite.includes("function retiredRouteWorkerRoutes") &&
       cloudflareSite.includes("function liveFeedClientScript") &&
@@ -376,16 +376,16 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       cloudflareSite.includes("const concreteFallback = knownChineseHeadline(originalTitle)") &&
       cloudflareSite.includes(".filter(readerReadyForTop)") &&
       cloudflareSite.includes("const currentDayItems = candidates.filter") &&
-      cloudflareSite.includes("function todayProcessedCount") &&
+      !cloudflareSite.includes("function todayProcessedCount") &&
       cloudflareSite.includes("function concreteEventHeadline") &&
       cloudflareSite.includes("function homepageDayOrdinal") &&
       cloudflareSite.includes('selectHomepageEvents(events, 10, "zh", snapshot.generated_at)') &&
       cloudflareSite.includes('data-live-feed data-live-mode="radar"') &&
       !cloudflareSite.includes("window.setInterval(refresh, 30 * 1000)") &&
-      cloudflareSite.includes("每日更新 · 今日同步 ") &&
-      cloudflareSite.includes("每天 09:00（北京时间）") &&
-      cloudflareSite.includes("Daily update") &&
-      cloudflareSite.includes('order: "processed_at.desc.nullslast,published_at.desc.nullslast,id.desc"') &&
+      cloudflareSite.includes("更新于 ") &&
+      cloudflareSite.includes("每日 09:00") &&
+      cloudflareSite.includes("Daily at 09:00 Beijing") &&
+      cloudflareSite.includes('order: "overall_score.desc.nullslast,processed_at.desc.nullslast,published_at.desc.nullslast,id.desc"') &&
       cloudflareSite.includes('"cache-control": "public, max-age=5, s-maxage=15, stale-while-revalidate=60"') &&
       cloudflareSite.includes('assets/live-feed.js') &&
       !cloudflareSite.includes("SUPABASE_SERVICE_ROLE_KEY") &&
@@ -396,16 +396,13 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       cloudflareSite.includes('commitSource: "git_worktree"') &&
       cloudflareSite.includes("fs.writeFile(path.join(outputDir, \"version.json\")"),
     true,
-    "Cloudflare static site must keep the local Ask utility, publish reader-facing sources/about pages, retire Write/entities/reports, and include a public version marker."
+    "Cloudflare static site must keep the local Ask utility, publish reader-facing source pages, retire About/Write/entities/reports, and include a public version marker."
   );
   assert.equal(
     cloudflareSite.includes("timeWindowHours") &&
-      cloudflareSite.includes("eventWithinIntentWindow") &&
-      cloudflareSite.includes('intent.highPriority && event.event_score_label !== "高优先级"') &&
-      cloudflareSite.includes("Lower-priority events were not substituted") &&
-      cloudflareSite.includes("系统未用“关注”或“观察”事件替代") &&
-      cloudflareSite.includes("function eventDate(event)") &&
-      cloudflareSite.includes('[event.canonical_title || "", ...(event.related_entities || [])]') &&
+      cloudflareSite.includes("requestedCategories") &&
+      cloudflareSite.includes("featured_event_ids") &&
+      cloudflareSite.includes("function displayDateTime") &&
       cloudflareSite.includes('data-feed-family="公司/实验室"') &&
       cloudflareSite.includes('data-feed-category="model_release,benchmark"') &&
       cloudflareSite.includes("function renderStoryRow") &&
@@ -413,9 +410,13 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       cloudflareSite.includes('class="story-date"') &&
       cloudflareSite.includes('class="story-clock"') &&
       cloudflareSite.includes('locale === "en" ? "UTC" : "北京时间"') &&
-      cloudflareSite.includes("function storyFilterScript"),
+      cloudflareSite.includes("function storyFilterScript") &&
+      !cloudflareSite.includes("renderSourceHealthResult") &&
+      !cloudflareSite.includes("sourceHealth:") &&
+      !cloudflareSite.includes("Lower-priority events were not substituted") &&
+      !cloudflareSite.includes("系统未用“关注”或“观察”事件替代"),
     true,
-    "Cloudflare Ask must enforce evidence windows while the public radar uses source/topic reader filters and visible date-plus-time labels."
+    "Cloudflare Ask must search reader events while the public radar keeps source/topic filters and visible date-plus-time labels."
   );
   assert.equal(
     cloudflareSite.includes("Created by Song Luo") &&
@@ -462,7 +463,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   assert.equal(
     refreshWorkflow.includes("workflow_dispatch:") &&
       !refreshWorkflow.includes("\n  schedule:") &&
-      refreshWorkflow.includes("production_already_fresh") &&
+      refreshWorkflow.includes("dispatch_requested") &&
       refreshWorkflow.includes("Manual dispatch ignores a completed checkpoint") &&
       refreshWorkflow.includes("shanghai_date=$(TZ=Asia/Shanghai date +%F)") &&
       refreshWorkflow.includes('EVENT_NAME: ${{ github.event_name }}') &&
@@ -522,6 +523,10 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   );
   assert.equal(
     refreshWorkflow.includes("npm run data:activate:resumable:live:persist") &&
+      refreshWorkflow.includes('default: "100"') &&
+      refreshWorkflow.includes("timeout-minutes: 360") &&
+      refreshWorkflow.includes("timeout-minutes: 330") &&
+      !/^\s+schedule:\s*$/m.test(refreshWorkflow) &&
       refreshWorkflow.includes("Validate DeepSeek credential and models") &&
       refreshWorkflow.includes("npm run deepseek:preflight") &&
       refreshWorkflow.indexOf("npm run deepseek:preflight") < refreshWorkflow.indexOf("npm run data:activate:resumable:live:persist") &&
@@ -533,7 +538,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       refreshWorkflow.includes("ENABLE_SUPABASE_WRITES=false npm run cloudflare:snapshot") &&
       refreshWorkflow.includes("npx tsx scripts/build-cloudflare-public-site.ts"),
     true,
-    "The daily production workflow must validate its model credential, live-refresh and persist, then build from strict Supabase data with local fallback disabled."
+    "The daily production workflow must accept one Supabase dispatch, cover every source within a bounded long-run budget, validate its model credential, persist, and build from strict Supabase data."
   );
   assert.equal(
     refreshWorkflow.includes("npm exec -- wrangler pages deploy dist/cloudflare-pages") &&
@@ -541,17 +546,15 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       refreshWorkflow.includes("https://ai-industry-radar.pages.dev/") &&
       refreshWorkflow.indexOf("npm run test") > refreshWorkflow.indexOf("npx tsx scripts/build-cloudflare-public-site.ts") &&
       refreshWorkflow.indexOf("pages deploy dist/cloudflare-pages") > refreshWorkflow.indexOf("npm run test") &&
-      refreshWorkflow.includes("remote.generated_at !== local.generated_at") &&
-      refreshWorkflow.includes('remote.source?.kind !== "supabase_public_views"') &&
-      refreshWorkflow.includes('remote.source?.data_source !== "public_evidence_store"') &&
-      refreshWorkflow.includes('remote.source?.local_data_used !== false') &&
-      refreshWorkflow.includes("remote.coverage?.latest_refresh !== local.coverage?.latest_refresh") &&
-      refreshWorkflow.includes("production_snapshot_refresh_is_stale") &&
+      refreshWorkflow.includes("remote.updated_at !== local.updated_at") &&
+      refreshWorkflow.includes("production_reader_snapshot_mismatch") &&
+      refreshWorkflow.includes("production_internal_process_copy_leak") &&
+      refreshWorkflow.includes("production_reader_snapshot_contains_internal_fields") &&
       refreshWorkflow.includes('class="top-story(?:\\s[^"]*)?"') &&
       refreshWorkflow.includes("production_home_datetime_mismatch") &&
-      refreshWorkflow.includes("/sources/?verify=") &&
+      refreshWorkflow.includes('"/sources/"') &&
       refreshWorkflow.includes("production_reader_boilerplate_leak") &&
-      refreshWorkflow.includes("production_home_source_metadata_mismatch") &&
+      refreshWorkflow.includes("production_about_route_not_retired") &&
       refreshWorkflow.includes("production_sources_contract_mismatch") &&
       refreshWorkflow.includes("/api/live-feed?limit=50&verify=") &&
       refreshWorkflow.includes("production_live_feed_contract_mismatch") &&
@@ -563,7 +566,7 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       refreshWorkflow.includes('href="https://github.com/rrrrrredy"') &&
       refreshWorkflow.includes("production_home_hotspot_count_mismatch") &&
       refreshWorkflow.includes("production_reports_route_not_retired") &&
-      refreshWorkflow.includes('Object.prototype.hasOwnProperty.call(remote, "reports")') &&
+      refreshWorkflow.includes('Object.prototype.hasOwnProperty.call(remote, "coverage")') &&
       refreshWorkflow.includes("<title>AI 行业信息雷达</title>") &&
       !/report:(candidate|generate)|generate[_-]reports|persist-report|npm run [^\n]*report/iu.test(refreshWorkflow),
     true,
@@ -627,7 +630,6 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
     "dist/cloudflare-pages/index.html",
     "dist/cloudflare-pages/radar/index.html",
     "dist/cloudflare-pages/sources/index.html",
-    "dist/cloudflare-pages/about/index.html",
     "dist/cloudflare-pages/ask/index.html"
   ]) {
     assert.equal(fs.existsSync(path.join(process.cwd(), pagePath)), true, `${pagePath} must exist after the release build.`);
@@ -649,15 +651,15 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   const versionPath = path.join(process.cwd(), "dist/cloudflare-pages/version.json");
   assert.equal(fs.existsSync(versionPath), true, "Cloudflare version marker must exist.");
   const version = JSON.parse(fs.readFileSync(versionPath, "utf8")) as JsonRecord;
+  assert.deepEqual(Object.keys(version).sort(), ["product", "release_id", "updated_at"], "Public version marker must contain only reader-safe release identity.");
   assert.equal(version.product, "AI Industry Radar", "Cloudflare version marker must identify the correct product.");
-  assert.match(String(version.commit_sha ?? ""), /^[0-9a-f]{40}$/i, "Cloudflare version marker must contain a full Git commit SHA.");
-  assert.notEqual(version.commit_source, "unavailable", "Cloudflare version marker must identify its Git provenance source.");
-  assert.equal(typeof version.working_tree_clean, "boolean", "Cloudflare version marker must disclose whether a local build used a clean worktree.");
+  assert.match(String(version.release_id ?? ""), /^[0-9a-f]{40}$/i, "Cloudflare version marker must contain a full release id.");
+  assert.equal(Number.isFinite(Date.parse(String(version.updated_at ?? ""))), true, "Cloudflare version marker must expose the latest reader update time.");
 
   for (const forbiddenDir of ["dist/cloudflare-pages/clusters", "dist/github-pages"]) {
     assert.equal(fs.existsSync(path.join(process.cwd(), forbiddenDir)), false, `${forbiddenDir} must not remain in static output.`);
   }
-  for (const retiredPath of ["dist/cloudflare-pages/write", "dist/cloudflare-pages/en/write", "dist/cloudflare-pages/entities", "dist/cloudflare-pages/en/entities", "dist/cloudflare-pages/reports", "dist/cloudflare-pages/en/reports"]) {
+  for (const retiredPath of ["dist/cloudflare-pages/about", "dist/cloudflare-pages/en/about", "dist/cloudflare-pages/write", "dist/cloudflare-pages/en/write", "dist/cloudflare-pages/entities", "dist/cloudflare-pages/en/entities", "dist/cloudflare-pages/reports", "dist/cloudflare-pages/en/reports"]) {
     assert.equal(fs.existsSync(path.join(process.cwd(), retiredPath)), false, `${retiredPath} must not exist in static output.`);
   }
 }
@@ -667,7 +669,6 @@ function assertBilingualStaticContract() {
     ["dist/cloudflare-pages/index.html", "dist/cloudflare-pages/en/index.html"],
     ["dist/cloudflare-pages/radar/index.html", "dist/cloudflare-pages/en/radar/index.html"],
     ["dist/cloudflare-pages/sources/index.html", "dist/cloudflare-pages/en/sources/index.html"],
-    ["dist/cloudflare-pages/about/index.html", "dist/cloudflare-pages/en/about/index.html"],
     ["dist/cloudflare-pages/ask/index.html", "dist/cloudflare-pages/en/ask/index.html"]
   ] as const;
 
@@ -702,13 +703,10 @@ function assertBilingualStaticContract() {
     chineseHome.matchAll(/class="hot-copy"[\s\S]*?<h2><a[^>]*>([^<]+)<\/a><\/h2>/g),
     (match) => match[1]
   ).slice(0, 10);
-  const chineseTopTags = Array.from(chineseHome.matchAll(/<article class="top-story story-row"[^>]*>/g), (match) => match[0]);
-  assert.equal(chineseTopTitles.length, 10, "Chinese homepage must expose ten inspectable hot-topic titles.");
-  assert.equal(
-    chineseTopTags.every((tag) => /data-source-count="(?:single|same|cross)"/.test(tag)),
-    true,
-    "Chinese Top 10 must expose truthful source-count metadata without blocking publication when no reader-ready corroborated event is available."
-  );
+  for (const [page, label] of [[chineseHome, "Chinese"], [englishHome, "English"]] as const) {
+    assert.equal(/data-(?:status|score|source-count)=/.test(page), false, `${label} reader HTML must not expose candidate state or internal ranking attributes.`);
+    assert.equal(page.includes("needs_review"), false, `${label} reader HTML must not expose the review queue state.`);
+  }
   for (const title of chineseTopTitles) {
     assert.match(title, /[\u3400-\u9fff]/u, `Chinese hot-topic title must be written for Chinese readers: ${title}`);
     assert.doesNotMatch(title, /(?:…|\.{3})$/, `Hot-topic title must not be pre-truncated: ${title}`);
@@ -749,15 +747,19 @@ function assertBilingualStaticContract() {
   }
 
   const chineseSources = readSource("dist/cloudflare-pages/sources/index.html");
-  const chineseAbout = readSource("dist/cloudflare-pages/about/index.html");
+  const englishSources = readSource("dist/cloudflare-pages/en/sources/index.html");
   assert.doesNotMatch(chineseHome, readerBoilerplate, "Chinese homepage must not expose ingestion or model-fallback boilerplate.");
   assert.doesNotMatch(chineseRadar, readerBoilerplate, "Chinese all-updates page must not expose ingestion or model-fallback boilerplate.");
   assert.doesNotMatch(chineseSources, readerBoilerplate, "Chinese Sources page must not expose ingestion or model-fallback boilerplate.");
-  assert.equal(chineseSources.includes("<h1>来源</h1>") && chineseSources.includes("个公开来源") && chineseSources.includes("个来源抓取成功") && !chineseSources.includes("公众号") && chineseSources.includes("最近更新") && chineseSources.includes("publisher-index"), true, "Chinese Sources page must expose the complete public-source scale and latest refresh coverage.");
-  assert.equal(chineseAbout.includes("我们怎么选") && chineseAbout.includes("内容边界"), true, "Chinese About page must explain selection and editorial boundaries.");
+  assert.equal(chineseSources.includes("<h1>来源</h1>") && chineseSources.includes("浏览公司、研究机构、媒体与开源社区的原始来源") && !chineseSources.includes("公众号") && chineseSources.includes("最近更新") && chineseSources.includes("publisher-index"), true, "Chinese Sources page must be a reader-facing publisher index without run telemetry.");
+  assert.equal(englishSources.includes("<h1>Sources</h1>") && englishSources.includes("Browse original updates") && englishSources.includes("publisher-index"), true, "English Sources page must be a reader-facing publisher index without run telemetry.");
+  for (const page of [chineseHome, englishHome, chineseRadar, englishRadar, chineseSources, englishSources]) {
+    assert.equal(/href="[^"]*about\/?"|>关于<|>About<\//.test(page), false, "Public navigation and footer must not expose About.");
+  }
 
   const englishAsk = readSource("dist/cloudflare-pages/en/ask/index.html");
-  assert.equal(englishAsk.includes("Ask the radar") && englishAsk.includes("Radar results") && englishAsk.includes("../../data/radar-snapshot.json"), true, "English Ask must query the public event snapshot locally.");
+  assert.equal(englishAsk.includes("Ask the radar") && englishAsk.includes("Related updates") && englishAsk.includes("../../data/radar-snapshot.json"), true, "English Ask must query the reader event snapshot locally.");
+  assert.equal(/Source health|Failed sources|Reason summary|Audited through/.test(englishAsk), false, "English Ask must not expose source operations.");
   const publicStyles = readSource("dist/cloudflare-pages/assets/styles.css");
   assert.equal(publicStyles.includes(":focus-visible") && publicStyles.includes("outline: 3px solid"), true, "Static public controls and links must expose a visible keyboard focus state.");
 }
@@ -1037,155 +1039,44 @@ function jsonbBuildObjectKeys(sql: string) {
 
 function assertPublicSnapshotJsonContract(snapshotPath: string) {
   const parsed = JSON.parse(fs.readFileSync(path.join(process.cwd(), snapshotPath), "utf8")) as unknown;
-  const bannedKeys = new Set([
-    "content_hash",
-    "embedding",
-    "evidence_text",
-    "raw_items",
-    "ingestion_runs",
-    "understanding_runs",
-    "item_entities",
-    "raw_item_id",
-    "moderation_reason",
-    "original_summary",
-    "raw_url",
-    "supabase_id",
-    "source_to_raw_coverage",
-    "raw_to_radar_conversion",
-    "raw_text",
-    "raw_metadata",
-    "model_metadata",
-    "evidence_notes",
-    "reference_app_url"
-  ]);
-  const hits: string[] = [];
-
-  function visit(value: unknown, trail: string) {
-    if (Array.isArray(value)) {
-      value.forEach((item, index) => visit(item, `${trail}[${index}]`));
-      return;
-    }
-
-    if (!isRecord(value)) {
-      return;
-    }
-
-    for (const [key, child] of Object.entries(value)) {
-      const nextTrail = trail ? `${trail}.${key}` : key;
-      if (bannedKeys.has(key)) {
-        hits.push(nextTrail);
-      }
-      visit(child, nextTrail);
-    }
-  }
-
-  visit(parsed, "");
-  assert.deepEqual(hits, [], `${snapshotPath} must not expose internal public snapshot keys.`);
-  assert.equal(JSON.stringify(parsed).toLowerCase().includes(".vercel.app"), false, `${snapshotPath} must not expose a reference deployment namespace.`);
-
   assert.equal(isRecord(parsed), true, `${snapshotPath} must be a JSON object.`);
   const snapshot = parsed as JsonRecord;
-  const source = snapshot.source;
-  assert.equal(isRecord(source), true, `${snapshotPath}.source must be an object.`);
-  const sourceWarnings = (source as JsonRecord).warnings;
-  assert.equal(Array.isArray(sourceWarnings), true, `${snapshotPath}.source.warnings must be an array.`);
-  assertPublicWarningsAreReaderSafe(sourceWarnings as unknown[], `${snapshotPath}.source.warnings`);
-
-  const radarItems = snapshot.radar_items;
-  assert.equal(Array.isArray(radarItems), true, `${snapshotPath} must expose radar_items array.`);
-  const publicRadarItems = radarItems as unknown[];
-  const counts = snapshot.counts;
-  assert.equal(isRecord(counts), true, `${snapshotPath}.counts must be an object.`);
-  assert.equal(
-    (counts as JsonRecord).public_radar_items,
-    publicRadarItems.length,
-    `${snapshotPath} must preserve every public-safe radar row for All signals.`
-  );
-  const completeness = snapshot.data_completeness_summary;
-  const sourceHealthScope = snapshot.source_health_scope;
-  const sourceHealth = snapshot.source_health_summary;
-  assert.equal(isRecord(completeness), true, `${snapshotPath}.data_completeness_summary must be an object.`);
-  assert.equal(isRecord(sourceHealthScope), true, `${snapshotPath}.source_health_scope must be an object.`);
-  assert.equal(isRecord(sourceHealth), true, `${snapshotPath}.source_health_summary must be an object.`);
-  assert.equal(Number((completeness as JsonRecord).sources_total) > 0, true, `${snapshotPath} must include authoritative source totals.`);
-  assert.equal(Number((completeness as JsonRecord).automated_eligible_sources) > 0, true, `${snapshotPath} must include automated-eligible source totals.`);
-  assert.equal((completeness as JsonRecord).public_radar_items, publicRadarItems.length, `${snapshotPath} completeness counts must match the public signal set.`);
-  const broadAttempted = Number((sourceHealthScope as JsonRecord).attempted_sources);
-  const familyHealth = Array.isArray(snapshot.source_health_by_family) ? snapshot.source_health_by_family : [];
-  const familyAttempted = familyHealth.reduce(
-    (total, row) => total + (isRecord(row) ? Number(row.attempted) : 0),
-    0
-  );
-  const familyOutcomesAccounted = familyHealth.every((row) => {
-    if (!isRecord(row)) return false;
-    const remaining = Number(row.attempted) - Number(row.succeeded) - Number(row.failed);
-    return remaining >= 0 && remaining <= Number(row.no_items) + Number(row.skipped);
-  });
-  assert.equal(
-    broadAttempted > 0 && familyAttempted === broadAttempted && familyOutcomesAccounted,
-    true,
-    `${snapshotPath} must fully account for the audited broad source-health refresh.`
-  );
-  const entityAllowedKeys = new Set(["confidence", "name", "type"]);
-  const sourceFamilyAllowedValues = new Set(["公司/实验室", "分析/媒体", "其他公开来源", "开源项目", "研究订阅"]);
-  const entityKeyViolations: string[] = [];
-  const entityShapeViolations: string[] = [];
-  const corruptedIndustryTerms: string[] = [];
-
-  publicRadarItems.forEach((item, itemIndex) => {
-    assert.equal(isRecord(item), true, `${snapshotPath}.radar_items[${itemIndex}] must be an object.`);
-    const radarItem = item as JsonRecord;
-    assert.equal(
-      sourceFamilyAllowedValues.has(String(radarItem.source_family ?? "")),
-      true,
-      `${snapshotPath}.radar_items[${itemIndex}].source_family must use the canonical public classifier.`
-    );
-    if (/\b(?:theverge\.com|arstechnica\.com|technologyreview\.com)\b/i.test(String(radarItem.url ?? ""))) {
-      assert.equal(radarItem.source_family, "分析/媒体", `${snapshotPath}.radar_items[${itemIndex}] media domains must remain in the media family.`);
-    }
-    const renderedText = JSON.stringify(radarItem);
-    if (/\b(?:MANA secret|Visual secret Pruning|secret-wise expert weighting)\b/i.test(renderedText)) {
-      corruptedIndustryTerms.push(`${snapshotPath}.radar_items[${itemIndex}]`);
-    }
-    const entities = radarItem.entities;
-    assert.equal(Array.isArray(entities), true, `${snapshotPath}.radar_items[${itemIndex}].entities must be an array.`);
-    const publicEntities = entities as unknown[];
-
-    publicEntities.forEach((entity, entityIndex) => {
-      const trail = `${snapshotPath}.radar_items[${itemIndex}].entities[${entityIndex}]`;
-      if (!isRecord(entity)) {
-        entityShapeViolations.push(`${trail} is not an object`);
-        return;
-      }
-
-      for (const key of Object.keys(entity)) {
-        if (!entityAllowedKeys.has(key)) {
-          entityKeyViolations.push(`${trail}.${key}`);
-        }
-      }
-
-      if (typeof entity.name !== "string" || entity.name.trim().length === 0) {
-        entityShapeViolations.push(`${trail}.name must be a non-empty string`);
-      }
-      if (typeof entity.type !== "string" || entity.type.trim().length === 0) {
-        entityShapeViolations.push(`${trail}.type must be a non-empty string`);
-      }
-      if (typeof entity.confidence !== "number" || entity.confidence < 0 || entity.confidence > 1) {
-        entityShapeViolations.push(`${trail}.confidence must be a number between 0 and 1`);
-      }
-    });
-  });
-
-  assert.deepEqual(entityKeyViolations, [], `${snapshotPath} public entities must expose only name/type/confidence.`);
-  assert.deepEqual(entityShapeViolations, [], `${snapshotPath} public entities must use the expected public shape.`);
   assert.deepEqual(
-    corruptedIndustryTerms,
-    [],
-    `${snapshotPath} credential redaction must not corrupt ordinary AI terms such as token or token-wise.`
+    Object.keys(snapshot).sort(),
+    ["event_count", "events", "featured_event_ids", "schema_version", "updated_at"],
+    `${snapshotPath} must expose only reader-facing top-level fields.`
   );
+  assert.equal(snapshot.schema_version, 1, `${snapshotPath}.schema_version must remain stable.`);
+  assert.equal(Number.isFinite(Date.parse(String(snapshot.updated_at ?? ""))), true, `${snapshotPath}.updated_at must be a valid timestamp.`);
+  assert.equal(Array.isArray(snapshot.events), true, `${snapshotPath}.events must be an array.`);
+  assert.equal(Array.isArray(snapshot.featured_event_ids), true, `${snapshotPath}.featured_event_ids must be an array.`);
 
-  assert.equal(Object.hasOwn(snapshot, "reports"), false, `${snapshotPath} must not publish a reports field.`);
-  assert.equal(Object.hasOwn(snapshot, "report_quality_summary"), false, `${snapshotPath} must not publish report quality metadata.`);
+  const events = snapshot.events as unknown[];
+  assert.equal(snapshot.event_count, events.length, `${snapshotPath}.event_count must match the reader event set.`);
+  const allowedEventKeys = ["category", "id", "published_at", "sources", "summary_en", "summary_zh", "title_en", "title_zh"];
+  const allowedSourceKeys = ["name", "published_at", "title", "url"];
+  const eventIds = new Set<string>();
+  for (const [index, value] of events.entries()) {
+    assert.equal(isRecord(value), true, `${snapshotPath}.events[${index}] must be an object.`);
+    const event = value as JsonRecord;
+    assert.deepEqual(Object.keys(event).sort(), allowedEventKeys, `${snapshotPath}.events[${index}] must expose only reader fields.`);
+    assert.equal(typeof event.id, "string", `${snapshotPath}.events[${index}].id must be a string.`);
+    assert.equal(typeof event.title_zh, "string", `${snapshotPath}.events[${index}].title_zh must be a string.`);
+    assert.equal(typeof event.title_en, "string", `${snapshotPath}.events[${index}].title_en must be a string.`);
+    assert.equal(Number.isFinite(Date.parse(String(event.published_at ?? ""))), true, `${snapshotPath}.events[${index}].published_at must be valid.`);
+    assert.equal(Array.isArray(event.sources), true, `${snapshotPath}.events[${index}].sources must be an array.`);
+    eventIds.add(String(event.id));
+    for (const [sourceIndex, sourceValue] of (event.sources as unknown[]).entries()) {
+      assert.equal(isRecord(sourceValue), true, `${snapshotPath}.events[${index}].sources[${sourceIndex}] must be an object.`);
+      const source = sourceValue as JsonRecord;
+      assert.deepEqual(Object.keys(source).sort(), allowedSourceKeys, `${snapshotPath}.events[${index}].sources[${sourceIndex}] must expose only source links.`);
+      assert.match(String(source.url ?? ""), /^https?:\/\//i, `${snapshotPath}.events[${index}].sources[${sourceIndex}].url must be public HTTP(S).`);
+    }
+  }
+  assert.equal((snapshot.featured_event_ids as unknown[]).every((id) => eventIds.has(String(id))), true, `${snapshotPath}.featured_event_ids must reference reader events.`);
+
+  const serialized = JSON.stringify(snapshot);
+  assert.equal(serialized.toLowerCase().includes(".vercel.app"), false, `${snapshotPath} must not expose a reference deployment namespace.`);
 }
 
 function assertPublicViewSecurityMigration(securitySql: string, privateGrantSql: string) {
@@ -1236,15 +1127,6 @@ function assertWrongDomainGrantMigration(sql: string) {
   assert.doesNotMatch(sql, /\b(drop|truncate)\b|\bdelete\s+from\b/i);
 }
 
-function assertPublicWarningsAreReaderSafe(values: unknown[], label: string) {
-  const forbidden = /(CLOUDFLARE_SNAPSHOT_READ_SUPABASE|cloudflare static snapshot export|getaddrinfo|ENOTFOUND|TypeError: fetch failed|read failed|count failed|latest timestamp failed|duplicate refresh rows|reviewed local public report snapshot|Loaded \d+ reviewed|读取失败|计数读取失败|最新时间读取失败|网络连接失败)/i;
-  const hits = values
-    .filter((value): value is string => typeof value === "string")
-    .filter((value) => forbidden.test(value));
-
-  assert.deepEqual(hits, [], `${label} must not expose internal export/runtime logs.`);
-}
-
 function assertPublicStaticArtifactsDoNotExposeInternalTerms(roots: string[]) {
   const forbiddenStrings = [
     "CLOUDFLARE_SNAPSHOT_READ_SUPABASE",
@@ -1271,7 +1153,34 @@ function assertPublicStaticArtifactsDoNotExposeInternalTerms(roots: string[]) {
     "refresh run log",
     "service-role",
     "Cloudflare Pages",
-    "Vercel Admin"
+    "Vercel Admin",
+    "自动任务",
+    "内容入库",
+    "生产部署",
+    "今日同步",
+    "最近入库",
+    "个来源抓取成功",
+    "sources fetched in the latest run",
+    "Source health",
+    "来源健康",
+    "Audited through",
+    "审计截至",
+    "source_health_summary",
+    "source_health_scope",
+    "source_health_by_family",
+    "source_health_failures",
+    "data_completeness_summary",
+    "failure_family_summary",
+    "attempted_sources",
+    "fetched_sources",
+    "failed_sources",
+    "needs_review",
+    "understanding_status",
+    "overall_score",
+    "event_score",
+    "score_reason",
+    "working_tree_clean",
+    "commit_source"
   ];
   const forbiddenPatterns = [
     /\bBearer\s+[A-Za-z0-9._~+/=-]{10,}/,

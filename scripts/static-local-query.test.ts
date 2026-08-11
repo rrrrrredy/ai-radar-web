@@ -7,50 +7,54 @@ import vm from "node:vm";
 type ToolMode = "ask";
 type Locale = "en" | "zh";
 
+type ReaderEvent = {
+  id: string;
+  title_zh: string;
+  title_en: string;
+  summary_zh: string;
+  summary_en: string;
+  category: string;
+  published_at: string;
+};
+
 const outputRoot = path.join(process.cwd(), "dist", "cloudflare-pages");
 const snapshot = JSON.parse(
   fs.readFileSync(path.join(outputRoot, "data", "radar-snapshot.json"), "utf8")
 ) as {
-  curated_events?: Array<{ event_cluster_id: string }>;
-  event_clusters?: Array<{
-    event_cluster_id: string;
-    event_score_label: string;
-    first_seen_at?: string;
-    latest_seen_at?: string;
-    source_count: number;
-  }>;
-  freshness?: { latest_timestamp?: string };
+  updated_at?: string;
+  featured_event_ids?: string[];
+  events?: ReaderEvent[];
 };
 
-test("an exact event question does not pull unrelated high-scoring events", async () => {
+test("an exact event question does not pull unrelated updates", async () => {
   const html = await runLocalTool(
     "ask",
-    "What evidence and uncertainty surround \u201cMeet GPT-Red: an LLM super-hacker OpenAI built to make its models safer\u201d?"
+    "What happened with “Meet GPT-Red: an LLM super-hacker OpenAI built to make its models safer”?"
   );
 
   assert.match(html, /GPT-Red/i);
   assert.doesNotMatch(html, /v0\.25\.0|v0\.24\.0|Microsoft is reportedly|Advancing content provenance/i);
-  assert.match(html, /independence still needs checking/i);
+  assert.doesNotMatch(html, /Source health|Failed sources|Reason summary|independence still needs checking/i);
   assert.equal(countMatches(html, /<li\b[^>]*data-event-id=/g), 1);
 });
 
-test("bare Chinese today intent enforces the 24-hour evidence window", async () => {
-  const askHtml = await runLocalTool("ask", "今天有哪些高优先级事件？", "zh");
-  const anchor = Date.parse(snapshot.freshness?.latest_timestamp ?? "");
+test("a Chinese today query stays inside the 24-hour content window", async () => {
+  const askHtml = await runLocalTool("ask", "今天有哪些 AI 行业动态？", "zh");
+  const anchor = Date.parse(snapshot.updated_at ?? "");
   const lowerBound = anchor - 24 * 60 * 60 * 1000;
   const expectedIds = new Set(
-    (snapshot.event_clusters ?? [])
+    (snapshot.events ?? [])
       .filter((event) => {
-        const timestamp = Date.parse(event.latest_seen_at ?? event.first_seen_at ?? "");
-        return event.event_score_label === "高优先级" && timestamp >= lowerBound && timestamp <= anchor + 5 * 60 * 1000;
+        const timestamp = Date.parse(event.published_at);
+        return timestamp >= lowerBound && timestamp <= anchor + 5 * 60 * 1000;
       })
-      .map((event) => event.event_cluster_id)
+      .map((event) => event.id)
   );
   const resultIds = Array.from(askHtml.matchAll(/data-event-id="([^"]+)"/g), (match) => match[1]);
 
   assert.doesNotMatch(askHtml, /T\d{2}:\d{2}:\d{2}/);
   if (expectedIds.size === 0) {
-    assert.match(askHtml, /指定时间窗口内没有高优先级事件/);
+    assert.match(askHtml, /没有找到匹配动态/);
     assert.equal(resultIds.length, 0);
   } else {
     assert.ok(resultIds.length > 0);
@@ -58,22 +62,18 @@ test("bare Chinese today intent enforces the 24-hour evidence window", async () 
   }
 });
 
-test("an explicit Chinese count returns exactly the requested number of events", async () => {
+test("an explicit Chinese count returns featured reader updates", async () => {
   const html = await runLocalTool("ask", "把行业精选最值得关注的三件事列出来", "zh");
 
   assert.equal(countMatches(html, /<li\b[^>]*data-event-id=/g), 3);
-  assert.doesNotMatch(html, /公开快照|跨来源家族|同家族多源复述/);
-  const curatedIds = new Set((snapshot.curated_events ?? []).map((event) => event.event_cluster_id));
+  assert.doesNotMatch(html, /公开快照|跨来源家族|同家族多源复述|待复核|高优先级/);
+  const featuredIds = new Set(snapshot.featured_event_ids ?? []);
   const resultIds = Array.from(html.matchAll(/data-event-id="([^"]+)"/g), (match) => match[1]);
-  assert.ok(resultIds.length > 0, "ranked selected events must expose stable event ids.");
-  assert.equal(
-    resultIds.every((eventId) => curatedIds.has(eventId)),
-    true,
-    "ranking selected events must only return visible curated events."
-  );
+  assert.ok(resultIds.length > 0, "ranked featured updates must expose stable reader ids.");
+  assert.equal(resultIds.every((eventId) => featuredIds.has(eventId)), true);
 });
 
-test("Chinese Ask results keep the same reader-headline quality contract", async () => {
+test("Chinese Ask results keep the reader-headline quality contract", async () => {
   const html = await runLocalTool("ask", "把行业精选最值得关注的三件事列出来", "zh");
   const titles = Array.from(html.matchAll(/<li\b[^>]*><strong>([^<]+)<\/strong><p>/g), (match) => match[1]);
 
@@ -86,46 +86,44 @@ test("Chinese Ask results keep the same reader-headline quality contract", async
   }
 });
 
-test("source health renders numeric zeroes and a reader-friendly timestamp", async () => {
+test("operations questions never turn Ask into a monitoring console", async () => {
   const html = await runLocalTool("ask", "Which sources failed or had no new items today?");
 
-  assert.match(html, /<dd>0<\/dd>/);
-  assert.doesNotMatch(html, /T\d{2}:\d{2}:\d{2}/);
-  assert.match(html, /UTC/);
-  assert.match(html, /Source health/);
-  assert.match(html, /Failed sources/);
-  assert.match(html, /Reason summary/);
+  assert.doesNotMatch(html, /Source health|Failed sources|Reason summary|Succeeded|Manual \/ blocked|No new items|Duplicate only|Audited through/i);
+  assert.doesNotMatch(html, /<dd>\d+<\/dd>/);
 });
 
-test("retired legacy report URLs stay 404 and the public snapshot carries no report payload", () => {
+test("retired About and report routes stay absent and the reader snapshot is minimal", () => {
+  assert.equal(fs.existsSync(path.join(outputRoot, "about", "index.html")), false);
+  assert.equal(fs.existsSync(path.join(outputRoot, "en", "about", "index.html")), false);
   assert.equal(fs.existsSync(path.join(outputRoot, "reports", "index.html")), false);
   assert.equal(fs.existsSync(path.join(outputRoot, "en", "reports", "index.html")), false);
-  assert.equal(Object.hasOwn(snapshot, "reports"), false);
-  assert.equal(Object.hasOwn(snapshot, "report_quality_summary"), false);
+  const forbiddenTopLevel = ["coverage", "counts", "source", "radar_items", "source_health_summary", "data_completeness_summary", "reports", "report_quality_summary"];
+  for (const key of forbiddenTopLevel) assert.equal(Object.hasOwn(snapshot, key), false, `reader snapshot must not expose ${key}.`);
   const worker = fs.readFileSync(path.join(outputRoot, "_worker.js"), "utf8");
   assert.equal(fs.existsSync(path.join(outputRoot, "_redirects")), false);
+  assert.match(worker, /"\/about"/);
+  assert.match(worker, /"\/en\/about"/);
   assert.match(worker, /"\/reports"/);
   assert.match(worker, /"\/en\/reports"/);
 });
 
-test("multi-source intent excludes single-source events", async () => {
-  const html = await runLocalTool("ask", "Which events have more than one source?");
-  const eventById = new Map((snapshot.event_clusters ?? []).map((event) => [event.event_cluster_id, event]));
+test("model questions return only model or benchmark updates", async () => {
+  const html = await runLocalTool("ask", "What changed in AI models this week?");
+  const eventById = new Map((snapshot.events ?? []).map((event) => [event.id, event]));
   const resultIds = Array.from(html.matchAll(/data-event-id="([^"]+)"/g), (match) => match[1]);
 
-  assert.ok(resultIds.length > 0, "multi-source query should return matching events when available.");
-  assert.doesNotMatch(html, /\b1 source\b/);
+  assert.ok(resultIds.length > 0, "model query should return matching reader updates when available.");
   assert.equal(
-    resultIds.every((eventId) => (eventById.get(eventId)?.source_count ?? 0) > 1),
-    true,
-    "multi-source query results must all have source_count greater than one."
+    resultIds.every((eventId) => ["model_release", "benchmark"].includes(eventById.get(eventId)?.category ?? "")),
+    true
   );
 });
 
 test("nonsense query returns an empty reader-facing result", async () => {
   const html = await runLocalTool("ask", "zzzxxyy no such event");
 
-  assert.match(html, /No matching event/);
+  assert.match(html, /No matching update/);
   assert.equal(countMatches(html, /<li\b[^>]*data-event-id=/g), 0);
 });
 
@@ -134,12 +132,8 @@ async function runLocalTool(mode: ToolMode, query: string, locale: Locale = "en"
     ? path.join(outputRoot, "en", mode, "index.html")
     : path.join(outputRoot, mode, "index.html");
   const script = extractToolScript(fs.readFileSync(pagePath, "utf8"), mode);
-  const input = {
-    value: query
-  };
-  const result = {
-    innerHTML: ""
-  };
+  const input = { value: query };
+  const result = { innerHTML: "" };
   let run: (() => Promise<void>) | undefined;
   const button = {
     addEventListener(type: string, callback: () => Promise<void>) {
@@ -154,10 +148,7 @@ async function runLocalTool(mode: ToolMode, query: string, locale: Locale = "en"
       return null;
     }
   };
-  const fetch = async () => ({
-    json: async () => snapshot,
-    ok: true
-  });
+  const fetch = async () => ({ json: async () => snapshot, ok: true });
 
   vm.runInNewContext(script, { console, document, fetch });
   assert.ok(run, `The ${mode} page must register its local query action.`);
@@ -167,8 +158,8 @@ async function runLocalTool(mode: ToolMode, query: string, locale: Locale = "en"
 
 function extractToolScript(html: string, mode: ToolMode) {
   const scripts = Array.from(html.matchAll(/<script>([\s\S]*?)<\/script>/g), (match) => match[1]);
-  const script = scripts.find((candidate) => candidate.includes("function renderAskResult") && candidate.includes("const snapshotUrl"));
-  assert.ok(script, `The ${mode} page must embed the local evidence tool.`);
+  const script = scripts.find((candidate) => candidate.includes("function renderResults") && candidate.includes("const snapshotUrl"));
+  assert.ok(script, `The ${mode} page must embed the local reader tool.`);
   return script;
 }
 

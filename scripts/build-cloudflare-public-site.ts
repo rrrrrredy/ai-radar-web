@@ -211,9 +211,36 @@ async function main() {
   );
 }
 
+function readerSnapshot(snapshot: Snapshot) {
+  const events = eventFeed(snapshot).filter(readerReadyEvent);
+  const eventIds = new Set(events.map((event) => event.event_cluster_id));
+  return {
+    schema_version: 1,
+    updated_at: snapshot.freshness.latest_timestamp,
+    event_count: events.length,
+    featured_event_ids: snapshot.curated_events
+      .map((event) => event.event_cluster_id)
+      .filter((eventId) => eventIds.has(eventId)),
+    events: events.map((event) => ({
+      id: event.event_cluster_id,
+      title_zh: chineseEventTitle(event),
+      title_en: eventEnglishTitle(event, snapshot),
+      summary_zh: chineseEventSummary(event),
+      summary_en: eventEnglishSummary(event, snapshot),
+      category: categoryFilterValue(event.category),
+      published_at: event.latest_seen_at,
+      sources: event.citations.map((citation) => ({
+        name: citation.source_name,
+        title: citation.title,
+        url: citation.url,
+        published_at: citation.published_at ?? citation.collected_at
+      }))
+    }))
+  };
+}
 async function writeSite(snapshot: Snapshot) {
   const liveFeedConfig = getSupabasePublicConfig();
-  const generatedDirectories = ["about", "ask", "assets", "en", "radar", "sources"];
+  const generatedDirectories = ["ask", "assets", "en", "radar", "sources"];
   await Promise.all(generatedDirectories.map((directory) =>
     fs.rm(path.join(outputDir, directory), { force: true, recursive: true })
   ));
@@ -224,11 +251,11 @@ async function writeSite(snapshot: Snapshot) {
     .filter((entry) => entry.isDirectory() && !allowedDirectories.has(entry.name))
     .map((entry) => fs.rm(path.join(outputDir, entry.name), { force: true, recursive: true })));
   await Promise.all([
-    fs.mkdir(path.join(outputDir, "about"), { recursive: true }),
+
     fs.mkdir(path.join(outputDir, "ask"), { recursive: true }),
     fs.mkdir(path.join(outputDir, "assets"), { recursive: true }),
     fs.mkdir(path.join(outputDir, "data"), { recursive: true }),
-    fs.mkdir(path.join(outputDir, "en", "about"), { recursive: true }),
+
     fs.mkdir(path.join(outputDir, "en", "ask"), { recursive: true }),
     fs.mkdir(path.join(outputDir, "en", "radar"), { recursive: true }),
     fs.mkdir(path.join(outputDir, "en", "sources"), { recursive: true }),
@@ -238,13 +265,12 @@ async function writeSite(snapshot: Snapshot) {
 
   await Promise.all([
     fs.copyFile(path.join(process.cwd(), "app", "icon.svg"), path.join(outputDir, "favicon.svg")),
-    fs.writeFile(path.join(outputDir, "data", "radar-snapshot.json"), `${JSON.stringify(snapshot, null, 2)}\n`, "utf8"),
-    fs.writeFile(path.join(outputDir, "about", "index.html"), renderAbout(snapshot), "utf8"),
+    fs.writeFile(path.join(outputDir, "data", "radar-snapshot.json"), `${JSON.stringify(readerSnapshot(snapshot), null, 2)}\n`, "utf8"),
     fs.writeFile(path.join(outputDir, "ask", "index.html"), renderAsk(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "assets", "live-feed.js"), liveFeedClientScript(), "utf8"),
     fs.writeFile(path.join(outputDir, "assets", "styles.css"), stylesheet(), "utf8"),
     fs.writeFile(path.join(outputDir, "404.html"), renderNotFound(snapshot), "utf8"),
-    fs.writeFile(path.join(outputDir, "en", "about", "index.html"), renderEnglishAbout(snapshot), "utf8"),
+
     fs.writeFile(path.join(outputDir, "en", "ask", "index.html"), renderEnglishAsk(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "en", "index.html"), renderEnglishHome(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "en", "radar", "index.html"), renderEnglishRadar(snapshot), "utf8"),
@@ -261,32 +287,20 @@ async function writeSite(snapshot: Snapshot) {
 function retiredRouteWorker(config: ReturnType<typeof getSupabasePublicConfig>) {
   const liveFeedColumns = [
     "id",
-    "local_id",
     "source_name",
+    "source_family",
     "title",
     "url",
     "published_at",
     "collected_at",
     "processed_at",
-    "language",
     "summary_zh",
     "summary_en",
     "categories",
-    "tags",
-    "understanding_status",
-    "ai_relevance_score",
-    "importance_score",
-    "credibility_score",
-    "novelty_score",
-    "freshness_score",
-    "overall_score",
-    "source_tier",
-    "confidence",
-    "why_it_matters",
-    "updated_at"
+    "why_it_matters"
   ].join(",");
 
-  return `const retiredPrefixes = ["/write", "/en/write", "/entities", "/en/entities", "/reports", "/en/reports", "/api/writing-assistant"];
+  return `const retiredPrefixes = ["/about", "/en/about", "/write", "/en/write", "/entities", "/en/entities", "/reports", "/en/reports", "/api/writing-assistant"];
 const liveFeedPath = "/api/live-feed";
 const supabaseUrl = ${JSON.stringify(config?.url ?? "")};
 const supabaseKey = ${JSON.stringify(config?.anonKey ?? "")};
@@ -331,7 +345,7 @@ function chunkValues(values, size) {
 
 async function buildLiveFeed(request, context) {
   if (!supabaseUrl || !supabaseKey) {
-    return jsonResponse({ ok: false, error: "live_feed_not_configured" }, 503, {
+    return jsonResponse({ error: "temporarily_unavailable" }, 503, {
       "cache-control": "no-store"
     });
   }
@@ -352,19 +366,13 @@ async function buildLiveFeed(request, context) {
 
   const manifestParams = new URLSearchParams({
     select: "id,processed_at,published_at",
-    order: "processed_at.desc.nullslast,published_at.desc.nullslast,id.desc",
+    order: "overall_score.desc.nullslast,processed_at.desc.nullslast,published_at.desc.nullslast,id.desc",
     limit: String(limit)
   });
   const manifest = await supabaseJson("public_radar_items?" + manifestParams.toString());
   const ids = Array.from(new Set(manifest.map((row) => String(row.id || "").trim()).filter(Boolean)));
   if (ids.length === 0) {
-    return jsonResponse({
-      ok: true,
-      generated_at: new Date().toISOString(),
-      latest_processed_at: null,
-      item_count: 0,
-      items: []
-    }, 200, {
+    return jsonResponse({ updated_at: null, items: [] }, 200, {
       "cache-control": "public, max-age=5, s-maxage=15, stale-while-revalidate=60",
       "x-radar-live-source": "supabase_public_radar"
     });
@@ -383,12 +391,21 @@ async function buildLiveFeed(request, context) {
     throw new Error("Supabase live feed detail rows were incomplete");
   }
 
+  const readerItems = items.map((item) => ({
+    id: item.id,
+    source_name: item.source_name,
+    source_family: item.source_family,
+    title: item.title,
+    url: item.url,
+    published_at: item.published_at || item.collected_at || item.processed_at || null,
+    summary_zh: item.summary_zh,
+    summary_en: item.summary_en,
+    categories: item.categories,
+    why_it_matters: item.why_it_matters
+  }));
   const response = jsonResponse({
-    ok: true,
-    generated_at: new Date().toISOString(),
-    latest_processed_at: items.map((item) => item.processed_at).filter(Boolean).sort().at(-1) || null,
-    item_count: items.length,
-    items
+    updated_at: readerItems.map((item) => item.published_at).filter(Boolean).sort().at(-1) || null,
+    items: readerItems
   }, 200, {
     "cache-control": "public, max-age=5, s-maxage=15, stale-while-revalidate=60",
     "x-radar-live-source": "supabase_public_radar"
@@ -406,7 +423,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === liveFeedPath || url.pathname === liveFeedPath + "/") {
       if (request.method !== "GET" && request.method !== "HEAD") {
-        return jsonResponse({ ok: false, error: "method_not_allowed" }, 405, {
+        return jsonResponse({ error: "method_not_allowed" }, 405, {
           allow: "GET, HEAD",
           "cache-control": "no-store"
         });
@@ -414,15 +431,11 @@ export default {
       try {
         return await buildLiveFeed(request, context);
       } catch (error) {
-        return jsonResponse({
-          ok: false,
-          error: "live_feed_temporarily_unavailable",
-          detail: error instanceof Error ? error.message.slice(0, 120) : "unknown_error"
-        }, 502, { "cache-control": "no-store" });
+        return jsonResponse({ error: "temporarily_unavailable" }, 502, { "cache-control": "no-store" });
       }
     }
     if (retiredPrefixes.some((prefix) => url.pathname === prefix || url.pathname.startsWith(prefix + "/"))) {
-      return new Response("<!doctype html><meta charset=\\"utf-8\\"><title>页面不存在 - AI 行业信息雷达</title><h1>404</h1><p>This public route is not available.</p>", {
+      return new Response("<!doctype html><meta charset=\\"utf-8\\"><title>页面不存在 - AI 行业信息雷达</title><h1>404</h1><p>This page does not exist.</p>", {
         headers: { "content-type": "text/html; charset=utf-8" },
         status: 404,
         statusText: "Not Found"
@@ -439,6 +452,10 @@ function retiredRouteWorkerRoutes() {
   return `${JSON.stringify({
     version: 1,
     include: [
+      "/about",
+      "/about/*",
+      "/en/about",
+      "/en/about/*",
       "/write",
       "/write/*",
       "/en/write",
@@ -464,11 +481,10 @@ function renderNotFound(snapshot: Snapshot) {
   return shell(snapshot, "home", 0, "页面不存在", `
     <section class="page-heading not-found">
       <div>
-        <div class="pill-row">${pill("404", "caution")}${pill("公开只读站点", "neutral")}</div>
+        <div class="pill-row">${pill("404", "neutral")}</div>
         <h1>没有找到这个页面</h1>
-        <p class="lead">该路径不属于 AI 行业雷达公开站点。返回首页查看行业精选，或打开事件雷达继续检索。</p>
-        <p class="note">This route is not part of the public AI Industry Radar site.</p>
-        <div class="actions"><a class="button primary" href="/">返回首页</a><a class="button" href="/radar/">打开事件雷达</a></div>
+        <p class="lead">这个页面不存在。你可以返回今日热点，或继续查看全部 AI 动态。</p>
+        <div class="actions"><a class="button primary" href="/">返回今日热点</a><a class="button" href="/radar/">查看全部动态</a></div>
       </div>
     </section>
   `);
@@ -546,8 +562,8 @@ function feedDayLabel(value: string, locale: "en" | "zh") {
   }).format(date);
 }
 
-function storyDataAttributes(event: SnapshotEvent, snapshot: Snapshot, title: string, summary: string) {
-  return `data-category="${escapeAttr(`${event.category} ${categoryFilterValue(event.category)}`)}" data-family="${escapeAttr(event.source_families.join(" "))}" data-freshness="${freshnessBucket(event.latest_seen_at)}" data-score="${escapeAttr(event.event_score_label)}" data-search="${escapeAttr(`${title} ${summary} ${eventSources(event, 8).join(" ")} ${event.related_entities.join(" ")}`.toLowerCase())}" data-source-count="${eventConfirmationFilterValue(event)}" data-status="${escapeAttr(eventStatus(event, snapshot))}"`;
+function storyDataAttributes(event: SnapshotEvent, title: string, summary: string) {
+  return `data-category="${escapeAttr(`${event.category} ${categoryFilterValue(event.category)}`)}" data-family="${escapeAttr(event.source_families.join(" "))}" data-search="${escapeAttr(`${title} ${summary} ${eventSources(event, 8).join(" ")} ${event.related_entities.join(" ")}`.toLowerCase())}"`;
 }
 
 function renderStorySources(event: SnapshotEvent, locale: "en" | "zh") {
@@ -592,7 +608,7 @@ function renderStoryRow(event: SnapshotEvent, snapshot: Snapshot, locale: "en" |
   const sourceCount = locale === "en" ? `${event.source_count} source${event.source_count === 1 ? "" : "s"}` : `${event.source_count} 个来源`;
   const category = locale === "en" ? categoryLabelEn(event.category) : labelize(event.category);
   const timestamp = feedDateTime(event.latest_seen_at, locale);
-  return `<article class="event-card story-row" ${storyDataAttributes(event, snapshot, title, summary)}>
+  return `<article class="event-card story-row" ${storyDataAttributes(event, title, summary)}>
     <div class="story-time"><time datetime="${escapeAttr(event.latest_seen_at)}" title="${escapeAttr(`${timestamp.date} ${timestamp.time} · ${locale === "en" ? "UTC" : "北京时间"}`)}"><span class="story-date">${escapeHtml(timestamp.date)}</span><span class="story-clock">${escapeHtml(timestamp.time)}</span></time><i aria-hidden="true"></i></div>
     <div class="story-content">
       <div class="story-meta"><span>${escapeHtml(sources)}</span><strong>${escapeHtml(sourceCount)}</strong></div>
@@ -623,11 +639,11 @@ function renderTopStories(events: SnapshotEvent[], snapshot: Snapshot, locale: "
     const category = locale === "en" ? categoryLabelEn(event.category) : labelize(event.category);
     const sourceNames = eventSources(event, 2).join(" · ") || (locale === "en" ? "Public source" : "公开来源");
     const timestamp = feedDateTime(event.latest_seen_at, locale);
-    return `<article class="top-story story-row" ${storyDataAttributes(event, snapshot, title, summary)}>
+    return `<article class="top-story story-row" ${storyDataAttributes(event, title, summary)}>
       <span class="hot-rank">${String(index + 1).padStart(2, "0")}</span>
       <div class="hot-meta"><time datetime="${escapeAttr(event.latest_seen_at)}" title="${escapeAttr(locale === "en" ? "UTC" : "北京时间")}">${escapeHtml(`${timestamp.date} · ${timestamp.time}`)}</time><span>${escapeHtml(sourceNames)}</span><small>${escapeHtml(category)}</small></div>
       <div class="hot-copy"><h2><a href="${escapeAttr(eventPrimaryUrl(event))}">${escapeHtml(title)}</a></h2><p>${escapeHtml(summary)}</p></div>
-      <div class="hot-judgment"><strong>${locale === "en" ? "Why it matters" : "为什么值得看"}</strong><p>${escapeHtml(eventReaderJudgment(event, snapshot, locale))}</p><small>${escapeHtml(`${sources} · ${locale === "en" ? eventScoreLabelEn(event.event_score_label) : event.event_score_label}`)}</small></div>
+      <div class="hot-judgment"><strong>${locale === "en" ? "Why it matters" : "为什么值得看"}</strong><p>${escapeHtml(eventReaderJudgment(event, snapshot, locale))}</p><small>${escapeHtml(sources)}</small></div>
     </article>`;
   }).join("");
 }
@@ -689,10 +705,6 @@ function liveFeedClientScript() {
     return Array.isArray(value) ? value.map((item) => String(item || "").trim()).filter(Boolean) : [];
   }
 
-  function score(value) {
-    const number = Number(value);
-    return Number.isFinite(number) ? Math.max(0, Math.min(1, number)) : 0;
-  }
 
   function effectiveTime(item) {
     for (const value of [item.published_at, item.collected_at, item.processed_at, item.updated_at]) {
@@ -734,6 +746,8 @@ function liveFeedClientScript() {
   }
 
   function sourceFamily(item) {
+    const declared = String(item.source_family || "").trim();
+    if (["公司/实验室", "分析/媒体", "其他公开来源", "开源项目", "研究订阅"].includes(declared)) return declared;
     const categories = values(item.categories);
     if (categories.includes("research")) return "研究订阅";
     if (categories.includes("open_source")) return "开源项目";
@@ -889,13 +903,13 @@ function liveFeedClientScript() {
       if (category === "model_release") return source + " published a model or version update. Check the release notes for capability and compatibility details.";
       if (category === "open_source") return source + " published an open-source update that may affect compatibility and deployment choices.";
       if (category === "product_update") return source + " changed a product workflow or capability; availability and migration impact still need verification.";
-      return "This is a newly processed public signal. Open the original source to verify the full context.";
+      return "This public update may affect the AI industry. Open the original source for the full context.";
     }
     if (category === "model_release") return source + "发布了模型或版本更新，能力变化、兼容性和使用限制仍需结合发布说明核对。";
     if (category === "open_source") return source + "更新了开源项目，版本变化可能影响兼容性、部署方式和技术选型。";
     if (category === "product_update") return source + "更新了产品能力或工作流，实际可用范围和迁移影响仍需继续确认。";
     if (category === "research") return "这项研究可能影响对技术路线的判断，但结论仍需结合论文方法与实验设置核对。";
-    return "这是刚完成处理的公开信息，具体背景、数字和适用范围仍应回到原始来源核对。";
+    return "这条公开信息可能影响 AI 行业判断，具体背景、数字和适用范围请回到原始来源核对。";
   }
 
   function readerSummary(item, title) {
@@ -926,7 +940,7 @@ function liveFeedClientScript() {
     const title = readerTitle(item);
     const url = safeUrl(item.url);
     const time = effectiveTime(item);
-    return Boolean(item && title.length >= 4 && url !== "#" && time > 0 && ["included", "needs_review"].includes(String(item.understanding_status || "included")));
+    return Boolean(item && title.length >= 4 && url !== "#" && time > 0);
   }
 
   function selectItems(items) {
@@ -958,20 +972,12 @@ function liveFeedClientScript() {
     return !/^(?:untitled|home|news|latest|update|changelog|release notes?)$/iu.test(originalTitle);
   }
 
-  function rankingScore(item) {
-    const ageHours = Math.max(0, (Date.now() - effectiveTime(item)) / (60 * 60 * 1000));
-    const recency = Math.max(0, 1 - ageHours / (7 * 24));
-    return score(item.overall_score) * 38 + score(item.importance_score) * 20 +
-      score(item.credibility_score) * 12 + score(item.ai_relevance_score) * 10 +
-      score(item.novelty_score) * 8 + score(item.freshness_score) * 7 + recency * 15;
-  }
 
   function selectTopItems(items) {
     const candidates = items
       .filter(eligible)
       .filter(readerReadyForTop)
-      .filter((item) => Date.now() - effectiveTime(item) <= 30 * 24 * 60 * 60 * 1000)
-      .sort((left, right) => rankingScore(right) - rankingScore(left) || effectiveTime(right) - effectiveTime(left));
+      .filter((item) => Date.now() - effectiveTime(item) <= 30 * 24 * 60 * 60 * 1000);
     const today = dayKey(Date.now());
     const currentDayItems = candidates.filter((item) => dayKey(effectiveTime(item)) === today);
     const earlierItems = candidates.filter((item) => dayKey(effectiveTime(item)) !== today);
@@ -1012,15 +1018,11 @@ function liveFeedClientScript() {
     const family = sourceFamily(item);
     const source = String(item.source_name || (locale === "zh" ? "公开来源" : "Public source"));
     const search = [title, summary, source, categories.join(" ")].join(" ").toLowerCase();
-    const overall = score(item.overall_score);
-    const priority = locale === "zh"
-      ? (overall >= 0.75 ? "高优先级" : overall >= 0.55 ? "关注" : "观察")
-      : (overall >= 0.75 ? "High priority" : overall >= 0.55 ? "Watch" : "Monitor");
-    return '<article class="top-story story-row" data-category="' + escapeHtml(categories.join(" ") + " " + category) + '" data-family="' + escapeHtml(family) + '" data-search="' + escapeHtml(search) + '" data-source-count="single">' +
+    return '<article class="top-story story-row" data-category="' + escapeHtml(categories.join(" ") + " " + category) + '" data-family="' + escapeHtml(family) + '" data-search="' + escapeHtml(search) + '">' +
       '<span class="hot-rank">' + String(index + 1).padStart(2, "0") + '</span>' +
       '<div class="hot-meta"><time datetime="' + escapeHtml(String(timestampValue || "")) + '" title="' + escapeHtml(locale === "zh" ? "北京时间" : "UTC") + '">' + escapeHtml(timestamp.date + " · " + timestamp.time) + '</time><span>' + escapeHtml(source) + '</span><small>' + escapeHtml(categoryLabel(category)) + '</small></div>' +
       '<div class="hot-copy"><h2><a href="' + escapeHtml(safeUrl(item.url)) + '">' + escapeHtml(title) + '</a></h2><p>' + escapeHtml(summary) + '</p></div>' +
-      '<div class="hot-judgment"><strong>' + (locale === "zh" ? "为什么值得看" : "Why it matters") + '</strong><p>' + escapeHtml(judgment) + '</p><small>' + (locale === "zh" ? "1 个来源" : "1 source") + ' · ' + priority + '</small></div></article>';
+      '<div class="hot-judgment"><strong>' + (locale === "zh" ? "为什么值得看" : "Why it matters") + '</strong><p>' + escapeHtml(judgment) + '</p><small>' + (locale === "zh" ? "1 个来源" : "1 source") + '</small></div></article>';
   }
 
   function topHtml(items) {
@@ -1058,28 +1060,19 @@ function liveFeedClientScript() {
     }).join("");
   }
 
-  function todayProcessedCount(items) {
-    const today = dayKey(Date.now());
-    return items.filter((item) => {
-      const timestamp = item.processed_at || item.collected_at || item.published_at || item.updated_at;
-      return dayKey(timestamp) === today;
-    }).length;
-  }
-
-  function updateStatus(payload, itemCount, syncedToday) {
-    const latest = payload.latest_processed_at || payload.generated_at;
+  function updateStatus(payload, itemCount) {
+    const latest = payload.updated_at;
     const timestamp = dateTime(latest);
     if (status) {
       status.textContent = locale === "zh"
-        ? "每日更新 · 今日同步 " + syncedToday + " 条 · 最近入库 " + timestamp.date + " " + timestamp.time + " · 每天 09:00 刷新"
-        : "Daily update · " + syncedToday + " synced today · ingested " + timestamp.date + " " + timestamp.time + " UTC · refreshes 09:00 Beijing";
+        ? "更新于 " + timestamp.date + " " + timestamp.time + "（北京时间）· 每日 09:00"
+        : "Updated " + timestamp.date + " " + timestamp.time + " UTC · Daily at 09:00 Beijing";
       status.dataset.state = "ready";
     }
     if (liveDate && latest) liveDate.textContent = timestamp.date + " · " + timestamp.time;
     const count = root.querySelector("[data-live-count]");
     if (count) count.textContent = locale === "zh" ? itemCount + " 条" : itemCount + " items";
   }
-
   async function refresh() {
     if (requestInFlight || document.visibilityState === "hidden") return;
     requestInFlight = true;
@@ -1090,7 +1083,7 @@ function liveFeedClientScript() {
       });
       if (!response.ok) throw new Error("live feed HTTP " + response.status);
       const payload = await response.json();
-      if (!payload || payload.ok !== true || !Array.isArray(payload.items)) throw new Error("invalid live feed payload");
+      if (!payload || !Array.isArray(payload.items)) throw new Error("invalid live feed payload");
       const topItems = mode === "home" ? selectTopItems(payload.items) : [];
       if (top && topItems.length === 10) {
         top.innerHTML = topHtml(topItems);
@@ -1099,12 +1092,15 @@ function liveFeedClientScript() {
       if (items.length > 0 && stream) {
         stream.innerHTML = streamHtml(items);
         root.dataset.liveState = "ready";
-        updateStatus(payload, items.length, todayProcessedCount(payload.items));
+        updateStatus(payload, items.length);
         window.dispatchEvent(new CustomEvent("radar:feed-updated"));
       }
     } catch {
       if (status) {
-        status.textContent = locale === "zh" ? "今日数据加载暂时中断 · 显示最近已验证数据" : "Daily data load interrupted · showing last verified data";
+        const visibleDate = liveDate && liveDate.textContent ? liveDate.textContent.trim() : "";
+        status.textContent = locale === "zh"
+          ? "暂未取得最新内容" + (visibleDate ? " · 当前显示至 " + visibleDate : "")
+          : "Latest content is temporarily unavailable" + (visibleDate ? " · showing through " + visibleDate : "");
         status.dataset.state = "fallback";
       }
       root.dataset.liveState = "fallback";
@@ -1137,12 +1133,8 @@ function sourcePublishers(snapshot: Snapshot) {
 function renderSources(snapshot: Snapshot) {
   const events = sourceEvents(snapshot);
   const publishers = sourcePublishers(snapshot);
-  const publicSourceCount = snapshot.coverage.sources_with_public_items ?? publishers.length;
-  const attempted = snapshot.coverage.attempted_sources ?? 0;
-  const fetched = snapshot.coverage.fetched_sources ?? 0;
-  const refreshStatus = attempted > 0 ? `本轮 ${fetched}/${attempted} 个来源抓取成功` : "按最近更新时间排列";
   return shell(snapshot, "sources", 1, "来源", `
-    <section class="reader-heading compact"><div><div class="reader-title-line"><h1>来源</h1><span>${publicSourceCount} 个公开来源</span></div><p>${refreshStatus}。公司、研究机构、媒体与开源社区的公开更新按时间汇入同一条阅读流。</p></div></section>
+    <section class="reader-heading compact"><div><div class="reader-title-line"><h1>来源</h1></div><p>浏览公司、研究机构、媒体与开源社区的原始来源，以及它们最近发布的 AI 动态。</p></div></section>
     <section class="publisher-index" aria-label="信息来源">${publishers.map((publisher) => `<span>${escapeHtml(publisher)}</span>`).join("")}</section>
     <section class="latest-feed"><div class="section-heading"><h2>最近更新</h2><span>${events.length} 条</span></div><div class="story-stream">${renderStoryStream(events, snapshot, "zh")}</div></section>
   `);
@@ -1151,38 +1143,10 @@ function renderSources(snapshot: Snapshot) {
 function renderEnglishSources(snapshot: Snapshot) {
   const events = sourceEvents(snapshot).filter((event) => readerReadyEventForLocale(event, snapshot, "en"));
   const publishers = sourcePublishers(snapshot);
-  const publicSourceCount = snapshot.coverage.sources_with_public_items ?? publishers.length;
-  const attempted = snapshot.coverage.attempted_sources ?? 0;
-  const fetched = snapshot.coverage.fetched_sources ?? 0;
-  const refreshStatus = attempted > 0 ? `${fetched} of ${attempted} sources fetched in the latest run` : "Ordered by latest update";
   return englishShell(snapshot, "sources", 1, "Sources", `
-    <section class="reader-heading compact"><div><div class="reader-title-line"><h1>Sources</h1><span>${publicSourceCount} public sources</span></div><p>${refreshStatus}. Companies, research labs, publishers and open-source communities share one reading stream.</p></div></section>
+    <section class="reader-heading compact"><div><div class="reader-title-line"><h1>Sources</h1></div><p>Browse original updates from companies, research labs, publishers and open-source communities.</p></div></section>
     <section class="publisher-index" aria-label="Sources">${publishers.map((publisher) => `<span>${escapeHtml(publisher)}</span>`).join("")}</section>
     <section class="latest-feed"><div class="section-heading"><h2>Latest updates</h2><span>${events.length} items</span></div><div class="story-stream">${renderStoryStream(events, snapshot, "en")}</div></section>
-  `);
-}
-
-function renderAbout(snapshot: Snapshot) {
-  return shell(snapshot, "about", 1, "关于", `
-    <article class="about-reader">
-      <header><h1>把真正值得看的 AI 动态留下来</h1><p>AI 行业雷达持续聚合公开来源，合并重复报道，补充中文摘要和判断，帮助你更快知道发生了什么、为什么值得看。</p></header>
-      <section><h2>多久更新一次</h2><p>自动任务每天 09:00（北京时间）发起一次完整刷新，依次完成来源检查、增量去重、内容入库和生产部署。任务通常需要数分钟；页面打开或重新回到前台时会读取最新数据。本站提供每日更新，不承诺分钟级实时性。</p></section>
-      <section><h2>我们怎么选</h2><p>先排除低相关和重复内容，再结合新鲜度、来源可信度、重要性与多源报道情况排序。单一来源不会被包装成已经确认的事实。</p></section>
-      <section><h2>你会看到什么</h2><p>模型与产品更新、开发工具、开源项目、研究论文、商业变化和政策动态。每条内容都保留原文入口，摘要只用于帮助判断是否值得继续阅读。</p></section>
-      <section><h2>内容边界</h2><p>本站是公开信息的聚合摘要与阅读索引。原文版权归各来源所有；引用数字、政策或原话前，请回到原文复核。</p></section>
-    </article>
-  `);
-}
-
-function renderEnglishAbout(snapshot: Snapshot) {
-  return englishShell(snapshot, "about", 1, "About", `
-    <article class="about-reader">
-      <header><h1>Keep the AI developments that are actually worth reading</h1><p>AI Industry Radar aggregates public sources, merges repeated coverage and adds concise summaries and editorial judgment.</p></header>
-      <section><h2>Update cadence</h2><p>One complete refresh starts every day at 09:00 Beijing time, covering source checks, incremental deduplication, persistence and production deployment. It normally takes a few minutes. The page loads the latest data when opened or brought back to the foreground. This is a daily feed, not a minute-level real-time service.</p></section>
-      <section><h2>How items are selected</h2><p>Low-relevance and duplicate material is filtered first. Freshness, source credibility, importance and source breadth then shape the order. A single source is never presented as independent confirmation.</p></section>
-      <section><h2>What appears here</h2><p>Models, products, developer tools, open-source projects, research, business shifts and policy developments. Every item keeps a path back to the original source.</p></section>
-      <section><h2>Editorial boundary</h2><p>This site is a public-information summary and reading index. Original rights remain with each publisher; verify figures, policies and quotations in the linked source.</p></section>
-    </article>
   `);
 }
 
@@ -1192,7 +1156,7 @@ function renderEnglishHome(snapshot: Snapshot) {
   const topIds = new Set(topEvents.map((event) => event.event_cluster_id));
   const latestEvents = events.filter((event) => !topIds.has(event.event_cluster_id)).slice(0, 26);
   return englishShell(snapshot, "home", 0, "Today's hot topics", `
-    <section class="reader-heading"><div><div class="reader-title-line"><h1>Today's hot topics</h1><time data-live-date>${escapeHtml(feedDayLabel(snapshot.generated_at, "en"))}</time><span class="live-indicator" data-live-status data-state="connecting">Loading daily update</span></div><p>Noise filtered out. Only the AI developments worth reading remain.</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search updates, companies or products" aria-label="Search headlines, summaries and sources"></div></section>
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>Today's hot topics</h1><time data-live-date>${escapeHtml(feedDayLabel(snapshot.generated_at, "en"))}</time><span class="live-indicator" data-live-status data-state="connecting">Getting the latest content</span></div><p>Noise filtered out. Only the AI developments worth reading remain.</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search updates, companies or products" aria-label="Search headlines, summaries and sources"></div></section>
     <section class="feed-toolbar"><div class="feed-chips"><button class="active" data-feed-category="all" type="button">All</button><button data-feed-category="model_release,benchmark" type="button">Models</button><button data-feed-category="product_update,agent,tooling" type="button">Products</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">Industry</button><button data-feed-category="research" type="button">Research</button><button data-feed-category="open_source" type="button">Open source</button></div></section>
     <section class="top-stories"><div class="section-heading"><h2>Today's hot topics</h2><span>TOP 10</span></div><div class="live-top-list" data-live-top>${renderTopStories(topEvents, snapshot, "en")}</div></section>
     <section class="latest-feed" data-live-feed data-live-mode="home" data-live-state="connecting"><div class="section-heading"><h2>Latest updates</h2><a href="radar/?tab=events">View all</a></div><div class="story-stream" data-live-stream>${renderStoryStream(latestEvents, snapshot, "en")}</div></section>
@@ -1204,7 +1168,7 @@ function renderEnglishHome(snapshot: Snapshot) {
 function renderEnglishRadar(snapshot: Snapshot) {
   const events = eventFeed(snapshot).filter((event) => readerReadyEventForLocale(event, snapshot, "en"));
   return englishShell(snapshot, "radar", 1, "All updates", `
-    <section class="reader-heading"><div><div class="reader-title-line"><h1>All AI updates</h1><span data-live-count>${events.length} items</span><span class="live-indicator" data-live-status data-state="connecting">Loading daily update</span></div><p>Browse the complete event stream by source type, topic or keyword.</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search title, summary or source" aria-label="Search updates"></div></section>
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>All AI updates</h1><span data-live-count>${events.length} items</span><span class="live-indicator" data-live-status data-state="connecting">Getting the latest content</span></div><p>Browse the complete event stream by source type, topic or keyword.</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="Search title, summary or source" aria-label="Search updates"></div></section>
     <section class="feed-toolbar full-toolbar">
       <div class="filter-line"><span>Sources</span><div class="feed-chips"><button class="active" data-feed-family="all" type="button">All</button><button data-feed-family="公司/实验室" type="button">First-party</button><button data-feed-family="分析/媒体,其他公开来源" type="button">News</button><button data-feed-family="研究订阅" type="button">Research</button><button data-feed-family="开源项目" type="button">Open source</button></div></div>
       <div class="filter-line"><span>Topics</span><div class="feed-chips"><button class="active" data-feed-category="all" type="button">All</button><button data-feed-category="model_release,benchmark" type="button">Models</button><button data-feed-category="product_update,agent,tooling" type="button">Products</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">Industry</button><button data-feed-category="research" type="button">Research</button><button data-feed-category="open_source" type="button">Open source</button></div></div>
@@ -1226,12 +1190,12 @@ function promptSuggestionScript() {
 
 function renderEnglishAsk(snapshot: Snapshot) {
   const examples = [
-    "Rank the selected events by decision relevance.",
-    "Which model releases are covered by more than one source?",
-    "What changed in AI agents or developer tools during the visible window?",
-    "Which events rely on a single source and need more confirmation?",
-    "Which sources failed, timed out or returned no new items?",
-    ...snapshot.curated_events.slice(0, 2).map((event) => `What evidence and uncertainty surround “${eventEnglishTitle(event, snapshot)}”?`)
+    "What are the most important AI developments today?",
+    "What changed in AI models and products this week?",
+    "What changed in AI agents or developer tools?",
+    "Which open-source projects or research papers are worth reading?",
+    "What business or policy developments matter most?",
+    ...snapshot.curated_events.slice(0, 2).map((event) => `What happened with “${eventEnglishTitle(event, snapshot)}”?`)
   ];
 
   return englishShell(snapshot, "ask", 1, "Ask", `
@@ -1247,7 +1211,7 @@ function renderHome(snapshot: Snapshot) {
   const topIds = new Set(topEvents.map((event) => event.event_cluster_id));
   const latestEvents = events.filter((event) => !topIds.has(event.event_cluster_id)).slice(0, 26);
   return shell(snapshot, "home", 0, "今日热点", `
-    <section class="reader-heading"><div><div class="reader-title-line"><h1>今日热点</h1><time data-live-date>${escapeHtml(feedDayLabel(snapshot.generated_at, "zh"))}</time><span class="live-indicator" data-live-status data-state="connecting">正在加载每日更新</span></div><p>每天筛掉噪声，只留下真正值得看的 AI 动态。</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索动态、公司、产品或关键词" aria-label="搜索标题、摘要和来源"></div></section>
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>今日热点</h1><time data-live-date>${escapeHtml(feedDayLabel(snapshot.generated_at, "zh"))}</time><span class="live-indicator" data-live-status data-state="connecting">正在获取最新内容</span></div><p>每天筛掉噪声，只留下真正值得看的 AI 动态。</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索动态、公司、产品或关键词" aria-label="搜索标题、摘要和来源"></div></section>
     <section class="feed-toolbar"><div class="feed-chips"><button class="active" data-feed-category="all" type="button">全部</button><button data-feed-category="model_release,benchmark" type="button">模型</button><button data-feed-category="product_update,agent,tooling" type="button">产品</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">行业</button><button data-feed-category="research" type="button">论文</button><button data-feed-category="open_source" type="button">开源</button></div></section>
     <section class="top-stories"><div class="section-heading"><h2>今日热点</h2><span>TOP 10</span></div><div class="live-top-list" data-live-top>${renderTopStories(topEvents, snapshot, "zh")}</div></section>
     <section class="latest-feed" data-live-feed data-live-mode="home" data-live-state="connecting"><div class="section-heading"><h2>最新动态</h2><a href="radar/?tab=events">查看全部</a></div><div class="story-stream" data-live-stream>${renderStoryStream(latestEvents, snapshot, "zh")}</div></section>
@@ -1259,7 +1223,7 @@ function renderHome(snapshot: Snapshot) {
 function renderRadar(snapshot: Snapshot) {
   const events = eventFeed(snapshot).filter(readerReadyEvent);
   return shell(snapshot, "radar", 1, "全部动态", `
-    <section class="reader-heading"><div><div class="reader-title-line"><h1>全部 AI 动态</h1><span data-live-count>${events.length} 条</span><span class="live-indicator" data-live-status data-state="connecting">正在加载每日更新</span></div><p>按来源、主题或关键词浏览完整信息流。</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索标题、摘要或来源" aria-label="搜索全部动态"></div></section>
+    <section class="reader-heading"><div><div class="reader-title-line"><h1>全部 AI 动态</h1><span data-live-count>${events.length} 条</span><span class="live-indicator" data-live-status data-state="connecting">正在获取最新内容</span></div><p>按来源、主题或关键词浏览完整信息流。</p></div><div class="feed-search"><input id="feed-search" type="search" placeholder="搜索标题、摘要或来源" aria-label="搜索全部动态"></div></section>
     <section class="feed-toolbar full-toolbar">
       <div class="filter-line"><span>来源</span><div class="feed-chips"><button class="active" data-feed-family="all" type="button">全部</button><button data-feed-family="公司/实验室" type="button">一手信源</button><button data-feed-family="分析/媒体,其他公开来源" type="button">资讯</button><button data-feed-family="研究订阅" type="button">论文</button><button data-feed-family="开源项目" type="button">开源</button></div></div>
       <div class="filter-line"><span>分类</span><div class="feed-chips"><button class="active" data-feed-category="all" type="button">全部</button><button data-feed-category="model_release,benchmark" type="button">模型</button><button data-feed-category="product_update,agent,tooling" type="button">产品</button><button data-feed-category="business,regulation,policy,funding,infrastructure,safety" type="button">行业</button><button data-feed-category="research" type="button">论文</button><button data-feed-category="open_source" type="button">开源</button></div></div>
@@ -1271,14 +1235,13 @@ function renderRadar(snapshot: Snapshot) {
 
 
 function renderAsk(snapshot: Snapshot) {
-  const title = snapshotCuratedTitle(snapshot);
   const examples = [
-    `把${title}按重要性排序`,
-    `${snapshotWindowLabel(snapshot)}有哪些被两家以上来源同时报道的模型发布？`,
-    `${snapshotPeriodLabel(snapshot)} Agent / 开发工具有哪些重要变化？`,
-    "哪些事件只有单一来源，可信度较低？",
-    snapshotIsStale(snapshot) ? "哪些来源在本轮刷新失败或没有新内容？" : "哪些来源今天失败或没有新内容？",
-    ...snapshot.curated_events.slice(0, 2).map((event) => `围绕“${chineseEventTitle(event)}”有哪些证据和不确定性？`)
+    "今天最值得关注的 AI 行业动态是什么？",
+    "本周模型和产品有哪些重要更新？",
+    "Agent 和开发工具有哪些新变化？",
+    "有哪些值得阅读的开源项目或研究论文？",
+    "商业和政策方面有哪些重要动态？",
+    ...snapshot.curated_events.slice(0, 2).map((event) => `“${chineseEventTitle(event)}”发生了什么？`)
   ];
 
   return shell(snapshot, "ask", 1, "提问", `
@@ -1301,19 +1264,18 @@ function languageSwitchStateScript() {
   })();`;
 }
 
-function navIcon(id: "home" | "radar" | "sources" | "about") {
+function navIcon(id: "home" | "radar" | "sources") {
   const paths = {
     home: '<path d="M12 2.8c.8 3.6-.4 5.3-2.2 7 2.7-.4 4.3-2.3 4.8-4.5 2.2 2 3.4 4.5 3.4 7.2A6 6 0 1 1 6 12.2c0-2.2 1.2-4.5 3.2-6.5.1 2.1.9 3.2 2.1 3.7C12.4 7.8 12.8 5.8 12 2.8Z"/>',
     radar: '<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="7" cy="6" r="1"/><circle cx="11" cy="12" r="1"/><circle cx="16" cy="18" r="1"/>',
-    sources: '<path d="M5 5.5h14v10H9l-4 3v-13Z"/><path d="M9 9h6M9 12h4"/>',
-    about: '<circle cx="12" cy="12" r="9"/><path d="M12 10.5v6M12 7.5h.01"/>'
+    sources: '<path d="M5 5.5h14v10H9l-4 3v-13Z"/><path d="M9 9h6M9 12h4"/>'
   } as const;
   return `<svg aria-hidden="true" viewBox="0 0 24 24">${paths[id]}</svg>`;
 }
 
 function englishShell(
   snapshot: Snapshot,
-  current: "home" | "radar" | "ask" | "sources" | "about",
+  current: "home" | "radar" | "ask" | "sources",
   depth: 0 | 1,
   title: string,
   body: string
@@ -1325,8 +1287,7 @@ function englishShell(
   const nav = [
     ["home", "Hot topics", `${localePrefix}index.html`],
     ["radar", "All updates", `${localePrefix}radar/?tab=events`],
-    ["sources", "Sources", `${localePrefix}sources/`],
-    ["about", "About", `${localePrefix}about/`]
+    ["sources", "Sources", `${localePrefix}sources/`]
   ] as const;
   const browserTitle = current === "home" ? "AI 行业信息雷达" : `${title} - AI 行业信息雷达`;
 
@@ -1359,7 +1320,7 @@ function englishShell(
         <main>${body}</main>
         <footer class="site-footer">
           <div class="site-footer-copy"><span>AI Industry Radar · public-source reading index</span><span>Created by Song Luo</span></div>
-          <nav class="site-footer-links" aria-label="Footer navigation"><a href="${localePrefix}about/">About</a><a href="https://github.com/rrrrrredy" rel="noreferrer" target="_blank">GitHub</a></nav>
+          <nav class="site-footer-links" aria-label="Footer navigation"><a href="https://github.com/rrrrrredy" rel="noreferrer" target="_blank">GitHub</a></nav>
         </footer>
       </div>
     </div>
@@ -1421,9 +1382,9 @@ function containsEnglishReaderPipelineBoilerplate(value: string) {
 function genericEnglishEventSummary(event: SnapshotEvent, snapshot: Snapshot) {
   const title = eventEnglishTitle(event, snapshot);
   if (event.category === "research" || event.category === "benchmark") {
-    return `This public research item examines “${title}”. Evidence currently comes from ${event.source_count} source${event.source_count === 1 ? "" : "s"}; review the paper before relying on its methods or conclusions.`;
+    return `This public research item examines “${title}”. Open the original paper to review its methods and conclusions.`;
   }
-  return `This public update concerns “${title}”. Available evidence currently covers ${event.source_count} source${event.source_count === 1 ? "" : "s"}; review the original source for capabilities, limitations and impact.`;
+  return `This public update concerns “${title}”. Open the original source for capabilities, limitations and impact.`;
 }
 
 function entityLabelEn(value: string) {
@@ -1486,25 +1447,14 @@ function categoryLabelEn(value: string) {
   return labels[categoryFilterValue(value)] ?? value.replace(/_/g, " ");
 }
 
-function eventScoreLabelEn(value: string) {
-  const labels: Record<SnapshotEvent["event_score_label"], string> = {
-    "高优先级": "High priority",
-    "关注": "Watch",
-    "观察": "Monitor",
-    "噪音/低相关": "Low relevance"
-  };
-  return labels[value as SnapshotEvent["event_score_label"]] ?? value;
-}
-
-function shell(snapshot: Snapshot, current: "home" | "radar" | "ask" | "sources" | "about", depth: 0 | 1 | 2, title: string, body: string) {
+function shell(snapshot: Snapshot, current: "home" | "radar" | "ask" | "sources", depth: 0 | 1 | 2, title: string, body: string) {
   const prefix = depth === 0 ? "" : depth === 1 ? "../" : "../../";
   const chineseHref = current === "home" ? `${prefix}index.html` : `${prefix}${current}/`;
   const englishHref = current === "home" ? `${prefix}en/` : `${prefix}en/${current}/`;
   const nav = [
     ["home", "今日热点", `${prefix}index.html`],
     ["radar", "全部动态", `${prefix}radar/?tab=events`],
-    ["sources", "来源", `${prefix}sources/`],
-    ["about", "关于", `${prefix}about/`]
+    ["sources", "来源", `${prefix}sources/`]
   ] as const;
   const browserTitle = current === "home" ? "AI 行业信息雷达" : `${title} - AI 行业信息雷达`;
 
@@ -1537,7 +1487,7 @@ function shell(snapshot: Snapshot, current: "home" | "radar" | "ask" | "sources"
         <main>${body}</main>
         <footer class="site-footer">
           <div class="site-footer-copy"><span>AI 行业雷达 · 公开信息阅读索引</span><span>Created by Song Luo</span></div>
-          <nav class="site-footer-links" aria-label="页脚导航"><a href="${prefix}about/">关于</a><a href="https://github.com/rrrrrredy" rel="noreferrer" target="_blank">GitHub</a></nav>
+          <nav class="site-footer-links" aria-label="页脚导航"><a href="https://github.com/rrrrrredy" rel="noreferrer" target="_blank">GitHub</a></nav>
         </footer>
       </div>
     </div>
@@ -2222,15 +2172,6 @@ function shortenChineseTitle(value: string, fallback = "AI 行业动态") {
   return editorializeChineseTitle(value, fallback);
 }
 
-function freshnessBucket(timestamp: string) {
-  const ageMs = Date.now() - Date.parse(timestamp);
-  if (!Number.isFinite(ageMs)) return "unknown";
-  if (ageMs <= 86_400_000) return "24h";
-  if (ageMs <= 604_800_000) return "7d";
-  if (ageMs <= 2_592_000_000) return "30d";
-  return "archive";
-}
-
 
 
 
@@ -2239,24 +2180,6 @@ function freshnessBucket(timestamp: string) {
 
 function pill(label: string, tone: "caution" | "evidence" | "neutral" | "success") {
   return `<span class="pill ${tone}">${escapeHtml(label)}</span>`;
-}
-
-function eventConfirmationFilterValue(event: SnapshotEvent) {
-  if (event.source_count > 1 && event.source_families.length > 1) return "cross";
-  if (event.source_count > 1) return "same";
-  return "single";
-}
-
-
-
-function eventStatus(event: SnapshotEvent, snapshot: Snapshot) {
-  const relatedIds = new Set(event.related_item_ids);
-  const statuses = new Set(snapshot.radar_items.filter((item) => relatedIds.has(item.id)).map((item) => item.status));
-  if (statuses.has("needs_review")) return "needs_review";
-  if (statuses.has("included")) return "included";
-  if (statuses.has("failed")) return "failed";
-  if (statuses.has("excluded")) return "excluded";
-  return "included";
 }
 
 function labelize(value: string) {
@@ -2386,18 +2309,6 @@ function publicText(value: string) {
     .replace(/radar item\(s\)/g, "条雷达条目");
 }
 
-function snapshotCuratedTitle(snapshot: Snapshot) {
-  return curatedWindowIsCurrent(snapshot) ? "今日行业精选" : "本轮行业精选";
-}
-
-function snapshotWindowLabel(snapshot: Snapshot) {
-  return curatedWindowIsCurrent(snapshot) ? "今天" : "最近更新中";
-}
-
-function snapshotPeriodLabel(snapshot: Snapshot) {
-  return curatedWindowIsCurrent(snapshot) ? "过去 24 小时" : "最近一轮更新中";
-}
-
 function homepageDayOrdinal(value: string, locale: "en" | "zh") {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return Number.NEGATIVE_INFINITY;
@@ -2463,32 +2374,12 @@ function selectHomepageEvents(events: SnapshotEvent[], limit: number, locale: "e
   return selected;
 }
 
-function curatedWindowIsCurrent(snapshot: Snapshot) {
-  const generatedAt = Date.parse(snapshot.generated_at);
-  const topEvents = snapshot.curated_events.toSorted(compareHomepageEvents).slice(0, 3);
-  if (!Number.isFinite(generatedAt) || topEvents.length === 0) return false;
-
-  return topEvents.every((event) => {
-    const eventTime = Date.parse(event.latest_seen_at);
-    if (!Number.isFinite(eventTime)) return false;
-    const age = generatedAt - eventTime;
-    return age >= -5 * 60 * 1000 && age <= 24 * 60 * 60 * 1000;
-  });
-}
-
 function publicVersion(snapshot: Snapshot) {
   const provenance = resolveBuildProvenance();
   return {
     product: "AI Industry Radar",
-    release: "final-release-candidate-event-radar",
-    commit_sha: provenance.commitSha,
-    commit_source: provenance.commitSource,
-    working_tree_clean: provenance.workingTreeClean,
-    generated_at: snapshot.generated_at,
-    latest_evidence_at: snapshot.freshness.latest_timestamp,
-    public_radar_items: snapshot.counts.public_radar_items ?? snapshot.counts.visible_radar_items,
-    event_count: snapshot.event_count,
-    source: snapshot.source.data_source
+    release_id: provenance.commitSha,
+    updated_at: snapshot.freshness.latest_timestamp
   };
 }
 
@@ -2541,23 +2432,6 @@ function resolveBuildProvenance() {
 
 
 
-function snapshotIsStale(snapshot: Snapshot) {
-  const ageDays = snapshotAgeDays(snapshot);
-  return ageDays === null || ageDays > 2;
-}
-
-function snapshotAgeDays(snapshot: Snapshot) {
-  const latest = snapshot.freshness?.latest_timestamp;
-  if (!latest) return null;
-
-  const latestDate = new Date(latest);
-  const generatedAt = snapshot.generated_at ? new Date(snapshot.generated_at) : new Date();
-  const now = Number.isNaN(generatedAt.getTime()) ? new Date() : generatedAt;
-
-  if (Number.isNaN(latestDate.getTime())) return null;
-  return Math.max(0, Math.ceil((now.getTime() - latestDate.getTime()) / (24 * 60 * 60 * 1000)));
-}
-
 function formatDate(value: string | null | undefined) {
   if (!value) return "待补证据";
   const date = new Date(value);
@@ -2590,637 +2464,188 @@ function escapeAttr(value: string) {
 }
 
 function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../data/radar-snapshot.json") {
-  return String.raw`
-(function () {
+  const safeSnapshotUrl = JSON.stringify(snapshotUrl);
+  return String.raw`(function () {
   const language = ${JSON.stringify(locale)};
-  const snapshotUrl = ${JSON.stringify(snapshotUrl)};
-  const readerContentOverrides = ${JSON.stringify(chineseReaderContentOverrides)};
+  const snapshotUrl = ${safeSnapshotUrl};
   const input = document.querySelector("#local-query-input");
   const button = document.querySelector("#local-query-run");
   const result = document.querySelector("#local-query-result");
   if (!input || !button || !result) return;
 
   function escapeHtml(value) {
-    return String(value ?? "")
+    return String(value == null ? "" : value)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
+      .replace(/'/g, "&#039;");
   }
 
-  function relatedItem(snapshot, event) {
-    const ids = new Set(event.related_item_ids || []);
-    return (snapshot.radar_items || []).find((item) => ids.has(item.id));
+  function safeUrl(value) {
+    const url = String(value || "").trim();
+    return /^https?:\/\//i.test(url) ? url : "#";
   }
 
-  function humanizeChineseTitle(value) {
-    let headline = String(value || "").trim().replace(/^据报道[，,]\s*/, "");
-    const articleExplainer = headline.match(/^(.{2,24}?)发布了?一篇文章[，,]\s*(?:解释|介绍)(.+)$/);
-    if (articleExplainer) headline = articleExplainer[1] + "介绍" + articleExplainer[2];
-    const release = headline.match(/^(.{2,20}?)发布了?([^，,]+)[，,]一种([^，,]+)[，,]/);
-    if (release) headline = release[1] + "发布" + release[2] + "：" + release[3].replace(/的系统$/, "");
-    const namedTechnique = headline.match(/^(.{2,24}?)\s*开发了一种名为“([^”]+)”的技术[，,](.+)$/);
-    if (namedTechnique) headline = namedTechnique[1] + "用“" + namedTechnique[2] + "”" + namedTechnique[3].split(/[，,]/)[0].replace(/^首次清晰揭示了?/, "揭示");
-    const tutorial = headline.match(/^(.{2,20}?)发布了?关于(.+?)的教程$/);
-    if (tutorial) headline = tutorial[1] + "发布" + tutorial[2] + "教程";
-    const lawsuit = headline.match(/^(.+?)起诉(.+?)[，,]指控其在招聘面试中要求.+?员工携带未发布的硬件组件和样品/);
-    if (lawsuit) headline = lawsuit[1] + "起诉" + lawsuit[2] + "：指控其面试时索要未发布硬件样品";
-    const survey = headline.match(/^(.+?)对(\d+)家企业调查发现[，,](.+)$/);
-    if (survey) headline = survey[1].replace(/\s+Pulse Research$/i, "") + "对" + survey[2] + "家企业调查：" + survey[3].split(/[，,：:]/)[0];
-    const product = headline.match(/^(.{2,20}?)推出了?([^，,]+)[，,]这是一个由(.+?)驱动的AI工具/);
-    if (product) headline = product[1] + "推出" + product[2] + "：由" + product[3] + "驱动";
-    if (/^Anthropic\s*发布了?面向金融服务的.+Cowork.+Claude Code.*插件/.test(headline)) {
-      headline = "Anthropic 发布金融服务智能体与 Claude Code 插件";
-    } else {
-      const launch = headline.match(/^(.{2,32}?)(发布|推出|上线|开源)了?\s*([^，,。；]{2,90})(?:[，,](.+))?$/);
-      if (launch && launch[3].length <= 48) {
-        const detail = String(launch[4] || "")
-          .split(/[，,；;]/)[0]
-          .replace(/^(?:这是(?:一种|一个)|该版本|主要为了|旨在)/, "")
-          .trim();
-        headline = launch[1] + launch[2] + launch[3] + (detail && detail.length <= 38 ? "：" + detail : "");
-      }
-    }
-    return headline.replace(/发布了/, "发布").replace(/推出了/, "推出");
-  }
-
-  function displayChineseEntity(value) {
-    const aliases = {
-      apple: "Apple", anthropic: "Anthropic", google: "Google", github: "GitHub",
-      "hugging face": "Hugging Face", "hugging face transformers": "Hugging Face Transformers",
-      microsoft: "Microsoft", nvidia: "NVIDIA", openai: "OpenAI", xai: "xAI",
-      "gpt red": "GPT-Red", "deepstream 9 1": "DeepStream 9.1", "llama cpp": "llama.cpp"
-    };
-    const text = String(value || "").trim();
-    return aliases[text.toLowerCase()] || text;
-  }
-
-  function normalizeChineseTitle(value) {
+  function normalized(value) {
     return String(value || "")
-      .replace(/hugging\s+face\s+transformers/gi, "Hugging Face Transformers")
-      .replace(/hugging\s+face/gi, "Hugging Face")
-      .replace(/\bapple\b/gi, "Apple")
-      .replace(/openai/gi, "OpenAI")
-      .replace(/anthropic/gi, "Anthropic")
-      .replace(/\bgoogle\b/gi, "Google")
-      .replace(/\bmeta\b/gi, "Meta")
-      .replace(/deepseek/gi, "DeepSeek")
-      .replace(/nvidia/gi, "NVIDIA")
-      .replace(/deepmind/gi, "DeepMind")
-      .replace(/microsoft/gi, "Microsoft")
-      .replace(/github/gi, "GitHub")
-      .replace(/xai/gi, "xAI")
-      .replace(/\bclaude\b/gi, "Claude")
-      .replace(/\bcodex\b/gi, "Codex")
-      .replace(/\bgemini\b/gi, "Gemini")
-      .replace(/\bgrok\b/gi, "Grok")
-      .replace(/\btransformers\b/gi, "Transformers")
-      .replace(/\bvllm\b/gi, "vLLM")
-      .replace(/AI\s*代理/g, "AI 智能体")
-      .replace(/LLM\s*Agent/gi, "LLM 智能体")
-      .replace(/苹果/g, "Apple")
-      .replace(/谷歌/g, "Google")
-      .replace(/英伟达/g, "NVIDIA")
-      .replace(/([\u3400-\u9fff])([A-Za-z0-9])/g, "$1 $2")
-      .replace(/([A-Za-z0-9])([\u3400-\u9fff])/g, "$1 $2")
-      .replace(/\s+([，。！？：；、])/g, "$1")
-      .replace(/([（“])\s+/g, "$1")
-      .replace(/\s+([）”])/g, "$1")
-      .replace(/(?:…|\.{3})$/, "")
+      .toLowerCase()
+      .replace(/[“”'"’]/g, " ")
+      .replace(/[^a-z0-9\u3400-\u9fff+._-]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
   }
 
-  function readerContentOverride(event) {
-    const canonical = String(event.canonical_title || "").toLowerCase();
-    return readerContentOverrides.find((entry) => canonical.includes(String(entry.match || "").toLowerCase()));
+  function eventTitle(event) {
+    return String(language === "en" ? event.title_en : event.title_zh || event.title_en || "").trim();
   }
 
-  function containsPipelineBoilerplate(value) {
-    return /(?:\u6761\u76ee\u6458\u8981|\u5143\u6570\u636e\u7ea7\u6761\u76ee)\s*[\uFF1A:]|\b(?:Metadata-level item|Item summary|Evidence text|Announce Type|Phase 4)\b|\barXiv:\d{4}\.\d+(?:v\d+)?\b|\bAbstract\s*:/i.test(String(value || ""));
+  function eventSummary(event) {
+    return String(language === "en" ? event.summary_en : event.summary_zh || event.summary_en || "").trim();
   }
 
-  function normalizeReaderSummary(value) {
-    return String(value || "")
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-      .replace(/(?:^|\s)#{1,6}\s+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  function genericChineseTitle(event) {
-    const source = String(event.citations?.[0]?.source_name || event.timeline?.[0]?.source_name || "")
-      .replace(/\s+(?:AI|News)$/i, "")
-      .trim() || "公开来源";
-    const suffixByCategory = {
-      agent: "关注 AI 智能体进展",
-      benchmark: "公布 AI 评测结果",
-      business: "报道 AI 行业新动向",
-      funding: "报道 AI 融资新动向",
-      infrastructure: "关注 AI 基础设施进展",
-      model_release: "发布 AI 模型更新",
-      open_source: "发布开源 AI 项目",
-      opinion: "分析 AI 行业争议",
-      policy: "解读 AI 政策变化",
-      product_update: "发布 AI 产品更新",
-      regulation: "解读 AI 监管变化",
-      research: "公布 AI 研究发现",
-      safety: "聚焦 AI 安全与对齐",
-      tooling: "发布 AI 开发工具更新"
-    };
-    return source + " " + (suffixByCategory[String(event.category || "")] || "发布 AI 行业动态");
-  }
-
-  function genericChineseSummary(event) {
-    const rawCanonical = String(event.canonical_title || "").trim();
-    const canonical = /[\u3400-\u9fff]/.test(rawCanonical) ? rawCanonical : genericChineseTitle(event);
-    const category = String(event.category || "");
-    if (category === "research" || category === "benchmark") {
-      return "这项公开研究围绕“" + canonical + "”展开；当前证据主要来自 " + Number(event.source_count || 0) + " 个来源，方法、实验与结论仍需回到原文核对。";
-    }
-    if (["agent", "product_update", "tooling", "model_release", "open_source"].includes(category)) {
-      return "这条更新围绕“" + canonical + "”展开；当前公开信息有限，实际能力、可用性与适用边界仍需结合原始来源核对。";
-    }
-    return "这条公开信息关注“" + canonical + "”；当前证据覆盖 " + Number(event.source_count || 0) + " 个来源，请结合原文判断其实际影响。";
-  }
-
-  function eventTitle(snapshot, event) {
-    if (language === "en") return relatedItem(snapshot, event)?.title || event.timeline?.[0]?.title || event.canonical_title;
-    const fallback = genericChineseTitle(event);
-    const override = readerContentOverride(event);
-    if (override) return normalizeChineseTitle(override.title);
-    const canonical = String(event.canonical_title || "").trim();
-    const rawSummary = normalizeReaderSummary(event.summary_zh);
-    const fullSummary = eventSummary(snapshot, event);
-    const compact = compactChineseTitle(canonical, fullSummary);
-    const summary = humanizeChineseTitle(fullSummary.replace(/\s+/g, " ").split(/[。！？]/)[0].trim());
-    const summaryCanLead = /[\u3400-\u9fff]/.test(rawSummary) &&
-      !containsPipelineBoilerplate(rawSummary) &&
-      !/^(?:公开信息|这条|该事件|这项公开研究)/.test(rawSummary);
-    if (compact) return normalizeChineseTitle(compact);
-    return shortChineseTitle(/[\u3400-\u9fff]/.test(canonical) ? canonical : summaryCanLead ? summary : fallback, fallback);
-  }
-
-  function compactChineseTitle(canonical, summary) {
-    const text = [canonical, summary].join(" ");
-    if (/GPT-Red/i.test(text)) return "OpenAI 发布 GPT-Red 红队系统";
-    if (/Codex Micro|keyboard|键盘/i.test(text)) return "OpenAI 推出 Codex 硬件键盘";
-    if (/Jacobian|hidden space|雅可比/i.test(text) && /Anthropic|Claude/i.test(text)) return "Anthropic 披露 Claude 内部表征研究";
-    if (/xAI/i.test(text) && /Grok/i.test(text) && /CSAM|儿童性虐待材料/i.test(text)) return "xAI 起诉绕过 Grok 安全措施生成 CSAM 的用户";
-    if (/Apple|苹果/i.test(text) && /OpenAI/i.test(text) && /lawsuit|起诉|trade secret|商业机密/i.test(text)) return "Apple 起诉 OpenAI：指控窃取硬件商业机密";
-    if (/values vary by model and language|30\s*万次真实对话|价值观.*四个.*维度/i.test(text)) return "Anthropic 分析 30 万次对话：Claude 价值观可归纳为四个维度";
-    if (/Deutsche Telekom|德意志电信/i.test(text) && /OpenAI/i.test(text)) return "德意志电信与 OpenAI 合作推进 AI 原生电信转型";
-    if (/salespeople|销售人员/i.test(text) && /Microsoft|微软/i.test(text) && /OpenAI/i.test(text) && /Anthropic/i.test(text)) return "Microsoft 培训销售团队对比 OpenAI 与 Anthropic 模型";
-    if (/How Canada uses Claude|加拿大如何使用\s*Claude/i.test(text)) return "Anthropic 研究加拿大市场如何使用 Claude";
-    if (/Southeast Asia|东南亚/i.test(text) && /Gemini/i.test(text)) return "Gemini 凭本地语言能力加速进入东南亚市场";
-    if (/last wave of tech winners|科技创始人再次投身创业/i.test(text)) return "科技赢家重返创业：押注 AI 关键窗口";
-    return "";
-  }
-
-  function firstReaderHeadlineClause(value, maxLength) {
-    const clauses = String(value || "").split(/[，；]/).map((clause) => clause.trim()).filter(Boolean);
-    if (clauses.length === 0) return String(value || "").trim();
-    let candidate = clauses[0];
-    for (let index = 1; index < clauses.length && candidate.length < 18; index += 1) {
-      const combined = candidate + "，" + clauses[index];
-      if (combined.length > maxLength) break;
-      candidate = combined;
-    }
-    return candidate;
-  }
-
-  function removeUnclosedHeadlinePunctuation(value) {
-    return String(value || "")
-      .replace(/（[^）]*$/, "")
-      .replace(/“[^”]*$/, "")
-      .replace(/《[^》]*$/, "")
-      .replace(/[，,:：、\s]+$/, "")
-      .trim();
-  }
-
-  function headlinePunctuationIsBalanced(value) {
-    const pairs = [["（", "）"], ["(", ")"], ["[", "]"], ["“", "”"], ["《", "》"]];
-    for (const pair of pairs) {
-      if (String(value || "").split(pair[0]).length !== String(value || "").split(pair[1]).length) return false;
-    }
-    const bracketGroups = (String(value || "").match(/[（(\[]/g) || []).length;
-    const colonCount = (String(value || "").match(/[：:]/g) || []).length;
-    return bracketGroups <= 1 && colonCount <= 1;
-  }
-
-  function readerTitleFallback(value, fallback) {
-    const method = String(value || "").match(/^([A-Z][A-Za-z0-9+.^_-]{1,30})\b/)?.[1];
-    const suffix = String(fallback || "").match(/(?:公布|发布|关注|报道|分析|解读|聚焦).+$/)?.[0];
-    return normalizeChineseTitle(method && suffix ? method + " " + suffix : fallback);
-  }
-
-  function editorializeChineseTitle(value, fallback) {
-    const maxLength = 56;
-    let headline = normalizeChineseTitle(String(value || "").replace(/[。！？；].*$/, ""));
-    const quotedPaper = headline.match(/^论文《([^》]+)》(?:于.+)?$/);
-    if (quotedPaper) headline = quotedPaper[1];
-
-    headline = headline
-      .replace(/^arXiv\s+cs\.[A-Za-z]+\s+新论文\s*/i, "")
-      .replace(/^基于摘要[，,]\s*(?:文章|论文|报告)?(?:讨论|探讨|介绍|总结)了?\s*/, "研究梳理")
-      .replace(/^文章报道[，,]\s*/, "")
-      .replace(/^本文是\s*arXiv\s*上的一篇立场论文[，,]?\s*/i, "立场论文指出")
-      .replace(/^The Verge\s+的一篇报道(?:称|指出)?[，,]?\s*/i, "The Verge：")
-      .replace(/^(.{2,28}?)(?:官方)?(?:博客)?文章(?:讨论|探讨|介绍|总结)了?\s*/, "$1：")
-      .replace(/^(.{2,28}?)博客(?:介绍|讨论|探讨|总结)了?(?:如何)?\s*/, "$1：")
-      .replace(/^一起诉讼/, "诉讼")
-      .replace(/^立场论文指出指出/, "立场论文指出")
-      .replace(
-        /^(?:本文|本论文|该论文|这篇论文|论文|本研究|该研究|这项研究|本报告|该报告|这篇文章)\s*(?:首次|系统性地?|系统地?)?(?:发现了?|指出了?)\s*[，,]?/,
-        "研究发现"
-      )
-      .replace(
-        /^(?:本文|本论文|该论文|这篇论文|论文|本研究|该研究|这项研究|本报告|该报告|这篇文章)\s*(?:首次|系统性地?|系统地?)?(?:提出|介绍|研究|分析|评估|探索|讨论|探讨|总结|报告)(?:了一种|了一个|了一款|了)?\s*/,
-        ""
-      )
-      .replace(/^(?:本文|本论文|该论文|这篇论文|论文|本研究|该研究|这项研究|本报告|该报告|这篇文章)\s*/, "研究")
-      .replace(/^(?:一种|一个|一款)\s*/, "")
-      .replace(/：并/, "，并")
-      .trim();
-
-    const namedDefinition = headline.match(/^([A-Za-z][A-Za-z0-9+.^_-]{1,30})\s*(?:是|为)(?:一个|一种|一款)?(.+)$/);
-    if (namedDefinition) {
-      const descriptor = firstReaderHeadlineClause(
-        namedDefinition[2].replace(/^基于(.{2,24}?)的/, "基于$1的").replace(/^统一的/, "统一"),
-        maxLength - namedDefinition[1].length - 1
-      );
-      headline = namedDefinition[1] + "：" + descriptor;
-    } else {
-      const namedProposal = headline.match(/^([A-Za-z][A-Za-z0-9+.^_-]{1,30})\s*提出了?(?:一种|一个|一款)?(.+)$/);
-      if (namedProposal) {
-        headline = namedProposal[1] + " 提出" + firstReaderHeadlineClause(namedProposal[2], maxLength - namedProposal[1].length - 3);
-      }
-    }
-
-    headline = normalizeChineseTitle(
-      headline
-        .replace(/（(?:如|例如|包括|即)[^）]+）/g, "")
-        .replace(/（[^）]{28,}）/g, "")
-    );
-    if (headline.length > maxLength) headline = firstReaderHeadlineClause(headline, maxLength);
-    if (headline.length > maxLength) {
-      const transition = headline.search(/(?:通过|用于|旨在|同时|从而|并|以便|将|把|覆盖|包含|包括|实现|达到|帮助)/);
-      if (transition >= 20 && transition <= maxLength) headline = headline.slice(0, transition);
-    }
-    headline = removeUnclosedHeadlinePunctuation(headline);
-    const safeFallback = readerTitleFallback(headline, fallback);
-    return headline.length >= 8 && headline.length <= maxLength && headlinePunctuationIsBalanced(headline)
-      ? headline
-      : safeFallback;
-  }
-
-  function shortChineseTitle(value, fallback) {
-    return editorializeChineseTitle(value, fallback || "AI 行业动态");
-  }
-
-  function eventSummary(snapshot, event) {
-    if (language !== "en") {
-      const override = readerContentOverride(event);
-      if (override) return override.summary;
-      const summary = normalizeReaderSummary(event.summary_zh);
-      if (/[\u3400-\u9fff]/.test(summary) && !containsPipelineBoilerplate(summary)) return summary;
-      return genericChineseSummary(event);
-    }
-    const item = relatedItem(snapshot, event);
-    if (item?.summary_en && !containsPipelineBoilerplate(item.summary_en)) return normalizeReaderSummary(item.summary_en);
-    return "This public event is supported by " + Number(event.source_count || 0) + " source(s) and " + Number((event.related_item_ids || []).length) + " related signal(s). Review the citations before drawing a firm conclusion.";
-  }
-
-  function sourceFamilies(event) {
-    const labels = { "公司/实验室": "Company / lab", "分析/媒体": "Analysis / media", "其他公开来源": "Other public sources", "开源项目": "Open-source project", "研究订阅": "Research feed" };
-    return (event.source_families || []).map((family) => language === "en" ? (labels[family] || family) : family);
-  }
-
-  function scoreLabel(event) {
-    if (language !== "en") return event.event_score_label;
-    const labels = { "高优先级": "High priority", "关注": "Watch", "观察": "Monitor", "噪音/低相关": "Low relevance" };
-    return labels[event.event_score_label] || event.event_score_label;
-  }
-
-  function evidenceState(event) {
-    const sourceCount = Number(event.source_count || 0);
-    const familyCount = Number((event.source_families || []).length);
-    if (language === "en") {
-      if (sourceCount > 1 && familyCount > 1) return "covered by different source types; independence still needs checking";
-      if (sourceCount > 1) return "several sources of the same type";
-      return "one source so far";
-    }
-    if (sourceCount > 1 && familyCount > 1) return "不同类型来源均有报道，仍需核实是否相互独立";
-    if (sourceCount > 1) return "同类来源已有多篇报道";
-    return "目前仅有一篇报道";
-  }
-
-  function failureLabel(value) {
-    const zh = { "403": "HTTP 403", duplicate_only: "仅重复", failed_403: "HTTP 403 失败", failed_parse: "解析失败", failed_rate_limit: "限流失败", failed_timeout: "超时失败", low_relevance_excluded: "低相关排除", manual_blocked: "手动/阻塞", no_items: "无新内容", no_new_items: "无新内容", rate_limit: "限流警告", timeout: "超时失败", unsupported_source: "不支持" };
-    const en = { "403": "HTTP 403", duplicate_only: "Duplicate only", failed_403: "HTTP 403 failure", failed_parse: "Parse failure", failed_rate_limit: "Rate-limit failure", failed_timeout: "Timeout", low_relevance_excluded: "Low relevance excluded", manual_blocked: "Manual / blocked", no_items: "No new items", no_new_items: "No new items", rate_limit: "Rate-limit warning", timeout: "Timeout", unsupported_source: "Unsupported" };
-    return (language === "en" ? en[value] : zh[value]) || String(value || "").replace(/_/g, " ");
-  }
-
-  function textOf(snapshot, event) {
-    return [
-      eventTitle(snapshot, event),
-      eventSummary(snapshot, event),
+  function eventText(event) {
+    return normalized([
+      eventTitle(event),
+      eventSummary(event),
       event.category,
-      event.event_score_label,
-      (event.source_families || []).join(" "),
-      (event.related_entities || []).join(" ")
-    ].join(" ").toLowerCase();
-  }
-
-  function queryIntent(query) {
-    const q = query.toLowerCase();
-    const crossFamily = /cross[- ]family|multiple source families|independent source famil|different source types|different types of sources|不同类型来源/.test(q);
-    const sameFamily = /same source family|one source family|same source type|同类来源/.test(q);
-    const multiSource = !crossFamily && !sameFamily && /multi[- ]source|multiple sources|more than one source|两家以上来源|多篇报道|多源/.test(q);
-    const singleSource = !crossFamily && !sameFamily && !multiSource && /single[- ]source|one source|单一来源|单源|单篇报道|只有一篇报道|弱信号|可信度较低|limited evidence/.test(q);
-    const selectedOnly = /selected events?|today['’]s selection|industry selection|行业精选|今日精选|本轮精选|精选事件/.test(q);
-    const highPriority = /high[- ]priority|highest[- ]priority|高优先级/.test(q);
-    const timeWindowHours = /(?:past|last|within)\s*24\s*(?:hours?|hrs?|h)\b|\b24h\b|过去\s*24\s*小时|近\s*24\s*小时|今天|今日|\btoday\b/.test(q)
-      ? 24
-      : /(?:past|last|within)\s*(?:7\s*days?|one\s*week)|\bthis week\b|过去一周|近一周|本周/.test(q)
-        ? 24 * 7
-        : null;
-    return {
-      agent: /agent|智能体|开发工具|developer tool|coding tool|工具链/.test(q),
-      crossFamily,
-      highPriority,
-      important: /rank|ranking|priority|important|selected events|top events|deeper analysis|worth a deeper|排序|重要|高优先级|精选|深度分析|行业观察|周报|提纲/.test(q),
-      modelRelease: /model releases?|models? (?:were )?released|released models?|模型发布|发布(?:了|的)?(?:新)?模型|新模型发布/.test(q),
-      multiSource,
-      only: /\bonly\b|仅|只看|只列|只写|只要/.test(q),
-      sameFamily,
-      selectedOnly,
-      singleSource,
-      sourceHealth: /source.*(fail|timeout|no new)|failed sources|source health|来源.*(失败|超时|没有新|无新)|来源健康/.test(q),
-      timeWindowHours,
-      requestedCount: requestedEventCount(q)
-    };
-  }
-
-  function requestedEventCount(query) {
-    const digit = query.match(/(?:top\s*)?(\d{1,2})\s*(?:events?|items?|things?|stories|件|个|条)/i)?.[1];
-    if (digit) return Math.max(1, Math.min(12, Number(digit)));
-    const chinese = query.match(/([一二两三四五六七八九十])\s*(?:件|个|条)/)?.[1];
-    if (chinese) {
-      const values = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
-      return values[chinese] || null;
-    }
-    const word = query.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:events?|items?|things?|stories)\b/i)?.[1];
-    if (!word) return null;
-    const values = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
-    return values[word.toLowerCase()] || null;
+      ...(event.sources || []).flatMap((source) => [source.name, source.title])
+    ].join(" "));
   }
 
   function queryTokens(query) {
-    const stopwords = new Set(["about", "against", "analysis", "and", "are", "around", "build", "daily", "days", "draft", "event", "events", "evidence", "from", "have", "hours", "into", "last", "no", "outline", "past", "public", "such", "the", "this", "today", "what", "which", "with", "within", "write"]);
-    const latin = (query.toLowerCase().match(/[a-z0-9][a-z0-9._+-]*/g) || [])
+    const stopwords = new Set([
+      "about", "and", "are", "event", "events", "from", "happened", "important", "item", "items", "most", "no", "story", "stories", "such", "the", "this", "today", "what", "which", "with",
+      "今天", "什么", "哪些", "值得", "关注", "行业", "动态", "发生"
+    ]);
+    const latin = (normalized(query).match(/[a-z0-9][a-z0-9+._-]*/g) || [])
       .filter((token) => token.length >= 2 && !stopwords.has(token));
     const cjk = [];
-    for (const run of query.match(/[\u3400-\u9fff]{2,}/g) || []) {
-      if (run.length <= 4) cjk.push(run);
-      for (let index = 0; index < run.length - 1; index += 1) cjk.push(run.slice(index, index + 2));
+    for (const run of String(query || "").match(/[\u3400-\u9fff]{2,}/g) || []) {
+      if (run.length <= 4 && !stopwords.has(run)) cjk.push(run);
+      for (let index = 0; index < run.length - 1; index += 1) {
+        const token = run.slice(index, index + 2);
+        if (!stopwords.has(token)) cjk.push(token);
+      }
     }
     return Array.from(new Set(latin.concat(cjk)));
   }
 
-  function normalizedQueryPhrase(value) {
-    return String(value || "")
-      .toLowerCase()
-      .replace(/[“”'\"’]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+  function requestedCount(query) {
+    const digit = String(query || "").match(/(?:top\s*)?(\d{1,2})\s*(?:events?|items?|stories|件|个|条)/i)?.[1];
+    if (digit) return Math.max(1, Math.min(12, Number(digit)));
+    const chinese = String(query || "").match(/([一二两三四五六七八九十])\s*(?:件|个|条)/)?.[1];
+    const chineseValues = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+    if (chinese) return chineseValues[chinese] || null;
+    const word = String(query || "").match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:events?|items?|stories)\b/i)?.[1];
+    const wordValues = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+    return word ? wordValues[word.toLowerCase()] || null : null;
   }
 
-  function queryNamesExactEvent(snapshot, event, query) {
-    const normalizedQuery = normalizedQueryPhrase(query);
-    const titles = [
-      eventTitle(snapshot, event),
-      event.canonical_title,
-      ...(event.timeline || []).map((entry) => entry.title)
-    ];
-    return titles.some((title) => {
-      const normalizedTitle = normalizedQueryPhrase(title);
-      return normalizedTitle.length >= 12 && normalizedQuery.includes(normalizedTitle);
-    });
+  function timeWindowHours(query) {
+    const value = String(query || "").toLowerCase();
+    if (/(?:past|last|within)\s*24\s*(?:hours?|hrs?|h)\b|\b24h\b|过去\s*24\s*小时|近\s*24\s*小时|今天|今日|\btoday\b/.test(value)) return 24;
+    if (/(?:past|last|within)\s*(?:7\s*days?|one\s*week)|\bthis week\b|过去一周|近一周|本周/.test(value)) return 24 * 7;
+    return null;
   }
 
-  function queryAnchorTokens(query) {
-    const genericAnchors = new Set(["cross-family", "high-priority", "multi-source", "single-source", "source-family"]);
-    return queryTokens(query).filter((token) => /[-._+]/.test(token) && token.length >= 4 && !genericAnchors.has(token));
+  function requestedCategories(query) {
+    const value = String(query || "").toLowerCase();
+    const categories = [];
+    if (/models?|模型|benchmark|基准/.test(value)) categories.push("model_release", "benchmark");
+    if (/products?|产品/.test(value)) categories.push("product_update");
+    if (/agents?|智能体|开发工具|developer tools?|tooling/.test(value)) categories.push("agent", "tooling", "product_update");
+    if (/open[- ]source|开源/.test(value)) categories.push("open_source");
+    if (/research|papers?|论文|研究/.test(value)) categories.push("research");
+    if (/business|funding|商业|融资/.test(value)) categories.push("business", "funding");
+    if (/policy|regulation|政策|监管/.test(value)) categories.push("policy", "regulation");
+    return Array.from(new Set(categories));
   }
 
-  function normalizedEntityPhrase(value) {
-    return String(value || "")
-      .toLowerCase()
-      .replace(/[^a-z0-9\u3400-\u9fff]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  function queryNamesEntity(event, query) {
-    const normalizedQuery = " " + normalizedEntityPhrase(query) + " ";
-    const genericEntities = new Set(["ai", "agent", "agents", "artificial intelligence", "large language model", "llm", "model", "models", "open source", "product", "research", "safety", "人工智能", "安全", "智能体", "模型", "研究"]);
-    return (event.related_entities || []).some((entity) => {
-      const normalizedEntity = normalizedEntityPhrase(entity);
-      if (normalizedEntity.length < 4 || genericEntities.has(normalizedEntity)) return false;
-      return normalizedQuery.includes(" " + normalizedEntity + " ");
-    });
-  }
-
-  function matchesIntent(event, text, intent) {
-    const sourceCount = Number(event.source_count || 0);
-    const familyCount = Number((event.source_families || []).length);
-    const category = String(event.category || "").toLowerCase();
-    const titleAndEntities = [event.canonical_title || "", ...(event.related_entities || [])].join(" ").toLowerCase();
-    const requestedEvidenceStates = [];
-    if (intent.crossFamily) requestedEvidenceStates.push(sourceCount > 1 && familyCount > 1);
-    if (intent.sameFamily) requestedEvidenceStates.push(sourceCount > 1 && familyCount === 1);
-    if (intent.multiSource) requestedEvidenceStates.push(sourceCount > 1);
-    if (intent.singleSource) requestedEvidenceStates.push(sourceCount === 1);
-    if (requestedEvidenceStates.length > 0 && !requestedEvidenceStates.some(Boolean)) return false;
-    if (intent.highPriority && event.event_score_label !== "高优先级") return false;
-    if (intent.modelRelease && category !== "model_release") return false;
-    if (intent.agent && !/\bagents?\b|智能体|developer tool|coding tool|\bsdk\b|\bcli\b|开发工具|工具链/i.test(titleAndEntities)) return false;
-    return true;
-  }
-
-  function eventWithinIntentWindow(snapshot, event, intent) {
-    if (!intent.timeWindowHours) return true;
-    const anchor = Date.parse(snapshot.freshness?.latest_timestamp || "");
-    const eventTime = Date.parse(event.latest_seen_at || event.first_seen_at || "");
-    if (!Number.isFinite(anchor) || !Number.isFinite(eventTime)) return false;
-    const lowerBound = anchor - intent.timeWindowHours * 60 * 60 * 1000;
-    return eventTime >= lowerBound && eventTime <= anchor + 5 * 60 * 1000;
-  }
-
-  function scoreEvent(snapshot, event, query, intent) {
-    const q = query.toLowerCase();
-    const text = textOf(snapshot, event);
-    if (!matchesIntent(event, text, intent)) return null;
-
-    let relevance = 0;
-    let tokenMatches = 0;
-    const structuredIntent = intent.crossFamily || intent.sameFamily || intent.multiSource || intent.singleSource || intent.highPriority || intent.modelRelease || intent.agent || intent.selectedOnly || intent.important || intent.timeWindowHours;
-    const title = eventTitle(snapshot, event).toLowerCase();
-    let titleMatched = false;
-    if ((title.length >= 6 && q.includes(title)) || (q.length >= 6 && title.includes(q))) {
-      relevance += 80;
-      titleMatched = true;
-    }
-    for (const token of queryTokens(q)) {
-      if (text.includes(token)) {
-        relevance += token.length >= 5 ? 18 : 8;
-        tokenMatches += 1;
-      }
-    }
-    if (!structuredIntent && !titleMatched && (tokenMatches === 0 || (tokenMatches === 1 && relevance < 18))) return null;
-    const sourceCount = Number(event.source_count || 0);
-    const familyCount = Number((event.source_families || []).length);
-    if (intent.crossFamily && sourceCount > 1 && familyCount > 1) relevance += 40;
-    else if (intent.sameFamily && sourceCount > 1 && familyCount === 1) relevance += 26;
-    else if (intent.multiSource && sourceCount > 1) relevance += 26;
-    if (intent.singleSource && sourceCount === 1) relevance += 18;
-    if (intent.modelRelease || intent.agent) relevance += 16;
-    if (intent.important) relevance += Number(event.event_score || 0) / 2;
-    return Number(event.event_score || 0) + relevance;
+  function wantsFeatured(query) {
+    return /selected|featured|most important|top\s*\d*|精选|最值得|最重要|按重要性/.test(String(query || "").toLowerCase());
   }
 
   function pickEvents(snapshot, query) {
-    const events = Array.isArray(snapshot.event_clusters) ? snapshot.event_clusters : [];
-    const curated = Array.isArray(snapshot.curated_events) ? snapshot.curated_events : [];
-    const merged = [];
-    const seen = new Set();
-    for (const event of curated.concat(events)) {
-      if (!event || seen.has(event.event_cluster_id)) continue;
-      seen.add(event.event_cluster_id);
-      merged.push(event);
+    const events = Array.isArray(snapshot.events) ? snapshot.events : [];
+    const featuredIds = new Set(Array.isArray(snapshot.featured_event_ids) ? snapshot.featured_event_ids : []);
+    const featured = wantsFeatured(query);
+    const categories = requestedCategories(query);
+    const windowHours = timeWindowHours(query);
+    const anchor = Date.parse(snapshot.updated_at || "");
+    let pool = featured ? events.filter((event) => featuredIds.has(event.id)) : events.slice();
+    if (windowHours && Number.isFinite(anchor)) {
+      const lowerBound = anchor - windowHours * 60 * 60 * 1000;
+      pool = pool.filter((event) => {
+        const timestamp = Date.parse(event.published_at || "");
+        return Number.isFinite(timestamp) && timestamp >= lowerBound && timestamp <= anchor + 5 * 60 * 1000;
+      });
     }
-    const intent = queryIntent(query);
-    const pool = (intent.selectedOnly ? curated : merged).filter((event) => eventWithinIntentWindow(snapshot, event, intent));
-    const exactTitleMatches = pool.filter((event) => queryNamesExactEvent(snapshot, event, query));
-    const anchorTokens = queryAnchorTokens(query);
-    const anchorMatches = anchorTokens.length > 0
-      ? pool.filter((event) => anchorTokens.every((token) => textOf(snapshot, event).includes(token)))
-      : [];
-    const entityMatches = pool.filter((event) => queryNamesEntity(event, query));
-    const scopedPool = exactTitleMatches.length > 0
-      ? exactTitleMatches
-      : anchorMatches.length > 0
-        ? anchorMatches
-        : entityMatches.length > 0
-          ? entityMatches
-          : pool;
-    return scopedPool
-      .map((event) => ({ event, score: scoreEvent(snapshot, event, query, intent) }))
-      .filter((entry) => entry.score !== null)
-      .sort((left, right) => right.score - left.score || Number(right.event.event_score || 0) - Number(left.event.event_score || 0))
-      .slice(0, intent.requestedCount || 6)
+
+    const normalizedQuery = normalized(query);
+    const exact = pool.filter((event) => {
+      const titles = [eventTitle(event), event.title_zh, event.title_en]
+        .concat((event.sources || []).map((source) => source.title))
+        .map(normalized)
+        .filter((title) => title.length >= 8);
+      return titles.some((title) => normalizedQuery.includes(title));
+    });
+    if (exact.length > 0) pool = exact;
+
+    const tokens = queryTokens(query);
+    const structured = featured || categories.length > 0 || Boolean(windowHours);
+    return pool
+      .map((event, index) => {
+        if (exact.length === 0 && categories.length > 0 && !categories.includes(String(event.category || ""))) return null;
+        const text = eventText(event);
+        const tokenHits = tokens.filter((token) => text.includes(token)).length;
+        if (exact.length === 0 && tokens.length > 0 && tokenHits === 0 && !structured) return null;
+        if (exact.length === 0 && tokens.length === 0 && !structured) return null;
+        const score = (exact.includes(event) ? 1000 : 0) + tokenHits * 40 + Math.max(0, 100 - index) + (featuredIds.has(event.id) ? 20 : 0);
+        return { event, score };
+      })
+      .filter(Boolean)
+      .sort((left, right) => right.score - left.score || Date.parse(right.event.published_at || "") - Date.parse(left.event.published_at || ""))
+      .slice(0, requestedCount(query) || 6)
       .map((entry) => entry.event);
   }
 
   function displayDateTime(value) {
     const parsed = new Date(value || "");
-    if (!Number.isFinite(parsed.getTime())) return language === "en" ? "unavailable" : "待补";
+    if (!Number.isFinite(parsed.getTime())) return language === "en" ? "Date unavailable" : "日期待补";
     return new Intl.DateTimeFormat(language === "en" ? "en-GB" : "zh-CN", {
       day: "2-digit",
       hour: "2-digit",
       hour12: false,
       minute: "2-digit",
       month: "short",
-      timeZone: "UTC",
+      timeZone: language === "en" ? "UTC" : "Asia/Shanghai",
       year: "numeric"
-    }).format(parsed) + " UTC";
+    }).format(parsed) + (language === "en" ? " UTC" : "（北京时间）");
   }
 
-  function renderSourceHealthResult(snapshot, query) {
-    const health = snapshot.source_health_summary || {};
-    const families = Object.entries(snapshot.failure_family_summary || {})
-      .filter((entry) => Number(entry[1] || 0) > 0)
-      .map((entry) => '<li>' + escapeHtml(failureLabel(entry[0])) + ': ' + escapeHtml(entry[1]) + '</li>')
-      .join("");
-    const failedSources = (snapshot.source_health_failures || [])
-      .map((failure) => '<li>' + escapeHtml(failure.source_name) + ' · ' + escapeHtml(failureLabel(failure.reason)) + '</li>')
-      .join("");
-    const auditedAt = snapshot.source_health_scope?.finished_at || snapshot.coverage?.latest_refresh;
-    if (language === "en") {
-      return '<h3>Source health</h3><p>Audited through ' + escapeHtml(displayDateTime(auditedAt)) + '.</p>' +
-        '<dl class="inline-defs"><dt>Succeeded</dt><dd>' + escapeHtml(health.succeeded || 0) + '</dd><dt>Failed</dt><dd>' + escapeHtml(health.failed || 0) + '</dd><dt>Manual / blocked</dt><dd>' + escapeHtml(health.manual_blocked || 0) + '</dd><dt>No new items</dt><dd>' + escapeHtml(health.no_items || 0) + '</dd><dt>Duplicate only</dt><dd>' + escapeHtml(health.duplicate_only || 0) + '</dd></dl>' +
-        '<h4>Failed sources</h4><ul>' + (failedSources || '<li>None</li>') + '</ul><h4>Reason summary</h4><ul>' + families + '</ul>';
-    }
-    return '<h3>来源健康</h3><p>审计截至 ' + escapeHtml(displayDateTime(auditedAt)) + '。</p>' +
-      '<dl class="inline-defs"><dt>成功</dt><dd>' + escapeHtml(health.succeeded || 0) + '</dd><dt>失败</dt><dd>' + escapeHtml(health.failed || 0) + '</dd><dt>手动/阻塞</dt><dd>' + escapeHtml(health.manual_blocked || 0) + '</dd><dt>无新条目</dt><dd>' + escapeHtml(health.no_items || 0) + '</dd><dt>仅重复</dt><dd>' + escapeHtml(health.duplicate_only || 0) + '</dd></dl>' +
-      '<h4>失败来源</h4><ul>' + (failedSources || '<li>无</li>') + '</ul><h4>原因汇总</h4><ul>' + families + '</ul>';
+  function categoryLabel(value) {
+    const zh = { agent: "智能体", benchmark: "基准", business: "商业", funding: "融资", model_release: "模型", open_source: "开源", policy: "政策", product_update: "产品", regulation: "监管", research: "研究", safety: "安全", tooling: "工具" };
+    const en = { agent: "Agents", benchmark: "Benchmarks", business: "Business", funding: "Funding", model_release: "Models", open_source: "Open source", policy: "Policy", product_update: "Products", regulation: "Regulation", research: "Research", safety: "Safety", tooling: "Tools" };
+    return (language === "en" ? en[value] : zh[value]) || String(value || "").replace(/_/g, " ");
   }
 
-  function citationHtml(event) {
-    return (event.citations || []).slice(0, 2).map((citation) =>
-      '<a href="' + escapeHtml(citation.url) + '">' + escapeHtml(citation.source_name) + (language === "en" ? ': ' : '：') + escapeHtml(citation.title) + '</a>'
-    ).join("<br>");
+  function sourceLinks(event) {
+    return (event.sources || []).slice(0, 3).map((source) => {
+      const url = safeUrl(source.url);
+      const label = String(source.name || (language === "en" ? "Original source" : "原始来源"));
+      const title = String(source.title || eventTitle(event));
+      return '<a href="' + escapeHtml(url) + '" rel="noreferrer" target="_blank">' + escapeHtml(label) + (language === "en" ? ': ' : '：') + escapeHtml(title) + '</a>';
+    }).join("<br>");
   }
 
-  function eventDate(event) {
-    const raw = event.latest_seen_at || event.first_seen_at || "";
-    const parsed = new Date(raw);
-    if (!Number.isFinite(parsed.getTime())) return language === "en" ? "date unavailable" : "日期待补";
-    return parsed.toISOString().slice(0, 10);
-  }
-
-  function eventUncertainty(event) {
-    if (language !== "en") {
-      const caveat = (event.caveats || [])[0];
-      return caveat
-        ? String(caveat).replace(/来源家族/g, "来源类型")
-        : (Number(event.source_count || 0) > 1 ? "多篇报道仍需核实是否彼此独立。" : "当前只有一篇报道，需要补充独立信息。 ");
-    }
-    if (Number((event.source_families || []).length) > 1) {
-      return "The sources span different types, but one may repeat the original claim; independence is not yet established.";
-    }
-    if (Number(event.source_count || 0) > 1) {
-      return "Several sources are the same type, so independent confirmation is still needed.";
-    }
-    return "Only one source is available so far; independent confirmation is still needed.";
-  }
-
-  function renderAskResult(snapshot, query, events) {
-    const freshness = snapshot.freshness && snapshot.freshness.latest_timestamp ? displayDateTime(snapshot.freshness.latest_timestamp) : (language === "en" ? "unavailable" : "待补证据");
-    if (language === "en") {
-      return '<h3>Radar results</h3>' +
-        '<ol>' + events.map((event) =>
-          '<li data-event-id="' + escapeHtml(event.event_cluster_id) + '"><strong>' + escapeHtml(eventTitle(snapshot, event)) + '</strong><p>' + escapeHtml(eventSummary(snapshot, event)) + '</p>' +
-          '<small>' + escapeHtml(eventDate(event)) + ' · ' + escapeHtml(scoreLabel(event)) + ' · ' + escapeHtml(event.source_count) + (Number(event.source_count || 0) === 1 ? ' source · ' : ' sources · ') + escapeHtml(evidenceState(event)) + ' · ' + escapeHtml(sourceFamilies(event).join(", ")) + '</small>' +
-          '<p class="uncertainty"><strong>What remains uncertain:</strong> ' + escapeHtml(eventUncertainty(event)) + '</p>' +
-          '<div class="local-citations">' + citationHtml(event) + '</div></li>'
-        ).join("") + '</ol><p class="note">Sources checked through ' + escapeHtml(freshness) + '. Single-source events still need confirmation.</p>';
-    }
-    return '<h3>雷达结果</h3>' +
-      '<ol>' + events.map((event) =>
-        '<li data-event-id="' + escapeHtml(event.event_cluster_id) + '"><strong>' + escapeHtml(eventTitle(snapshot, event)) + '</strong><p>' + escapeHtml(eventSummary(snapshot, event)) + '</p>' +
-        '<small>' + escapeHtml(eventDate(event)) + ' · ' + escapeHtml(event.event_score_label) + ' · ' + escapeHtml(event.source_count) + ' 个来源 · ' + escapeHtml(evidenceState(event)) + ' · ' + escapeHtml((event.source_families || []).join("、")) + '</small>' +
-        '<p class="uncertainty"><strong>仍需核实：</strong>' + escapeHtml(eventUncertainty(event)) + '</p>' +
-        '<div class="local-citations">' + citationHtml(event) + '</div></li>'
-      ).join("") + '</ol><p class="note">报道核对至 ' + escapeHtml(freshness) + '；目前只有一篇报道的事件仍需继续核实。</p>';
-  }
-
-  function renderNoMatch(intent) {
-    if (intent.highPriority && intent.timeWindowHours) {
-      return language === "en"
-        ? '<p class="empty">No high-priority event was found in the requested time window. Lower-priority events were not substituted.</p>'
-        : '<p class="empty">指定时间窗口内没有高优先级事件；系统未用“关注”或“观察”事件替代。</p>';
-    }
-    if (intent.highPriority) {
-      return language === "en"
-        ? '<p class="empty">No high-priority event was found in the current data. Lower-priority events were not substituted.</p>'
-        : '<p class="empty">当前数据中没有高优先级事件；未用较低优先级内容替代。</p>';
-    }
-    return language === "en"
-      ? '<p class="empty">No matching event was found in the current data.</p>'
-      : '<p class="empty">当前数据中没有找到匹配事件。</p>';
+  function renderResults(events) {
+    const heading = language === "en" ? "Related updates" : "相关动态";
+    return '<h3>' + heading + '</h3><ol>' + events.map((event) =>
+      '<li data-event-id="' + escapeHtml(event.id) + '"><strong>' + escapeHtml(eventTitle(event)) + '</strong><p>' + escapeHtml(eventSummary(event)) + '</p>' +
+      '<small>' + escapeHtml(displayDateTime(event.published_at)) + ' · ' + escapeHtml(categoryLabel(event.category)) + '</small>' +
+      '<div class="local-citations">' + sourceLinks(event) + '</div></li>'
+    ).join("") + '</ol>';
   }
 
   async function run() {
@@ -3229,28 +2654,24 @@ function localEvidenceToolScript(locale: "en" | "zh" = "zh", snapshotUrl = "../d
       result.innerHTML = language === "en" ? '<p class="empty">Enter a question first.</p>' : '<p class="empty">先输入一个问题。</p>';
       return;
     }
-    result.innerHTML = language === "en" ? '<p class="note">Searching current radar data...</p>' : '<p class="note">正在检索当前雷达数据...</p>';
+    result.innerHTML = language === "en" ? '<p class="note">Finding relevant updates...</p>' : '<p class="note">正在查找相关动态...</p>';
     try {
       const response = await fetch(snapshotUrl, { cache: "no-store" });
-      if (!response.ok) throw new Error("snapshot unavailable");
+      if (!response.ok) throw new Error("content unavailable");
       const snapshot = await response.json();
-      const intent = queryIntent(query);
-      if (intent.sourceHealth) {
-        result.innerHTML = renderSourceHealthResult(snapshot, query);
-        return;
-      }
       const events = pickEvents(snapshot, query);
-      result.innerHTML = events.length === 0
-        ? renderNoMatch(intent)
-        : renderAskResult(snapshot, query, events);
+      result.innerHTML = events.length > 0
+        ? renderResults(events)
+        : (language === "en"
+          ? '<p class="empty">No matching update was found. Try another keyword or a wider date range.</p>'
+          : '<p class="empty">没有找到匹配动态，可以换一个关键词或扩大时间范围。</p>');
     } catch {
-      result.innerHTML = language === "en" ? '<p class="empty">Radar data could not be loaded. Try again later.</p>' : '<p class="empty">雷达数据读取失败，请稍后重试。</p>';
+      result.innerHTML = language === "en" ? '<p class="empty">The latest content is temporarily unavailable. Try again later.</p>' : '<p class="empty">暂时无法取得最新内容，请稍后重试。</p>';
     }
   }
 
   button.addEventListener("click", run);
-})();
-`;
+})();`;
 }
 
 function stylesheet() {
@@ -3450,13 +2871,6 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .publisher-index { border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 0; padding: 14px 4px; }
 .publisher-index span { border-right: 1px solid var(--line); color: #464b54; font-size: 12px; margin: 4px 0; padding: 0 14px; }
 .publisher-index span:first-child { padding-left: 0; }
-.about-reader { margin: 54px auto 0; max-width: 820px; }
-.about-reader header { border-bottom: 1px solid var(--line); padding-bottom: 30px; }
-.about-reader header h1 { font-size: clamp(32px, 4vw, 52px); letter-spacing: -1.5px; line-height: 1.16; }
-.about-reader header p { color: #4c515a; font-size: 18px; line-height: 1.85; margin-top: 20px; }
-.about-reader section { border-bottom: 1px solid var(--line); display: grid; gap: 28px; grid-template-columns: 170px minmax(0, 1fr); padding: 30px 0; }
-.about-reader section h2 { font-size: 16px; }
-.about-reader section p { color: #555b64; line-height: 1.85; }
 .site-footer { align-items: center; border-top: 1px solid var(--line); color: var(--muted); display: flex; font-size: 12px; gap: 24px; justify-content: space-between; margin: 0 30px; padding: 18px 0 28px; }
 .site-footer-copy, .site-footer-links { align-items: center; display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .site-footer-copy span + span::before { color: var(--line-strong); content: "·"; margin-right: 14px; }
@@ -3544,10 +2958,6 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .rail, .event-meta, .inline-defs { grid-template-columns: 1fr; }
   .publisher-index { margin: 0 -16px; overflow-x: auto; padding-left: 16px; flex-wrap: nowrap; }
   .publisher-index span { flex: 0 0 auto; }
-  .about-reader { margin-top: 20px; }
-  .about-reader header h1 { font-size: 31px; }
-  .about-reader header p { font-size: 16px; }
-  .about-reader section { gap: 10px; grid-template-columns: 1fr; padding: 24px 0; }
   .site-footer { align-items: flex-start; flex-direction: column; gap: 10px; margin: 0 12px; padding-bottom: 14px; }
 }
 `;
