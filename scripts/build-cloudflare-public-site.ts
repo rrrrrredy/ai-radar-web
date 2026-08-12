@@ -369,6 +369,7 @@ async function buildLiveFeed(request, context) {
     limit: String(limit)
   });
   const manifest = await supabaseJson("public_radar_items?" + manifestParams.toString());
+  const updatedAt = manifest.map((row) => row.processed_at).filter(Boolean).sort().at(-1) || null;
   const ids = Array.from(new Set(manifest.map((row) => String(row.id || "").trim()).filter(Boolean)));
   if (ids.length === 0) {
     return jsonResponse({ updated_at: null, items: [] }, 200, {
@@ -402,7 +403,7 @@ async function buildLiveFeed(request, context) {
     why_it_matters: item.why_it_matters
   }));
   const response = jsonResponse({
-    updated_at: readerItems.map((item) => item.published_at).filter(Boolean).sort().at(-1) || null,
+    updated_at: updatedAt,
     items: readerItems
   }, 200, {
     "cache-control": "public, max-age=5, s-maxage=15, stale-while-revalidate=60",
