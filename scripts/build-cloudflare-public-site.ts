@@ -288,7 +288,6 @@ function retiredRouteWorker(config: ReturnType<typeof getSupabasePublicConfig>) 
   const liveFeedColumns = [
     "id",
     "source_name",
-    "source_family",
     "title",
     "url",
     "published_at",
@@ -394,7 +393,6 @@ async function buildLiveFeed(request, context) {
   const readerItems = items.map((item) => ({
     id: item.id,
     source_name: item.source_name,
-    source_family: item.source_family,
     title: item.title,
     url: item.url,
     published_at: item.published_at || item.collected_at || item.processed_at || null,

@@ -387,6 +387,8 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       cloudflareSite.includes("Daily at 09:00 Beijing") &&
       cloudflareSite.includes('order: "overall_score.desc.nullslast,processed_at.desc.nullslast,published_at.desc.nullslast,id.desc"') &&
       cloudflareSite.includes('"cache-control": "public, max-age=5, s-maxage=15, stale-while-revalidate=60"') &&
+      !cloudflareSite.includes('"source_family",') &&
+      !cloudflareSite.includes("source_family: item.source_family") &&
       cloudflareSite.includes('assets/live-feed.js') &&
       !cloudflareSite.includes("SUPABASE_SERVICE_ROLE_KEY") &&
       cloudflareSite.includes('"/api/writing-assistant"') &&
