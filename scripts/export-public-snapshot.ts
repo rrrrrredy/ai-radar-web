@@ -234,7 +234,10 @@ function debugStep(message: string) {
 async function main() {
   debugStep("main:start");
   const snapshot = await createPublicSnapshot();
-  assertStrictProductionSnapshot(snapshot);
+  const latestCloudPublication = process.env.CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE === "true"
+    ? await readLatestCloudPublication()
+    : null;
+  assertStrictProductionSnapshot(snapshot, latestCloudPublication);
   debugStep(`main:snapshot-ready rows=${snapshot.radar_items.length}`);
   await fs.mkdir(path.dirname(outputPath), { recursive: true });
   await fs.writeFile(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
@@ -386,6 +389,20 @@ async function supabaseReadPreflight(): Promise<{ ok: true } | { ok: false; reas
   } catch (error) {
     return { ok: false, reason: sanitizeError(error) };
   }
+}
+
+async function readLatestCloudPublication(): Promise<string | null> {
+  const supabase = getSupabaseServerReadClient();
+  if (!supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc("radar_latest_publication_at");
+  if (error) {
+    throw new Error(`Production snapshot export could not verify the latest completed cloud refresh: ${sanitizeError(error)}`);
+  }
+
+  return typeof data === "string" && Number.isFinite(Date.parse(data)) ? data : null;
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
@@ -1413,7 +1430,7 @@ function entityTypeValue(value: unknown): UnderstandingEntityType {
   return publicEntityTypes.has(normalized) ? (normalized as UnderstandingEntityType) : "other";
 }
 
-function assertStrictProductionSnapshot(snapshot: PublicMirrorSnapshot) {
+function assertStrictProductionSnapshot(snapshot: PublicMirrorSnapshot, latestCloudPublication: string | null) {
   if (process.env.CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE !== "true") {
     return;
   }
@@ -1429,11 +1446,11 @@ function assertStrictProductionSnapshot(snapshot: PublicMirrorSnapshot) {
   const ageHours = Number.isFinite(latestTime) ? (Date.now() - latestTime) / 3_600_000 : Number.POSITIVE_INFINITY;
   const latestRefresh = snapshot.coverage.latest_refresh;
   const latestRefreshTime = latestRefresh ? Date.parse(latestRefresh) : Number.NaN;
-  const refreshAgeHours = Number.isFinite(latestRefreshTime)
-    ? (Date.now() - latestRefreshTime) / 3_600_000
-    : Number.POSITIVE_INFINITY;
   const healthFinishedAt = snapshot.source_health_scope.finished_at;
   const healthFinishedTime = healthFinishedAt ? Date.parse(healthFinishedAt) : Number.NaN;
+  const cloudPublicationTime = latestCloudPublication ? Date.parse(latestCloudPublication) : Number.NaN;
+  const cloudPublicationAgeHours = Number.isFinite(cloudPublicationTime)
+    ? (Date.now() - cloudPublicationTime) / 3_600_000 : Number.POSITIVE_INFINITY;
   const refreshNotBefore = process.env.CLOUDFLARE_SNAPSHOT_REFRESH_NOT_BEFORE?.trim();
   const refreshNotBeforeTime = refreshNotBefore ? Date.parse(refreshNotBefore) : Number.NaN;
 
@@ -1475,13 +1492,13 @@ function assertStrictProductionSnapshot(snapshot: PublicMirrorSnapshot) {
   if (
     !Number.isFinite(latestRefreshTime) ||
     !Number.isFinite(healthFinishedTime) ||
-    refreshAgeHours > maxRefreshAgeHours ||
-    refreshAgeHours < -1 ||
-    (refreshNotBefore && (!Number.isFinite(refreshNotBeforeTime) || latestRefreshTime < refreshNotBeforeTime)) ||
-    (refreshNotBefore && healthFinishedTime < refreshNotBeforeTime)
+    !Number.isFinite(cloudPublicationTime) ||
+    cloudPublicationAgeHours > maxRefreshAgeHours ||
+    cloudPublicationAgeHours < -1 ||
+    (refreshNotBefore && (!Number.isFinite(refreshNotBeforeTime) || cloudPublicationTime < refreshNotBeforeTime))
   ) {
     throw new Error(
-      `Production snapshot export requires a completed source refresh no older than ${maxRefreshAgeHours} hours and newer than the current workflow start.`
+      `Production snapshot export requires an authoritative completed cloud refresh no older than ${maxRefreshAgeHours} hours and newer than the current workflow start.`
     );
   }
 

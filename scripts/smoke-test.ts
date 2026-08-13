@@ -439,6 +439,9 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
   const cloudRefreshMigration = readSource(
     "supabase/migrations/20260811084300_add_supabase_cloud_daily_refresh.sql"
   );
+  const cloudRefreshRecoveryMigration = readSource(
+    "supabase/migrations/20260813014000_recover_stalled_daily_cloud_refresh.sql"
+  );
   const cloudRefreshFunction = readSource("supabase/functions/radar-cloud-refresh/index.ts");
   const cloudRefreshParser = readSource("supabase/functions/radar-cloud-refresh/parser.ts");
   const retiredProductionWorkflows = [
@@ -518,6 +521,24 @@ function assertStaticEntityParityAndPublicSnapshotContract() {
       !cloudRefreshFunction.includes("pages deploy"),
     true,
     "Daily data refresh must not rebuild or deploy the static Pages shell."
+  );
+  assert.equal(
+    cloudRefreshRecoveryMigration.includes("private.radar_cloud_refresh_tick") &&
+      cloudRefreshRecoveryMigration.includes("dispatch_attempts >= 3") &&
+      cloudRefreshRecoveryMigration.includes("private.radar_cloud_redispatch_stale(v_run_id)") &&
+      cloudRefreshRecoveryMigration.includes("private.radar_cloud_finalize(v_run_id)") &&
+      cloudRefreshRecoveryMigration.includes("'0-5 1 * * *'") &&
+      cloudRefreshRecoveryMigration.includes("'select private.radar_cloud_refresh_tick();'") &&
+      !cloudRefreshRecoveryMigration.includes("workflow_dispatch"),
+    true,
+    "The daily Supabase refresh must recover lost cloud task dispatches inside the 09:00 run window without GitHub Actions."
+  );
+  assert.equal(
+    cloudflareSite.includes(
+      "Date.now() - effectiveTime(item) <= 7 * 24 * 60 * 60 * 1000"
+    ),
+    true,
+    "Today's Top 10 must not promote month-old items."
   );
   assertSupabasePublicContractCheckScript(supabasePublicContract);
   assertPublicRadarViewSqlContract(publicEntityMigration);
@@ -816,14 +837,17 @@ function selectListFromRestPath(source: string, restPath: string) {
 function assertPublicSnapshotSourceContract(snapshotExporter: string, supabaseLoader: string, publicRadarReader: string) {
   assert.equal(
       snapshotExporter.includes('CLOUDFLARE_SNAPSHOT_REQUIRE_SUPABASE') &&
-      snapshotExporter.includes('assertStrictProductionSnapshot(snapshot)') &&
+      snapshotExporter.includes('assertStrictProductionSnapshot(snapshot, latestCloudPublication)') &&
       snapshotExporter.includes('snapshot.source.kind !== "supabase_public_views"') &&
       snapshotExporter.includes('snapshot.source.data_source !== "public_evidence_store"') &&
       snapshotExporter.includes('snapshot.source.local_data_used') &&
       snapshotExporter.includes('CLOUDFLARE_SNAPSHOT_MAX_REFRESH_AGE_HOURS') &&
       snapshotExporter.includes('CLOUDFLARE_SNAPSHOT_REFRESH_NOT_BEFORE') &&
-      snapshotExporter.includes('refreshAgeHours > maxRefreshAgeHours') &&
-      snapshotExporter.includes('latestRefreshTime < refreshNotBeforeTime') &&
+      snapshotExporter.includes('supabase.rpc("radar_latest_publication_at")') &&
+      snapshotExporter.includes('!Number.isFinite(healthFinishedTime)') &&
+      snapshotExporter.includes('cloudPublicationAgeHours > maxRefreshAgeHours') &&
+      snapshotExporter.includes('cloudPublicationTime < refreshNotBeforeTime') &&
+      !snapshotExporter.includes('latestRefreshTime < refreshNotBeforeTime') &&
       snapshotExporter.includes('completeness.fetched_sources < 1') &&
       snapshotExporter.includes('snapshot.source_health_summary.succeeded < 1') &&
       snapshotExporter.includes('recentFailureRate > maxSourceFailureRate') &&

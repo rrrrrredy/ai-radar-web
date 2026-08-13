@@ -976,7 +976,7 @@ function liveFeedClientScript() {
     const candidates = items
       .filter(eligible)
       .filter(readerReadyForTop)
-      .filter((item) => Date.now() - effectiveTime(item) <= 30 * 24 * 60 * 60 * 1000);
+      .filter((item) => Date.now() - effectiveTime(item) <= 7 * 24 * 60 * 60 * 1000);
     const today = dayKey(Date.now());
     const currentDayItems = candidates.filter((item) => dayKey(effectiveTime(item)) === today);
     const earlierItems = candidates.filter((item) => dayKey(effectiveTime(item)) !== today);
