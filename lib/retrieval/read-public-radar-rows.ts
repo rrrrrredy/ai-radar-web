@@ -51,6 +51,7 @@ export const publicRadarSelectColumns = [
   "source_id",
   "source_name",
   "title",
+  "title_zh",
   "url",
   "published_at",
   "collected_at",

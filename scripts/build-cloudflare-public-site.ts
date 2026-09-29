@@ -11,6 +11,7 @@ import type { UnderstandingEntity } from "@/lib/understanding/types";
 type SnapshotItem = {
   id: string;
   title: string;
+  title_zh?: string;
   url: string;
   source_name: string;
   source_family: string;
@@ -39,6 +40,8 @@ type SnapshotItem = {
 
 type SnapshotEvent = {
   event_cluster_id: string;
+  reader_title_zh?: string;
+  reader_summary_zh?: string;
   canonical_title: string;
   summary_zh: string;
   category: string;
@@ -200,6 +203,15 @@ const snapshotPath = path.join(outputDir, "data", "radar-snapshot.json");
 
 async function main() {
   const snapshot = JSON.parse(await fs.readFile(snapshotPath, "utf8")) as Snapshot;
+  const itemsById = new Map(snapshot.radar_items.map(item => [item.id, item]));
+  for (const event of [...snapshot.event_clusters, ...snapshot.curated_events]) {
+    const items = event.related_item_ids.map(id => itemsById.get(id)).filter((item): item is SnapshotItem => Boolean(item));
+    const primary = items.find(item => item.title_zh && item.summary_zh) || items[0];
+    if (primary) {
+      event.reader_title_zh = primary.title_zh || primary.title;
+      event.reader_summary_zh = primary.summary_zh || primary.summary_en || "";
+    }
+  }
   await fs.rm(path.join(process.cwd(), "dist", "github-pages"), { force: true, recursive: true });
   await writeSite(snapshot);
   console.log(
@@ -294,6 +306,7 @@ function retiredRouteWorker(config: ReturnType<typeof getSupabasePublicConfig>, 
     "id",
     "source_name",
     "title",
+    "title_zh",
     "url",
     "published_at",
     "collected_at",
@@ -405,6 +418,7 @@ async function buildLiveFeed(request, context) {
     id: item.id,
     source_name: item.source_name,
     title: item.title,
+    title_zh: item.title_zh || null,
     url: item.url,
     published_at: item.published_at || null,
     summary_zh: item.summary_zh,
@@ -1734,6 +1748,7 @@ function genericChineseEventSummary(event: SnapshotEvent, canonical: string) {
 }
 
 function chineseEventSummary(event: SnapshotEvent) {
+  if (event.reader_summary_zh !== undefined) return normalizeReaderSummary(event.reader_summary_zh);
   const override = chineseReaderContentOverride(event);
   if (override) return override.summary;
 
@@ -1858,6 +1873,7 @@ function localizedEnglishEventTitle(event: SnapshotEvent, concrete: string) {
 }
 
 function chineseEventTitle(event: SnapshotEvent) {
+  if (event.reader_title_zh) return publicText(event.reader_title_zh);
   const canonical = publicText(event.canonical_title).trim();
   const concrete = concreteEventHeadline(event);
   const fallback = genericChineseEventTitle(event);

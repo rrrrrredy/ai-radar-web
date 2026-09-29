@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.86.0";
 
 import { collectSource, type CloudSource } from "./parser.ts";
+import { editRecentItems, type EditorialCacheRow } from "./editorial.ts";
 
 type TaskRequest = {
   run_id?: unknown;
@@ -56,6 +57,15 @@ Deno.serve(async (request: Request) => {
   const source = claimed.data as CloudSource;
   try {
     const result = await collectSource(source, 3);
+    if (result.items.length) {
+      const cloudKey = Deno.env.get("DEEPSEEK_API_KEY")?.trim();
+      const [cached, config] = await Promise.all([
+        supabase.from("radar_items").select("url,title_zh,summary_zh,why_it_matters,model_metadata")
+          .eq("source_id", source.id).in("url", result.items.map(item => item.url)).order("processed_at", { ascending: false }).limit(30),
+        cloudKey ? Promise.resolve({ data: cloudKey }) : supabase.rpc("radar_cloud_editorial_key")
+      ]);
+      result.items = await editRecentItems(result.items, (cached.data || []) as EditorialCacheRow[], typeof config.data === "string" ? config.data : "");
+    }
     const completed = await supabase.rpc("radar_cloud_complete_task", {
       p_run_id: runId,
       p_source_id: sourceId,

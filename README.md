@@ -72,6 +72,8 @@ Near-identical coverage can share one event with linked sources. Different numbe
 
 Cloudflare credentials are needed for code deployments only. Daily collection depends on the existing Supabase project, function, and schedule, not a local machine or Codex session.
 
+When a server-side DeepSeek credential is configured, recent source articles receive a Chinese headline and concise summary in the cloud function. Unchanged input reuses saved copy; unknown dates and articles older than seven days do not incur editing calls. The original headline, publication date and source summary remain intact. A provider failure retains source text. Edited copy is persisted only with a successful complete scan, in the same database transaction. The provider credential stays in Edge Function secrets or service-role-only Supabase Vault; no browser receives it.
+
 ## Strict Cloudflare Build
 
 Local development may use a public-safe local snapshot. Production must fail closed:

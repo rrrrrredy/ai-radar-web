@@ -19,6 +19,10 @@ export type CloudSource = {
 
 export type CloudReaderItem = {
   title: string;
+  title_zh?: string;
+  summary_zh?: string;
+  editorial_hash?: string;
+  editorial_version?: string;
   url: string;
   published_at: string | null;
   summary: string;

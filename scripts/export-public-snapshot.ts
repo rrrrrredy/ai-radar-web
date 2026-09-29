@@ -55,6 +55,7 @@ type SnapshotSourceKind = "supabase_public_views" | "local_files";
 export type PublicRadarSnapshotItem = {
   id: string;
   title: string;
+  title_zh?: string;
   url: string;
   source_name: string;
   source_family?: string;
@@ -330,7 +331,7 @@ async function createPublicSnapshot(): Promise<PublicMirrorSnapshot> {
     }
 
     if (strictSupabaseExport) {
-      throw new Error("Production snapshot export returned no public Supabase radar rows.");
+      throw new Error(`Production snapshot export returned no public Supabase radar rows: ${supabaseSnapshot.warnings.map(sanitizeError).join("; ")}`);
     }
 
     const previousSnapshot = await readPreviousPublicSnapshot(generatedAt, supabaseSnapshot.warnings);
@@ -1006,6 +1007,7 @@ function normalizeSupabaseRadarRow(row: SupabaseRadarRow): PublicRadarSnapshotIt
     summary_zh: optionalText(row.summary_zh),
     tags: stringArray(row.tags, 12, 80),
     title,
+    title_zh: optionalText(row.title_zh),
     url,
     why_it_matters: optionalText(row.why_it_matters)
   };
@@ -1353,6 +1355,7 @@ function publicSafeRadarItem(item: PublicRadarSnapshotItem): PublicRadarSnapshot
   return {
     id: text(item.id, 160),
     title: publicSafeNote(item.title),
+    title_zh: item.title_zh ? publicSafeNote(item.title_zh) : undefined,
     url,
     source_name: sourceName,
     source_family: sourceFamilyForEvent({
