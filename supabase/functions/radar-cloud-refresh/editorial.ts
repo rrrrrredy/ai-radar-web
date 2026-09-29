@@ -33,6 +33,8 @@ export function validEditorial(value: unknown, original: CloudReaderItem): value
 
 function quantities(text: string) {
   const scales: Record<string, number> = { trillion: 1e12, billion: 1e9, million: 1e6, thousand: 1e3, t: 1e12, b: 1e9, m: 1e6, k: 1e3, "万亿": 1e12, "亿": 1e8, "万": 1e4, "千": 1e3, "百": 1e2 };
+  const words = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty"];
+  text = text.replace(new RegExp("\\b(" + words.join("|") + ")\\b", "gi"), word => String(words.indexOf(word.toLowerCase())));
   return Array.from(text.matchAll(/(\d+(?:[.,]\d+)*)(?:\s*(trillion|billion|million|thousand|[kmbt](?![a-z])|万亿|亿|万|千|百))?/giu), match => {
     const raw = match[1].replace(/,/g, "");
     const value = Number(raw);
@@ -81,7 +83,10 @@ export async function editRecentItems(
     const envelope = await response.json();
     const payload = JSON.parse(envelope.choices?.[0]?.message?.content || "{}");
     const seen = new Set<number>();
-    for (const row of Array.isArray(payload.items) ? payload.items : []) {
+    for (const value of Array.isArray(payload.items) ? payload.items : []) {
+      // JSON mode does not enforce property names; accept the common aliases
+      // only after the same Chinese-copy and factual-number checks.
+      const row = value && typeof value === "object" ? { ...value, title_zh: value.title_zh ?? value.title, summary_zh: value.summary_zh ?? value.summary } : value;
       const input = pending.find(item => item.index === row?.index);
       if (!input || seen.has(input.index) || !validEditorial(row, result[input.index])) continue;
       seen.add(input.index);

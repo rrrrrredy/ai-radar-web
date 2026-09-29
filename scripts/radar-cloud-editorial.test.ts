@@ -15,6 +15,7 @@ assert.equal(validEditorial(copy, item), true);
 assert.equal(validEditorial({ ...copy, summary_zh: "使用成本降低了50%，性能提升10倍。" }, item), false);
 assert.equal(validEditorial({ ...copy, summary_zh: "本文介绍该博客发布了一篇文章，未提供具体内容。" }, item), false);
 assert.equal(validEditorial({ ...copy, title_zh: "Acme 将种子投资上限提高至500万美元", summary_zh: "Acme 将种子投资上限提高至500万美元。", why_it_matters: "" }, { ...item, title: "Acme raises seed ceiling to $5M", summary: "Acme raises its seed ceiling to $5 million." }), true);
+assert.equal(validEditorial({ ...copy, title_zh: "Acme 公布13个离线开发工具", summary_zh: "Acme 公布13个面向开发者的离线工具。", why_it_matters: "" }, { ...item, title: "Acme unveils thirteen offline tools", summary: "Thirteen developer tools are available." }), true);
 let calls = 0;
 const fetcher = (async (url, init) => {
   calls++;
@@ -36,6 +37,8 @@ await editRecentItems([{ ...item, published_at: null }, { ...item, published_at:
 assert.equal(calls, 1);
 const fallback = await editRecentItems([item], [], "test-secret", (async () => new Response("Unavailable", { status: 503 })) as typeof fetch);
 assert.deepEqual(fallback, [item]);
+const aliases = await editRecentItems([item], [], "test-secret", (async () => Response.json({ choices: [{ message: { content: JSON.stringify({ items: [{ index: 0, title: copy.title_zh, summary: copy.summary_zh, why_it_matters: "" }] }) } }] })) as typeof fetch);
+assert.equal(aliases[0].title_zh, copy.title_zh);
 console.log("Cloud editorial tests passed: grounded copy, cache reuse, dates, safe fallback.");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
