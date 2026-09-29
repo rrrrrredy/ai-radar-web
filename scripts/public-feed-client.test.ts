@@ -18,7 +18,7 @@ const rows = Array.from({ length: 4 }, (_, index) => ({
   categories: ["tooling"], source_count: 2
 }));
 
-async function render(items: unknown[], updated_at: string | null = now, fail = false) {
+async function render(items: unknown[], updated_at: string | null = now, fail = false, language = "zh-CN") {
   const top = { innerHTML: "OLD TOP" };
   const stream = { innerHTML: "OLD STREAM" };
   const status = { textContent: "OLD TIME", dataset: {} };
@@ -26,7 +26,7 @@ async function render(items: unknown[], updated_at: string | null = now, fail = 
   const root = { dataset: { liveMode: "home" }, querySelector: (selector: string) => selector === "[data-live-stream]" ? stream : null };
   const context = vm.createContext({
     URL, Date, Intl, Map, Set, Array, String, Number, Math, JSON, Promise,
-    document: { documentElement: { lang: "zh-CN" }, visibilityState: "visible", addEventListener() {}, querySelector(selector: string) {
+    document: { documentElement: { lang: language }, visibilityState: "visible", addEventListener() {}, querySelector(selector: string) {
       return ({ "[data-live-feed]": root, "[data-live-top]": top, "[data-live-status]": status, "[data-live-date]": date } as Record<string, unknown>)[selector];
     } },
     window: { addEventListener() {}, dispatchEvent() {}, setInterval() {} }, setInterval() {},
@@ -57,6 +57,13 @@ async function main() {
   const failed = await render(rows, now, true);
   assert.equal(failed.top.innerHTML, "OLD TOP");
   assert.equal(failed.date.textContent, "OLD DATE");
+  const bilingual = [{ ...rows[0], title_zh: "Acme Atlas 新增离线工具支持", summary_zh: "开发者现在可以离线运行工具。", why_it_matters: "工具可在没有网络的环境运行。" }];
+  const zh = await render(bilingual);
+  assert.ok(zh.top.innerHTML.includes(bilingual[0].title_zh));
+  assert.ok(zh.top.innerHTML.includes(bilingual[0].why_it_matters));
+  const en = await render(bilingual, now, false, "en");
+  assert.ok(en.top.innerHTML.includes(rows[0].title));
+  assert.ok(!en.top.innerHTML.includes(bilingual[0].why_it_matters));
   console.log("Public feed client tests passed (short, empty, undated, error).");
 }
 

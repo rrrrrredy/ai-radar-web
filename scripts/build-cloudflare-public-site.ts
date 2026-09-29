@@ -806,7 +806,8 @@ function liveFeedClientScript() {
   function readerJudgment(item) {
     const value = cleanReaderText(item.why_it_matters);
     if (!value || /可能影响|需要继续核对|值得继续跟踪|来自.+的一手|^A direct|^Potentially relevant|^May affect|^May change|may affect product|may change capability/i.test(value)) return "";
-    return locale === "zh" && !/[\u3400-\u9fff]/u.test(value) ? "" : value;
+    const chinese = /[\u3400-\u9fff]/u.test(value);
+    return (locale === "zh") !== chinese ? "" : value;
   }
 
   function sourceCountLabel(item) {

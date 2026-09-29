@@ -23,6 +23,7 @@ pnpm-debug.log*
 yarn-debug.log*
 tmp/
 .codex-run/
+supabase/.temp/
 
 # Environment and secrets
 .env
