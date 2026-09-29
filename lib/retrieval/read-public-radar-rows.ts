@@ -151,17 +151,16 @@ export async function readCompletePublicRadarRows(
     }
 
     const detailRows: PublicRadarRow[] = [];
-    for (let offset = 0; offset < manifest.ids.length; offset += detailChunkSize) {
-      const ids = manifest.ids.slice(offset, offset + detailChunkSize);
-      const { data, error } = await supabase
-        .from("public_radar_items")
-        .select(publicRadarSelectColumns)
-        .in("id", ids);
-
-      if (error) {
-        return failure("detail_read_failed", error);
-      }
-      detailRows.push(...((data ?? []) as unknown as PublicRadarRow[]));
+    // Bound concurrency while avoiding one network round trip per historical page.
+    for (let offset = 0; offset < manifest.ids.length; offset += detailChunkSize * 4) {
+      const chunks = Array.from({ length: 4 }, (_, index) =>
+        manifest.ids.slice(offset + index * detailChunkSize, offset + (index + 1) * detailChunkSize)
+      ).filter((ids) => ids.length > 0);
+      const results = await Promise.all(chunks.map((ids) => supabase
+        .from("public_radar_items").select(publicRadarSelectColumns).in("id", ids)));
+      const failed = results.find((result) => result.error);
+      if (failed?.error) return failure("detail_read_failed", failed.error);
+      for (const result of results) detailRows.push(...((result.data ?? []) as unknown as PublicRadarRow[]));
     }
 
     const ordered = reorderPublicRadarRows(manifest.ids, detailRows);

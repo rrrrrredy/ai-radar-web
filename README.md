@@ -10,12 +10,11 @@ AI Industry Radar is a Chinese-first, event-level AI information product. It tur
 
 ## Public Product
 
-The public information architecture has four reader-facing sections:
+The public information architecture has three main reader-facing sections:
 
-- `/`: `今日热点`, exactly ten ranked developments with time, source, category, readable summary, and `为什么值得看`.
+- `/`: `今日热点`, up to ten recent developments with publication time, source, category, and factual summaries.
 - `/radar/`: `全部动态`, a continuous event feed with search, source-family filters, and topic filters.
 - `/sources/`: `来源`, explaining the public sources and source families used by the product.
-- `/about/`: `关于`, explaining the product method, boundaries, and update cadence.
 - `/en/*`: equivalent English routes.
 
 The public experience is a reading product, not an operations dashboard. Internal scores, ingestion state, write controls, and raw provider output are not navigation items or reader-facing content.
@@ -23,17 +22,15 @@ The public experience is a reading product, not an operations dashboard. Interna
 ## Data Loop
 
 ```text
-public source registry
-  -> bounded resumable live crawl
-  -> normalized and deduplicated items
-  -> bounded DeepSeek understanding
-  -> controlled Supabase persistence
-  -> deterministic event clustering and scoring
-  -> strict public-safe Supabase snapshot
-  -> Cloudflare Pages production deployment
+Supabase Cron (09:00 Asia/Shanghai)
+  -> existing cloud source tasks
+  -> normalized and deduplicated source results
+  -> atomic publication in Supabase
+  -> read-only Pages /api/live-feed
+  -> reader pages refresh on opening or returning to the foreground
 ```
 
-Deterministic code owns public-field allowlists, relevance thresholds, merge safeguards, title normalization, and write gates. DeepSeek is used only for bounded understanding; it is not the public safety boundary.
+Pages is a static shell with a read-only data endpoint. A daily data refresh does not rebuild or redeploy the site. GitHub Actions is not part of the production refresh path. Local understanding tools remain available separately; the daily collector does not silently enable model calls.
 
 ## Local Commands
 
@@ -67,42 +64,13 @@ Local persistence still requires `ENABLE_SUPABASE_WRITES=true` plus valid Supaba
 
 ## Daily Production Refresh
 
-Supabase Cron dispatches `.github/workflows/radar-refresh-cloudflare.yml` once per day at **01:00 UTC / 09:00 Asia/Shanghai**. The GitHub workflow itself is `workflow_dispatch`-only, so GitHub does not create a duplicate scheduled run.
+The existing Supabase job starts at **01:00 UTC / 09:00 Asia/Shanghai**. Its `0-5 1 * * *` retry window revisits the same daily run; it does not start six independent scans. Sources run through the authenticated `radar-cloud-refresh` Edge Function. The database retains the previous public data when a run cannot publish.
 
-The daily dispatch uses the 30-source plan with bounded internal retries. It persists unseen items, clusters public events, builds the strict Supabase-backed site, deploys Cloudflare Pages, and verifies the fixed production URL. The manual incremental workflow remains available only for operator maintenance and has no schedule.
+The public feed selects records by their original publication date before applying result limits, event deduplication, and time-decayed ranking. It never substitutes collection time for a missing publication date. The homepage shows up to ten highlights from the last seven days. Short and empty results replace the previous sections together with their matching timestamp.
 
-Every daily run follows one production path:
+Near-identical coverage can share one event with linked sources. Different numbered versions, tutorials, reviews, and uncertain announcements are kept separate. Generic impact text and story-specific browser title patches are not used as substitutes for edited content.
 
-1. validate the `main` ref, bounded parameters, and repository write gate;
-2. run live resumable activation and persist successful chunks to Supabase;
-3. cluster and persist public events;
-4. build a strict Supabase-backed Cloudflare snapshot;
-5. run release validation;
-6. deploy the `main` artifact to Cloudflare Pages;
-7. verify https://ai-industry-radar.pages.dev/.
-
-Manual runs expose only `limit`, `chunk_size`, and `max_items_per_source`. They still use live mode, persistence, strict snapshot export, validation, and production deployment. Production runs are restricted to `refs/heads/main`.
-
-The workflow restores recent same-day activation checkpoints across runs. An incomplete checkpoint resumes; a fully persisted checkpoint can skip activation and retry clustering, build, and deployment without fetching and scoring the same sources again. Old, malformed, or non-live checkpoints are discarded. Concurrency is fixed to one production refresh at a time and an in-progress run is not cancelled by a new trigger.
-
-### Required repository configuration
-
-Repository variables:
-
-- `RADAR_REFRESH_WRITE_GATE=true`
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `CLOUDFLARE_ACCOUNT_ID`
-
-Repository secrets:
-
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `DEEPSEEK_API_KEY`
-- `CLOUDFLARE_API_TOKEN`
-
-The workflow accepts secret fallbacks for the Supabase public values and Cloudflare account ID, but variables are preferred because those values are not credentials. `GITHUB_TOKEN` is supplied automatically by GitHub Actions.
-
-The workflow has only `contents: read` permission. Service-role and model credentials are exposed only to the live persistence step, the service-role credential is separately scoped to event persistence, and Cloudflare credentials are exposed only to deployment.
+Cloudflare credentials are needed for code deployments only. Daily collection depends on the existing Supabase project, function, and schedule, not a local machine or Codex session.
 
 ## Strict Cloudflare Build
 
@@ -118,7 +86,7 @@ The production exporter must confirm a Supabase public-view source, no local fal
 
 ## Public Data Boundary
 
-Cloudflare publishes one allowlisted, read-only snapshot derived from approved Supabase public views. Public fields are limited to reader-facing event, signal, source, citation, relationship, and freshness data.
+Cloudflare serves an allowlisted live feed and a build-time fallback snapshot derived from approved Supabase public views. Public fields are limited to reader-facing event, signal, source, citation, relationship, and freshness data.
 
 Raw text, raw/model metadata, evidence notes, private notes, admin/audit logs, service credentials, provider payloads, cookies, operational checkpoints, and unrelated database relations are never public.
 
@@ -128,8 +96,8 @@ Raw text, raw/model metadata, evidence notes, private notes, admin/audit logs, s
 - no automatic WeChat crawl;
 - no browser or public service-role access;
 - no claim of complete real-time industry coverage;
-- the daily task starts at 09:00 Beijing time and normally finishes a few minutes later; source, network, processing, and deployment time prevent a zero-delay completion guarantee;
-- Supabase Cron, GitHub Actions billing, and all required variables/secrets must remain active, or no daily production run can complete.
+- the daily task starts at 09:00 Beijing time; source, network, and processing time prevent a zero-delay completion guarantee;
+- Supabase Cron and the authenticated cloud function must remain active for daily publication.
 
 ## Release Documentation
 

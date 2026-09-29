@@ -193,14 +193,10 @@ async function collectSitemap(source: CloudSource, limit: number, fetcher: typeo
     const pages = await Promise.all(urls.map(async (entry) => {
       const page = await requestText(entry.url, "text/html, */*", fetcher);
       if (!page.ok) {
-        return {
-          title: titleFromUrl(entry.url),
-          url: entry.url,
-          publishedAt: entry.lastModified
-        };
+        return null;
       }
       const parsed = parseHtmlArticle(page.text, page.url);
-      return parsed ? { ...parsed, publishedAt: parsed.publishedAt || entry.lastModified } : null;
+      return parsed;
     }));
     const ready = pages.flatMap((item) =>
       item && readerReady(item) ? [item] : []
@@ -221,8 +217,7 @@ export function parseFeed(xml: string, limit = 3): DraftItem[] {
     const url = canonicalizeUrl(feedLink(block) || stripMarkup(readTag(block, "guid")) || stripMarkup(readTag(block, "id")));
     const publishedAt = safeIso(
       stripMarkup(readTag(block, "pubDate")) ||
-      stripMarkup(readTag(block, "published")) ||
-      stripMarkup(readTag(block, "updated"))
+      stripMarkup(readTag(block, "published"))
     );
     const summary = stripMarkup(
       readTag(block, "description") ||
@@ -333,7 +328,7 @@ function enrichItem(source: CloudSource, draft: DraftItem): CloudReaderItem {
     categories,
     tags,
     language,
-    why_it_matters: whyItMatters(source, categories[0] || "AI", language),
+    why_it_matters: "",
     ai_relevance_score: round(relevance),
     credibility_score: round(credibility),
     novelty_score: round(novelty),
@@ -357,13 +352,6 @@ function inferCategories(source: CloudSource, text: string) {
   if (categories.length === 0 && sourceCategory) categories.push(sourceCategory);
   if (categories.length === 0) categories.push("行业动态");
   return uniqueStrings(categories).slice(0, 4);
-}
-
-function whyItMatters(source: CloudSource, category: string, language: CloudReaderItem["language"]) {
-  if (language === "zh" || language === "mixed") {
-    return `来自${source.name}的一手${category}动态，可结合原文判断其对产品、开发或行业走向的影响。`;
-  }
-  return `A direct ${category} update from ${source.name}; the original source provides the details needed to assess its product and industry impact.`;
 }
 
 function freshnessScore(value?: string) {
@@ -460,15 +448,6 @@ function firstUsefulParagraph(html: string) {
     .map((match) => stripMarkup(match[1] || ""))
     .filter((value) => value.length >= 60);
   return paragraphs[0] || "";
-}
-
-function titleFromUrl(value: string) {
-  try {
-    const segment = new URL(value).pathname.split("/").filter(Boolean).at(-1) || "";
-    return cleanText(segment.replace(/[-_]+/g, " "));
-  } catch {
-    return "";
-  }
 }
 
 function readerReady(item: Partial<DraftItem>) {
@@ -589,7 +568,7 @@ function retryableStatus(status: number) {
 }
 
 function stripMarkup(value: string) {
-  return cleanText(value
+  return cleanText(decodeEntities(value)
     .replace(/<!\[CDATA\[([\s\S]*?)]]>/g, "$1")
     .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
     .replace(/<style\b[\s\S]*?<\/style>/gi, " ")

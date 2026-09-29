@@ -28,6 +28,10 @@ const parsedFeed = parseFeed(feed, 3);
 assert.equal(parsedFeed.length, 2);
 assert.equal(parsedFeed[0]?.url, "https://example.com/news/model");
 assert.equal(parsedFeed[0]?.publishedAt, "2026-08-11T01:15:00.000Z");
+const encodedFeed = parseFeed(feed.replace("The new model adds stronger tool use and lower latency for API applications.", "&lt;img src=&quot;x&quot;&gt;A concrete model improvement."), 3);
+assert.equal(encodedFeed[0]?.summary, "A concrete model improvement.");
+const updatedOnlyFeed = parseFeed('<feed><entry><title>An older article edited today</title><link href="https://example.com/edited"/><updated>2026-09-29T01:00:00Z</updated></entry></feed>');
+assert.equal(updatedOnlyFeed[0]?.publishedAt, "");
 
 const html = `
 <!doctype html>
@@ -87,7 +91,7 @@ async function testCollection() {
   assert.equal(result.fetch_succeeded, true);
   assert.equal(result.items.length, 2);
   assert.ok((result.items[0]?.overall_score || 0) >= 0.8);
-  assert.ok(result.items[0]?.why_it_matters.includes("Example AI"));
+  assert.equal(result.items[0]?.why_it_matters, "");
 
   assert.equal(
     canonicalizeUrl("https://example.com/a/?utm_source=x&keep=yes#section"),

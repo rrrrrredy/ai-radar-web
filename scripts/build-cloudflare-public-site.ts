@@ -3,6 +3,7 @@ import "@/lib/config/load-cli-env";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import ts from "typescript";
 
 import { getSupabasePublicConfig } from "@/lib/config";
 import type { UnderstandingEntity } from "@/lib/understanding/types";
@@ -228,18 +229,22 @@ function readerSnapshot(snapshot: Snapshot) {
       summary_zh: chineseEventSummary(event),
       summary_en: eventEnglishSummary(event, snapshot),
       category: categoryFilterValue(event.category),
-      published_at: event.latest_seen_at,
+      published_at: eventPublishedAt(event) || null,
       sources: event.citations.map((citation) => ({
         name: citation.source_name,
         title: citation.title,
         url: citation.url,
-        published_at: citation.published_at ?? citation.collected_at
+        published_at: citation.published_at ?? null
       }))
     }))
   };
 }
 async function writeSite(snapshot: Snapshot) {
   const liveFeedConfig = getSupabasePublicConfig();
+  const policySource = ts.transpileModule(
+    await fs.readFile(path.join(process.cwd(), "lib/radar/public-feed-policy.ts"), "utf8"),
+    { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }
+  ).outputText.replace(/^export /gm, "");
   const generatedDirectories = ["ask", "assets", "en", "radar", "sources"];
   await Promise.all(generatedDirectories.map((directory) =>
     fs.rm(path.join(outputDir, directory), { force: true, recursive: true })
@@ -279,12 +284,12 @@ async function writeSite(snapshot: Snapshot) {
     fs.writeFile(path.join(outputDir, "radar", "index.html"), renderRadar(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "sources", "index.html"), renderSources(snapshot), "utf8"),
     fs.writeFile(path.join(outputDir, "_routes.json"), retiredRouteWorkerRoutes(), "utf8"),
-    fs.writeFile(path.join(outputDir, "_worker.js"), retiredRouteWorker(liveFeedConfig), "utf8"),
+    fs.writeFile(path.join(outputDir, "_worker.js"), retiredRouteWorker(liveFeedConfig, policySource), "utf8"),
     fs.writeFile(path.join(outputDir, "version.json"), `${JSON.stringify(publicVersion(snapshot), null, 2)}\n`, "utf8")
   ]);
 }
 
-function retiredRouteWorker(config: ReturnType<typeof getSupabasePublicConfig>) {
+function retiredRouteWorker(config: ReturnType<typeof getSupabasePublicConfig>, policySource: string) {
   const liveFeedColumns = [
     "id",
     "source_name",
@@ -296,7 +301,9 @@ function retiredRouteWorker(config: ReturnType<typeof getSupabasePublicConfig>) 
     "summary_zh",
     "summary_en",
     "categories",
-    "why_it_matters"
+    "why_it_matters",
+    "overall_score",
+    "source_tier"
   ].join(",");
 
   return `const retiredPrefixes = ["/about", "/en/about", "/write", "/en/write", "/entities", "/en/entities", "/reports", "/en/reports", "/api/writing-assistant"];
@@ -304,6 +311,7 @@ const liveFeedPath = "/api/live-feed";
 const supabaseUrl = ${JSON.stringify(config?.url ?? "")};
 const supabaseKey = ${JSON.stringify(config?.anonKey ?? "")};
 const liveFeedColumns = ${JSON.stringify(liveFeedColumns)};
+${policySource}
 
 function jsonResponse(body, status, extraHeaders = {}) {
   return new Response(JSON.stringify(body), {
@@ -365,11 +373,11 @@ async function buildLiveFeed(request, context) {
 
   const manifestParams = new URLSearchParams({
     select: "id,processed_at,published_at",
-    order: "overall_score.desc.nullslast,processed_at.desc.nullslast,published_at.desc.nullslast,id.desc",
-    limit: String(limit)
+    and: "(published_at.gte." + new Date(Date.now() - 30 * 86400000).toISOString() + ",published_at.lte." + new Date(Date.now() + 600000).toISOString() + ")",
+    order: "published_at.desc,processed_at.desc.nullslast,id.desc",
+    limit: "300"
   });
   const manifest = await supabaseJson("public_radar_items?" + manifestParams.toString());
-  const updatedAt = manifest.map((row) => row.processed_at).filter(Boolean).sort().at(-1) || null;
   const ids = Array.from(new Set(manifest.map((row) => String(row.id || "").trim()).filter(Boolean)));
   if (ids.length === 0) {
     return jsonResponse({ updated_at: null, items: [] }, 200, {
@@ -391,16 +399,20 @@ async function buildLiveFeed(request, context) {
     throw new Error("Supabase live feed detail rows were incomplete");
   }
 
-  const readerItems = items.map((item) => ({
+  const selected = selectPublicFeed(items, limit);
+  const updatedAt = selected.map((row) => row.processed_at).filter(Boolean).sort().at(-1) || null;
+  const readerItems = selected.map((item) => ({
     id: item.id,
     source_name: item.source_name,
     title: item.title,
     url: item.url,
-    published_at: item.published_at || item.collected_at || item.processed_at || null,
+    published_at: item.published_at || null,
     summary_zh: item.summary_zh,
     summary_en: item.summary_en,
     categories: item.categories,
-    why_it_matters: item.why_it_matters
+    why_it_matters: item.why_it_matters,
+    source_count: item.source_count,
+    sources: item.sources
   }));
   const response = jsonResponse({
     updated_at: updatedAt,
@@ -570,34 +582,17 @@ function renderStorySources(event: SnapshotEvent, locale: "en" | "zh") {
 }
 
 function eventReaderJudgment(event: SnapshotEvent, snapshot: Snapshot, locale: "en" | "zh") {
-  const relatedIds = new Set(event.related_item_ids);
-  const item = snapshot.radar_items.find((candidate) => relatedIds.has(candidate.id) && candidate.why_it_matters?.trim());
-  if (locale === "zh") {
-    const override = chineseReaderContentOverride(event);
-    if (override) return override.why;
-    const itemJudgment = item?.why_it_matters?.trim() ?? "";
-    if (containsHan(itemJudgment)) return publicText(itemJudgment);
-    if (containsHan(event.score_reason) && !/(?:综合分|AI\s*相关度|重要性|来源家族|来源家庭|来源覆盖|独立性未验证|单一来源)/u.test(event.score_reason)) {
-      return publicText(event.score_reason);
-    }
-    const judgments: Record<string, string> = {
-      agent: "这项变化可能重塑智能体的工作方式和自动化边界，值得评估对现有流程的实际影响。",
-      benchmark: "这组结果会影响能力判断与模型比较，但仍需要结合测试条件和独立复核解读。",
-      business: "这条变化反映了市场竞争、客户选择或商业模式正在调整，可能影响后续产品与合作判断。",
-      funding: "资金流向通常会提前暴露行业押注方向，但估值与实际交付能力仍需分开判断。",
-      infrastructure: "基础设施变化会直接影响推理成本、部署方式和产品可扩展性，值得持续跟踪。",
-      model_release: "新模型会改变能力边界、成本和产品选型，需要继续核对实际表现与使用限制。",
-      open_source: "开源进展可能降低使用门槛并加快生态扩散，适合评估能否进入现有技术栈。",
-      policy: "政策变化会影响产品上线、数据使用和合规边界，相关团队需要提前判断影响范围。",
-      product_update: "这项产品变化可能直接改变用户工作流和团队选型，值得关注真实可用性与迁移成本。",
-      regulation: "监管信号会改变产品责任和合规要求，企业需要结合正式文本继续核实。",
-      research: "这项研究可能改变对能力机制或技术路线的理解，但距离稳定产品化仍需更多验证。",
-      safety: "这条动态涉及模型风险与责任边界，值得结合原始证据判断其实际严重性。",
-      tooling: "工具能力的变化可能直接提升开发效率，也需要评估稳定性、兼容性和团队迁移成本。"
-    };
-    return judgments[categoryFilterValue(event.category)] ?? "这条动态可能影响产品判断、技术选型或后续行业走向，值得继续跟踪。";
-  }
-  return `This development may affect product decisions, technical choices or the direction of the AI market. ${event.source_count > 1 ? `${event.source_count} sources are available for comparison.` : "Only one public source is currently available."}`;
+  const ids = new Set(event.related_item_ids);
+  const value = snapshot.radar_items.find((item) => ids.has(item.id) && item.why_it_matters)?.why_it_matters?.trim() || "";
+  if (!value || /可能影响|需要继续核对|值得继续跟踪|来自.+的一手|^A direct|^Potentially relevant|^May affect|^May change/i.test(value)) return "";
+  if (locale === "zh" && !containsHan(value)) return "";
+  return publicText(value);
+}
+
+function eventPublishedAt(event: SnapshotEvent) {
+  return event.citations.map((citation) => citation.published_at)
+    .filter((value): value is string => Boolean(value) && Number.isFinite(Date.parse(value!)))
+    .sort().at(-1) || "";
 }
 
 function renderStoryRow(event: SnapshotEvent, snapshot: Snapshot, locale: "en" | "zh") {
@@ -606,14 +601,16 @@ function renderStoryRow(event: SnapshotEvent, snapshot: Snapshot, locale: "en" |
   const sources = eventSources(event).join(" · ") || (locale === "en" ? "Public source" : "公开来源");
   const sourceCount = locale === "en" ? `${event.source_count} source${event.source_count === 1 ? "" : "s"}` : `${event.source_count} 个来源`;
   const category = locale === "en" ? categoryLabelEn(event.category) : labelize(event.category);
-  const timestamp = feedDateTime(event.latest_seen_at, locale);
+  const publishedAt = eventPublishedAt(event);
+  const timestamp = feedDateTime(publishedAt, locale);
+  const judgment = eventReaderJudgment(event, snapshot, locale);
   return `<article class="event-card story-row" ${storyDataAttributes(event, title, summary)}>
-    <div class="story-time"><time datetime="${escapeAttr(event.latest_seen_at)}" title="${escapeAttr(`${timestamp.date} ${timestamp.time} · ${locale === "en" ? "UTC" : "北京时间"}`)}"><span class="story-date">${escapeHtml(timestamp.date)}</span><span class="story-clock">${escapeHtml(timestamp.time)}</span></time><i aria-hidden="true"></i></div>
+    <div class="story-time"><time datetime="${escapeAttr(publishedAt)}" title="${escapeAttr(`${timestamp.date} ${timestamp.time} · ${locale === "en" ? "UTC" : "北京时间"}`)}"><span class="story-date">${escapeHtml(timestamp.date)}</span><span class="story-clock">${escapeHtml(timestamp.time)}</span></time><i aria-hidden="true"></i></div>
     <div class="story-content">
       <div class="story-meta"><span>${escapeHtml(sources)}</span><strong>${escapeHtml(sourceCount)}</strong></div>
       <h2><a href="${escapeAttr(eventPrimaryUrl(event))}">${escapeHtml(title)}</a></h2>
       ${summary ? `<p>${escapeHtml(summary)}</p>` : ""}
-      <p class="story-judgment"><strong>${locale === "en" ? "Why it matters" : "为什么值得看"}</strong>${escapeHtml(eventReaderJudgment(event, snapshot, locale))}</p>
+      ${judgment ? `<p class="story-judgment"><strong>${locale === "en" ? "Why it matters" : "为什么值得看"}</strong>${escapeHtml(judgment)}</p>` : ""}
       <div class="story-foot"><span>${escapeHtml(category)}</span><span>${escapeHtml(sourceCount)}</span></div>
       ${renderStorySources(event, locale)}
     </div>
@@ -623,8 +620,8 @@ function renderStoryRow(event: SnapshotEvent, snapshot: Snapshot, locale: "en" |
 function renderStoryStream(events: SnapshotEvent[], snapshot: Snapshot, locale: "en" | "zh") {
   let day = "";
   return events.map((event) => {
-    const nextDay = feedDayKey(event.latest_seen_at, locale);
-    const heading = nextDay === day ? "" : `<h2 class="feed-day"><span>${escapeHtml(feedDayLabel(event.latest_seen_at, locale))}</span></h2>`;
+    const nextDay = feedDayKey(eventPublishedAt(event), locale);
+    const heading = nextDay === day ? "" : `<h2 class="feed-day"><span>${escapeHtml(feedDayLabel(eventPublishedAt(event), locale))}</span></h2>`;
     day = nextDay;
     return `${heading}${renderStoryRow(event, snapshot, locale)}`;
   }).join("");
@@ -637,12 +634,14 @@ function renderTopStories(events: SnapshotEvent[], snapshot: Snapshot, locale: "
     const sources = locale === "en" ? `${event.source_count} source${event.source_count === 1 ? "" : "s"}` : `${event.source_count} 个来源`;
     const category = locale === "en" ? categoryLabelEn(event.category) : labelize(event.category);
     const sourceNames = eventSources(event, 2).join(" · ") || (locale === "en" ? "Public source" : "公开来源");
-    const timestamp = feedDateTime(event.latest_seen_at, locale);
+    const publishedAt = eventPublishedAt(event);
+    const timestamp = feedDateTime(publishedAt, locale);
+    const judgment = eventReaderJudgment(event, snapshot, locale);
     return `<article class="top-story story-row" ${storyDataAttributes(event, title, summary)}>
       <span class="hot-rank">${String(index + 1).padStart(2, "0")}</span>
-      <div class="hot-meta"><time datetime="${escapeAttr(event.latest_seen_at)}" title="${escapeAttr(locale === "en" ? "UTC" : "北京时间")}">${escapeHtml(`${timestamp.date} · ${timestamp.time}`)}</time><span>${escapeHtml(sourceNames)}</span><small>${escapeHtml(category)}</small></div>
+      <div class="hot-meta"><time datetime="${escapeAttr(publishedAt)}" title="${escapeAttr(locale === "en" ? "UTC" : "北京时间")}">${escapeHtml(`${timestamp.date} · ${timestamp.time}`)}</time><span>${escapeHtml(sourceNames)}</span><small>${escapeHtml(category)}</small></div>
       <div class="hot-copy"><h2><a href="${escapeAttr(eventPrimaryUrl(event))}">${escapeHtml(title)}</a></h2><p>${escapeHtml(summary)}</p></div>
-      <div class="hot-judgment"><strong>${locale === "en" ? "Why it matters" : "为什么值得看"}</strong><p>${escapeHtml(eventReaderJudgment(event, snapshot, locale))}</p><small>${escapeHtml(sources)}</small></div>
+      <div class="hot-judgment">${judgment ? `<strong>${locale === "en" ? "Why it matters" : "为什么值得看"}</strong><p>${escapeHtml(judgment)}</p>` : ""}<small>${escapeHtml(sources)}</small></div>
     </article>`;
   }).join("");
 }
@@ -706,14 +705,12 @@ function liveFeedClientScript() {
 
 
   function effectiveTime(item) {
-    for (const value of [item.published_at, item.collected_at, item.processed_at, item.updated_at]) {
-      const timestamp = Date.parse(String(value || ""));
-      if (Number.isFinite(timestamp)) return timestamp;
-    }
-    return 0;
+    const timestamp = Date.parse(String(item.published_at || ""));
+    return Number.isFinite(timestamp) ? timestamp : 0;
   }
 
   function dateTime(value) {
+    if (!value) return { date: "--", time: "--:--" };
     const date = new Date(value);
     if (!Number.isFinite(date.getTime())) return { date: "--", time: "--:--" };
     const options = locale === "zh"
@@ -727,7 +724,9 @@ function liveFeedClientScript() {
   }
 
   function categoryKey(item) {
-    return values(item.categories)[0] || "other";
+    const category = values(item.categories)[0] || "other";
+    return ({ "模型": "model_release", "开发工具": "tooling", "研究": "research", "商业": "business",
+      "政策": "policy", "安全": "safety", "行业动态": "business" })[category] || category;
   }
 
   function categoryLabel(value) {
@@ -754,110 +753,6 @@ function liveFeedClientScript() {
     return "分析/媒体";
   }
 
-  function localizedTitleSource(value) {
-    const cleaned = String(value || "").trim()
-      .replace(/\s+(?:documentation|docs|changelog|release notes|news)$/i, "")
-      .trim();
-    return cleaned || (locale === "zh" ? "该来源" : "The source");
-  }
-
-  function localizedTitleFallback(item, source) {
-    const label = localizedTitleSource(source);
-    const category = categoryKey(item);
-    if (category === "model_release") return label + " 更新模型或 API";
-    if (category === "product_update") return label + " 更新产品能力";
-    if (category === "open_source") return label + " 更新开源项目";
-    if (category === "research") return label + " 公布新研究";
-    if (category === "agent") return label + " 更新智能体能力";
-    if (category === "tooling") return label + " 更新开发工具";
-    if (category === "policy" || category === "regulation") return label + " 更新政策与监管信息";
-    if (category === "business" || category === "funding") return label + " 披露商业进展";
-    return label + " 发布新动态";
-  }
-
-  function localizedPreciseFallback(item, source, originalTitle) {
-    const descriptor = {
-      agent: "智能体",
-      benchmark: "评测",
-      business: "商业",
-      funding: "融资",
-      infrastructure: "基础设施",
-      model_release: "模型",
-      open_source: "开源",
-      opinion: "观点",
-      policy: "政策",
-      product_update: "产品",
-      regulation: "监管",
-      research: "研究",
-      safety: "安全",
-      tooling: "工具"
-    }[categoryKey(item)] || "动态";
-    const prefix = localizedTitleSource(source) + " " + descriptor + "：";
-    const cleaned = String(originalTitle || "")
-      .replace(/[：:]+/g, " - ")
-      .replace(/&/g, " 和 ")
-      .replace(/[\"'<>]/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-    const room = Math.max(12, 56 - prefix.length);
-    let exact = cleaned;
-    if (exact.length > room) {
-      exact = exact.slice(0, room).replace(/\s+\S*$/u, "").replace(/[，,：:;；\s-]+$/u, "").trim();
-    }
-    return exact.length >= 8 ? prefix + exact : localizedTitleFallback(item, source);
-  }
-
-  function knownChineseHeadline(title) {
-    if (/Learning more about Claude's mathematical capabilities/i.test(title)) return "Anthropic 研究 Claude 的数学能力";
-    if (/Introducing Claude Sonnet 5/i.test(title)) return "Anthropic 发布 Claude Sonnet 5";
-    if (/Mark Zuckerberg doesn.t understand how to live/i.test(title)) return "The Verge 批评扎克伯格的 AI 生活观";
-    if (/Build Low-Latency Multilingual Voice Agents/i.test(title) && /Magpie TTS/i.test(title)) return "Hugging Face 发布 NVIDIA Magpie TTS 多语言语音智能体指南";
-    if (/Four takeaways from Mark Zuckerberg.s massive AI manifesto/i.test(title)) return "扎克伯格大篇幅 AI 宣言的四个要点";
-    if (/Mark Zuckerberg.s AI manifesto/i.test(title)) return "TechCrunch 批评扎克伯格的 AI 宣言脱离用户感受";
-    if (/What happens to Bose when headphones become AI/i.test(title)) return "Bose 耳机加入 AI 后，产品定位面临变化";
-    if (/AI-led attacks multiply/i.test(title) && /cyber model/i.test(title)) return "OpenAI 推出网络安全模型，应对 AI 驱动攻击";
-    if (/next frontier of critical cyber capabilities/i.test(title)) return "OpenAI 说明前沿网络安全能力的应对方案";
-    if (/\$7 billion employee tender offer/i.test(title)) return "OpenAI 被曝完成 70 亿美元员工股份要约收购";
-    if (/letter to Governor Abbott/i.test(title) && /AI infrastructure/i.test(title)) return "OpenAI 致信得州州长，讨论负责任的 AI 基础设施";
-    if (/Amazon backs power plant/i.test(title) && /climate pollution/i.test(title)) return "Amazon 支持大型电厂项目，或推高美国气候污染";
-    if (/Amazon data center/i.test(title) && /polluting power plant/i.test(title)) return "Amazon 数据中心配套电厂或成为美国污染最严重电厂";
-    if (/new open models/i.test(title) && /Meta pitches another reboot/i.test(title)) return "Meta 推出新开源模型，再次调整 AI 战略";
-    if (/AI professors are negotiating/i.test(title)) return "AI 教授重新协商学术研究规则与边界";
-    if (/building an AI-native finance function/i.test(title)) return "OpenAI 总结构建 AI 原生财务团队的经验";
-    if (/Model ML completes finance work/i.test(title) && /GPT-5\.6 Sol/i.test(title)) return "Model ML 使用 GPT-5.6 Sol 提升财务工作效率";
-    if (/Peer review is overwhelmed/i.test(title)) return "同行评审不堪重负，AI 时代能否延续";
-    if (/startups are chasing the next big thing in LLMs/i.test(title)) return "多家初创公司竞逐 LLM 下一阶段机会";
-    if (/TransSLR/i.test(title)) return "TransSLR：用于手语识别的轻量级 Transformer";
-    if (/Sharding Prevents LLM Oversight Failures/i.test(title)) return "分片机制可降低 LLM 监督失效与对抗利用风险";
-    if (/AI for science needs reasoning/i.test(title)) return "AI 科学研究需要推理能力，而不只是更多数据";
-    if (/Run Local Agentic AI Workflows/i.test(title) && /Muse Glimmer/i.test(title)) return "NVIDIA 演示本地运行 Meta Muse Glimmer 智能体工作流";
-    if (/EntropyMoE/i.test(title)) return "EntropyMoE 用熵感知稀疏专家路由支持无分词器 LLM";
-    if (/Latent Fact-Checking/i.test(title)) return "Latent Fact-Checking：通过表征工程检测错误信息";
-    return "";
-  }
-
-  function localizedReaderTitle(item, source, originalTitle) {
-    if (locale !== "zh" || /[\u3400-\u9fff]/u.test(originalTitle)) return originalTitle;
-    const concreteFallback = knownChineseHeadline(originalTitle) || localizedPreciseFallback(item, source, originalTitle);
-    const summary = String(item.summary_zh || "").trim();
-    if (!summary || genericSummary(summary)) return concreteFallback;
-
-    let headline = summary
-      .replace(/^据报道[，,]\s*/u, "")
-      .replace(/^公开信息(?:显示|称)[，,]?\s*/u, "")
-      .split(/[。！？；]/u)[0]
-      .trim()
-      .replace(/发布了/u, "发布")
-      .replace(/推出了/u, "推出");
-    if (!/[\u3400-\u9fff]/u.test(headline) || headline.length < 8) {
-      return concreteFallback;
-    }
-    if (headline.length > 56) {
-      const firstClause = headline.split(/[，,]/u)[0].trim();
-      headline = firstClause.length >= 8 && firstClause.length <= 56 ? firstClause : headline.slice(0, 56);
-    }
-    return headline.replace(/[，,：:;；\s]+$/u, "") || concreteFallback;
-  }
 
   function dayKey(value) {
     const date = new Date(value);
@@ -872,67 +767,43 @@ function liveFeedClientScript() {
     return parts.year + "-" + parts.month + "-" + parts.day;
   }
 
+  function cleanReaderText(value) {
+    return String(value || "").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")
+      .replace(/<[^>]*>/g, " ").replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim();
+  }
+
   function readerTitle(item) {
-    const source = String(item.source_name || "").trim();
-    let title = String(item.title || "").trim()
-      .replace(/^据报道[，,]\s*/, "")
-      .replace(/\s*\|\s*(?:Microsoft Community Hub|Substack)$/i, "")
-      .replace(/\s+-\s+Alibaba Cloud$/i, "");
-    if (/^b\d+$/i.test(title) && source) {
-      return locale === "zh" ? source + " 更新至 " + title : source + " updated to " + title;
-    }
-    if (/^v?\d+(?:\.\d+){1,3}(?:[-+._a-z0-9]*)?$/i.test(title) && source) {
-      return locale === "zh" ? source + " 发布 " + title : source + " released " + title;
-    }
-    if (/\brepository metadata$/i.test(title) && source) {
-      return locale === "zh" ? source + " 开源仓库更新" : source + " repository update";
-    }
-    if (title.length > 110) title = title.slice(0, 108).replace(/[，,：:;；\s]+$/u, "") + "…";
-    return localizedReaderTitle(item, source, title);
+    return cleanReaderText(locale === "zh" && item.title_zh ? item.title_zh : item.title);
   }
 
   function genericSummary(value) {
-    return /^(?:公开信息(?:显示|目前只提供)|当前材料主要来自)|\b(?:Metadata-level item|Item summary|Evidence text)\b/i.test(value);
+    return /^(?:公开信息(?:显示|目前只提供)|当前材料主要来自|这条公开信息可能影响|Public information (?:on|currently)|This public update may affect)/i.test(value);
   }
 
-  function fallbackSummary(item, title) {
-    const source = String(item.source_name || (locale === "zh" ? "该来源" : "The source"));
-    const category = categoryKey(item);
-    if (locale === "en") {
-      if (category === "model_release") return source + " published a model or version update. Check the release notes for capability and compatibility details.";
-      if (category === "open_source") return source + " published an open-source update that may affect compatibility and deployment choices.";
-      if (category === "product_update") return source + " changed a product workflow or capability; availability and migration impact still need verification.";
-      return "This public update may affect the AI industry. Open the original source for the full context.";
-    }
-    if (category === "model_release") return source + "发布了模型或版本更新，能力变化、兼容性和使用限制仍需结合发布说明核对。";
-    if (category === "open_source") return source + "更新了开源项目，版本变化可能影响兼容性、部署方式和技术选型。";
-    if (category === "product_update") return source + "更新了产品能力或工作流，实际可用范围和迁移影响仍需继续确认。";
-    if (category === "research") return "这项研究可能影响对技术路线的判断，但结论仍需结合论文方法与实验设置核对。";
-    return "这条公开信息可能影响 AI 行业判断，具体背景、数字和适用范围请回到原始来源核对。";
-  }
-
-  function readerSummary(item, title) {
-    const preferred = locale === "zh" ? String(item.summary_zh || "") : String(item.summary_en || "");
-    const cleaned = preferred.trim();
-    return cleaned && !genericSummary(cleaned) ? cleaned : fallbackSummary(item, title);
+  function readerSummary(item) {
+    const preferred = cleanReaderText(locale === "zh" ? item.summary_zh : item.summary_en);
+    const original = cleanReaderText(item.summary_en);
+    const text = preferred && !genericSummary(preferred) ? preferred : original && !genericSummary(original) ? original : "";
+    const limit = /[\u3400-\u9fff]/u.test(text) ? 220 : 360;
+    return text.length > limit ? text.slice(0, limit).replace(/\s+\S*$/, "").trim() + "…" : text;
   }
 
   function readerJudgment(item) {
-    const value = String(item.why_it_matters || "").trim();
-    const usable = value && !/^(?:Potentially relevant AI signal|May affect model capability tracking|May change available building blocks)/i.test(value);
-    if (usable && (locale === "en" || /[\u3400-\u9fff]/u.test(value))) return value;
-    const category = categoryKey(item);
-    if (locale === "en") {
-      if (category === "model_release") return "It may change capability, cost or model-selection decisions.";
-      if (category === "product_update") return "It may directly change user workflows and product choices.";
-      if (category === "open_source") return "It may lower adoption costs or change the available technical stack.";
-      return "It may affect product decisions, technical choices or the direction of the AI market.";
-    }
-    if (category === "model_release") return "它可能改变能力边界、成本和模型选型，需要继续核对实际表现。";
-    if (category === "product_update") return "它可能直接改变用户工作流和产品选型，值得关注真实可用性。";
-    if (category === "open_source") return "它可能降低使用门槛并改变技术栈选择，值得评估兼容性与维护状态。";
-    if (category === "research") return "它可能改变对技术机制或路线的理解，但距离稳定产品化仍需验证。";
-    return "它可能影响产品判断、技术选型或后续行业走向，值得继续跟踪。";
+    const value = cleanReaderText(item.why_it_matters);
+    if (!value || /可能影响|需要继续核对|值得继续跟踪|来自.+的一手|^A direct|^Potentially relevant|^May affect|^May change|may affect product|may change capability/i.test(value)) return "";
+    return locale === "zh" && !/[\u3400-\u9fff]/u.test(value) ? "" : value;
+  }
+
+  function sourceCountLabel(item) {
+    const count = Math.max(1, Number(item.source_count || 1));
+    return locale === "zh" ? count + " 个来源" : count + (count === 1 ? " source" : " sources");
+  }
+
+  function sourceLinks(item) {
+    if (!Array.isArray(item.sources) || item.sources.length < 2) return "";
+    return '<details class="source-drawer"><summary>' + (locale === "zh" ? "来源" : "Sources") + '</summary><div class="source-drawer-list">' +
+      item.sources.map((source) => '<a href="' + escapeHtml(safeUrl(source.url)) + '"><span>' + escapeHtml(source.name) + '</span></a>').join("") + '</div></details>';
   }
 
   function eligible(item) {
@@ -942,15 +813,13 @@ function liveFeedClientScript() {
     return Boolean(item && title.length >= 4 && url !== "#" && time > 0);
   }
 
-  function selectItems(items) {
+  function selectItems(items, topItems) {
     const maximumAge = mode === "home" ? 30 * 24 * 60 * 60 * 1000 : 120 * 24 * 60 * 60 * 1000;
     const newest = items.filter(eligible).filter((item) => Date.now() - effectiveTime(item) <= maximumAge).sort((left, right) => effectiveTime(right) - effectiveTime(left));
     const selected = [];
-    const urls = new Set(mode === "home"
-      ? Array.from(document.querySelectorAll(".top-story h2 a"))
-          .map((link) => safeUrl(link.getAttribute("href"))).filter((url) => url !== "#")
-          .map((url) => url.replace(/\/$/, "").toLowerCase())
-      : []);
+    const urls = new Set((mode === "home" ? topItems : [])
+      .flatMap((item) => [item.url, ...(item.sources || []).map((source) => source.url)])
+      .map((url) => safeUrl(url).replace(/\/$/, "").toLowerCase()));
     const perSource = new Map();
     const sourceLimit = mode === "home" ? 3 : 8;
     for (const item of newest) {
@@ -1010,7 +879,7 @@ function liveFeedClientScript() {
     const title = readerTitle(item);
     const summary = readerSummary(item, title);
     const judgment = readerJudgment(item);
-    const timestampValue = item.published_at || item.collected_at || item.processed_at;
+    const timestampValue = item.published_at;
     const timestamp = dateTime(timestampValue);
     const categories = values(item.categories);
     const category = categoryKey(item);
@@ -1021,37 +890,39 @@ function liveFeedClientScript() {
       '<span class="hot-rank">' + String(index + 1).padStart(2, "0") + '</span>' +
       '<div class="hot-meta"><time datetime="' + escapeHtml(String(timestampValue || "")) + '" title="' + escapeHtml(locale === "zh" ? "北京时间" : "UTC") + '">' + escapeHtml(timestamp.date + " · " + timestamp.time) + '</time><span>' + escapeHtml(source) + '</span><small>' + escapeHtml(categoryLabel(category)) + '</small></div>' +
       '<div class="hot-copy"><h2><a href="' + escapeHtml(safeUrl(item.url)) + '">' + escapeHtml(title) + '</a></h2><p>' + escapeHtml(summary) + '</p></div>' +
-      '<div class="hot-judgment"><strong>' + (locale === "zh" ? "为什么值得看" : "Why it matters") + '</strong><p>' + escapeHtml(judgment) + '</p><small>' + (locale === "zh" ? "1 个来源" : "1 source") + '</small></div></article>';
+      '<div class="hot-judgment">' + (judgment ? '<strong>' + (locale === "zh" ? "为什么值得看" : "Why it matters") + '</strong><p>' + escapeHtml(judgment) + '</p>' : '') + '<small>' + escapeHtml(sourceCountLabel(item)) + '</small>' + sourceLinks(item) + '</div></article>';
   }
 
   function topHtml(items) {
-    return items.map(topItemHtml).join("");
+    return items.length ? items.map(topItemHtml).join("") : '<p class="empty-state">' +
+      (locale === "zh" ? "近 7 天暂无可展示的热点。" : "No recent highlights in the past 7 days.") + '</p>';
   }
 
   function rowHtml(item) {
     const title = readerTitle(item);
     const summary = readerSummary(item, title);
     const judgment = readerJudgment(item);
-    const timestampValue = item.published_at || item.collected_at || item.processed_at;
+    const timestampValue = item.published_at;
     const timestamp = dateTime(timestampValue);
     const categories = values(item.categories);
     const category = categoryKey(item);
     const family = sourceFamily(item);
     const source = String(item.source_name || (locale === "zh" ? "公开来源" : "Public source"));
-    const sourceCount = locale === "zh" ? "1 个来源" : "1 source";
+    const sourceCount = sourceCountLabel(item);
     const search = [title, summary, source, categories.join(" ")].join(" ").toLowerCase();
     return '<article class="event-card story-row" data-category="' + escapeHtml(categories.join(" ") + " " + category) + '" data-family="' + escapeHtml(family) + '" data-search="' + escapeHtml(search) + '">' +
       '<div class="story-time"><time datetime="' + escapeHtml(String(timestampValue || "")) + '" title="' + escapeHtml(timestamp.date + " " + timestamp.time + (locale === "zh" ? " · 北京时间" : " · UTC")) + '"><span class="story-date">' + escapeHtml(timestamp.date) + '</span><span class="story-clock">' + escapeHtml(timestamp.time) + '</span></time><i aria-hidden="true"></i></div>' +
       '<div class="story-content"><div class="story-meta"><span>' + escapeHtml(source) + '</span><strong>' + sourceCount + '</strong></div>' +
       '<h2><a href="' + escapeHtml(safeUrl(item.url)) + '">' + escapeHtml(title) + '</a></h2>' +
-      '<p>' + escapeHtml(summary) + '</p><p class="story-judgment"><strong>' + (locale === "zh" ? "为什么值得看" : "Why it matters") + '</strong>' + escapeHtml(judgment) + '</p>' +
-      '<div class="story-foot"><span>' + escapeHtml(categoryLabel(category)) + '</span><span>' + sourceCount + '</span></div></div></article>';
+      (summary ? '<p>' + escapeHtml(summary) + '</p>' : '') +
+      (judgment ? '<p class="story-judgment"><strong>' + (locale === "zh" ? "为什么值得看" : "Why it matters") + '</strong>' + escapeHtml(judgment) + '</p>' : '') +
+      '<div class="story-foot"><span>' + escapeHtml(categoryLabel(category)) + '</span><span>' + sourceCount + '</span></div>' + sourceLinks(item) + '</div></article>';
   }
 
   function streamHtml(items) {
     let day = "";
     return items.map((item) => {
-      const timestampValue = item.published_at || item.collected_at || item.processed_at;
+      const timestampValue = item.published_at;
       const timestamp = dateTime(timestampValue);
       const heading = timestamp.date === day ? "" : '<h2 class="feed-day"><span>' + escapeHtml(timestamp.date) + '</span></h2>';
       day = timestamp.date;
@@ -1063,12 +934,12 @@ function liveFeedClientScript() {
     const latest = payload.updated_at;
     const timestamp = dateTime(latest);
     if (status) {
-      status.textContent = locale === "zh"
+      status.textContent = !latest ? (locale === "zh" ? "每日 09:00 更新" : "Daily at 09:00 Beijing") : locale === "zh"
         ? "更新于 " + timestamp.date + " " + timestamp.time + "（北京时间）· 每日 09:00"
         : "Updated " + timestamp.date + " " + timestamp.time + " UTC · Daily at 09:00 Beijing";
       status.dataset.state = "ready";
     }
-    if (liveDate && latest) liveDate.textContent = timestamp.date + " · " + timestamp.time;
+    if (liveDate) liveDate.textContent = latest ? timestamp.date + " · " + timestamp.time : "";
     const count = root.querySelector("[data-live-count]");
     if (count) count.textContent = locale === "zh" ? itemCount + " 条" : itemCount + " items";
   }
@@ -1084,16 +955,15 @@ function liveFeedClientScript() {
       const payload = await response.json();
       if (!payload || !Array.isArray(payload.items)) throw new Error("invalid live feed payload");
       const topItems = mode === "home" ? selectTopItems(payload.items) : [];
-      if (top && topItems.length === 10) {
-        top.innerHTML = topHtml(topItems);
-      }
-      const items = selectItems(payload.items);
-      if (items.length > 0 && stream) {
-        stream.innerHTML = streamHtml(items);
-        root.dataset.liveState = "ready";
-        updateStatus(payload, items.length);
-        window.dispatchEvent(new CustomEvent("radar:feed-updated"));
-      }
+      const items = selectItems(payload.items, topItems);
+      // Build both sections before replacing either. Empty and short batches are valid results.
+      const nextTop = topHtml(topItems);
+      const nextStream = streamHtml(items);
+      if (top) top.innerHTML = nextTop;
+      if (stream) stream.innerHTML = nextStream;
+      root.dataset.liveState = "ready";
+      updateStatus(payload, items.length);
+      window.dispatchEvent(new CustomEvent("radar:feed-updated"));
     } catch {
       if (status) {
         const visibleDate = liveDate && liveDate.textContent ? liveDate.textContent.trim() : "";
@@ -2333,7 +2203,11 @@ function homepageSourceGroup(event: SnapshotEvent) {
 }
 
 function selectHomepageEvents(events: SnapshotEvent[], limit: number, locale: "en" | "zh", referenceTime: string) {
-  const chronological = events.toSorted((left, right) => compareHomepageEvents(left, right, locale));
+  const referenceMs = Date.parse(referenceTime) || Date.now();
+  const chronological = events.filter((event) => event.citations.some((citation) => {
+    const published = Date.parse(citation.published_at || "");
+    return Number.isFinite(published) && published <= referenceMs + 600_000 && referenceMs - published <= 7 * 86400_000;
+  })).toSorted((left, right) => compareHomepageEvents(left, right, locale));
   const selected: SnapshotEvent[] = [];
   const selectedIds = new Set<string>();
   const sourceCounts = new Map<string, number>();
@@ -2777,7 +2651,7 @@ main > * + * { margin-top: 0; }
 .story-time .story-date { color: #7a8089; font-size: 11px; }
 .story-time .story-clock { color: #4b515a; font-size: 12px; }
 .story-time i { background: var(--evidence); border-radius: 50%; height: 6px; width: 6px; }
-.story-content { background: #fff; border-bottom: 1px solid var(--line); min-width: 0; padding: 16px 4px 18px; }
+.story-content { background: #fff; border-bottom: 1px solid var(--line); min-width: 0; overflow-wrap: anywhere; padding: 16px 4px 18px; }
 .story-meta { align-items: center; color: var(--muted); display: flex; font-size: 13px; gap: 12px; justify-content: space-between; }
 .story-meta strong { color: var(--evidence); font-size: 12px; }
 .story-content h2 { font-size: 18px; margin-top: 6px; }

@@ -301,7 +301,7 @@ async function createPublicSnapshot(): Promise<PublicMirrorSnapshot> {
     try {
       supabaseSnapshot = await withTimeout(
         readSupabaseSnapshot(supabase, generatedAt),
-        45_000,
+        90_000,
         "Supabase public reads timed out before export."
       );
     } catch (error) {
